@@ -25,13 +25,20 @@ export default async function DashboardPage() {
       </div>
 
       {user.tenantId ? (
-        <div className="mt-6">
+        <div className="mt-6 flex gap-3">
           <Button
             variant="secondary"
             nativeButton={false}
             render={<Link href="/dashboard/services" />}
           >
             Catalogo trattamenti
+          </Button>
+          <Button
+            variant="secondary"
+            nativeButton={false}
+            render={<Link href="/dashboard/clients" />}
+          >
+            Anagrafica clienti
           </Button>
         </div>
       ) : null}
