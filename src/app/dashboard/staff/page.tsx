@@ -7,9 +7,5 @@ export default async function StaffPage() {
   const { user } = await requireTenantAdmin();
   const staff = await getStaff();
 
-  return (
-    <div className="p-8">
-      <StaffManager initialStaff={staff} currentUserId={user.id} />
-    </div>
-  );
+  return <StaffManager initialStaff={staff} currentUserId={user.id} />;
 }

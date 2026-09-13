@@ -75,7 +75,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
   const lastAppointment = appointments.find((appointment) => appointment.startTime <= now) ?? null;
 
   return (
-    <div className="space-y-6 p-8">
+    <div className="space-y-6">
       <ClientDetailHeader client={client} />
 
       <div className="grid gap-6 md:grid-cols-2">

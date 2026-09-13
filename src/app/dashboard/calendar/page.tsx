@@ -22,14 +22,12 @@ export default async function CalendarPage() {
   ]);
 
   return (
-    <div className="p-8">
-      <CalendarManager
-        initialAppointments={appointments}
-        initialDate={format(today, "yyyy-MM-dd")}
-        clients={clients}
-        services={services}
-        operators={operators}
-      />
-    </div>
+    <CalendarManager
+      initialAppointments={appointments}
+      initialDate={format(today, "yyyy-MM-dd")}
+      clients={clients}
+      services={services}
+      operators={operators}
+    />
   );
 }

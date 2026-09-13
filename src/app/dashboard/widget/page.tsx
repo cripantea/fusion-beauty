@@ -11,9 +11,5 @@ export default async function WidgetPage() {
     select: { slug: true, name: true },
   });
 
-  return (
-    <div className="p-8">
-      <WidgetPreview tenantSlug={tenant.slug} tenantName={tenant.name} />
-    </div>
-  );
+  return <WidgetPreview tenantSlug={tenant.slug} tenantName={tenant.name} />;
 }

@@ -7,9 +7,5 @@ export default async function CalendarIntegrationsPage() {
   await getTenantContext();
   const settings = await getIntegrationSettings();
 
-  return (
-    <div className="p-8">
-      <IntegrationsManager initialSettings={settings} />
-    </div>
-  );
+  return <IntegrationsManager initialSettings={settings} />;
 }

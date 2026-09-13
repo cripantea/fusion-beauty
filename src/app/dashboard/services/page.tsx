@@ -7,9 +7,5 @@ export default async function ServicesPage() {
   await getTenantContext();
   const services = await getServices();
 
-  return (
-    <div className="p-8">
-      <ServicesManager initialServices={services} />
-    </div>
-  );
+  return <ServicesManager initialServices={services} />;
 }
