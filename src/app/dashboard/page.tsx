@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { logout } from "@/app/login/actions";
 import { Button } from "@/components/ui/button";
 import { getAuthContext } from "@/lib/auth-context";
@@ -21,6 +23,18 @@ export default async function DashboardPage() {
           </Button>
         </form>
       </div>
+
+      {user.tenantId ? (
+        <div className="mt-6">
+          <Button
+            variant="secondary"
+            nativeButton={false}
+            render={<Link href="/dashboard/services" />}
+          >
+            Catalogo trattamenti
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }
