@@ -32,7 +32,10 @@ export async function login(
 
   const { email, password } = parsed.data;
 
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({
+    where: { email },
+    include: { tenant: { select: { isActive: true } } },
+  });
 
   if (!user || !user.isActive) {
     return { error: "Credenziali non valide." };
@@ -42,6 +45,10 @@ export async function login(
 
   if (!passwordMatches) {
     return { error: "Credenziali non valide." };
+  }
+
+  if (user.tenant && !user.tenant.isActive) {
+    return { error: "Il centro associato a questo account è stato sospeso." };
   }
 
   const token = await createSessionToken({

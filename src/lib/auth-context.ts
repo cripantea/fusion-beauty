@@ -29,9 +29,16 @@ export async function getAuthContext(): Promise<{ user: AuthenticatedUser }> {
     redirect("/login");
   }
 
-  const user = await prisma.user.findUnique({ where: { id: payload.sub } });
+  const user = await prisma.user.findUnique({
+    where: { id: payload.sub },
+    include: { tenant: { select: { isActive: true } } },
+  });
 
   if (!user || !user.isActive) {
+    redirect("/login");
+  }
+
+  if (user.tenant && !user.tenant.isActive) {
     redirect("/login");
   }
 

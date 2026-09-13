@@ -2,6 +2,9 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session";
 
+// The matcher is an allow-list: only these paths run through the proxy.
+// Anything else — including /embed/:path* and /api/embed/:path* — is public
+// by default and never touches the session check below.
 export const config = {
   matcher: ["/dashboard/:path*", "/admin/:path*"],
 };
