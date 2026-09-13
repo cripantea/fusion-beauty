@@ -1,0 +1,92 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  checks:
+    name: Lint, typecheck & build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm exec prisma generate
+
+      - name: Generate Next.js route types
+        run: pnpm exec next typegen
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Type check
+        run: pnpm exec tsc --noEmit
+
+      - name: Build
+        run: pnpm run build
+
+  deploy:
+    name: Deploy to production
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
+          envs: DEPLOY_PATH
+          timeout: 60s
+          command_timeout: 25m
+          script: |
+            set -euo pipefail
+
+            APP_DIR="${DEPLOY_PATH:-/home/cristi/fusion-beauty}"
+            cd "$APP_DIR"
+
+            echo "==> Pull ultimo codice da main"
+            git fetch origin main
+            git checkout main
+            git pull --ff-only origin main
+
+            echo "==> Build immagini Docker"
+            docker compose -f docker-compose.prod.yml build
+
+            echo "==> Rigenerazione client Prisma"
+            docker compose -f docker-compose.prod.yml run --rm worker npx prisma generate
+
+            echo "==> Migrazioni database"
+            docker compose -f docker-compose.prod.yml run --rm worker npx prisma migrate deploy
+
+            echo "==> Riavvio servizi in background"
+            docker compose -f docker-compose.prod.yml up -d --build
+
+            echo "==> Pulizia immagini inutilizzate"
+            docker image prune -f
+
+            echo "==> Deploy completato"
