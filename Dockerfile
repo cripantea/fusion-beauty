@@ -48,7 +48,7 @@ RUN addgroup --system --gid 1001 nodejs \
 
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --chown=nextjs:nodejs . .
-RUN pnpm prisma generate
 
 USER nextjs
+RUN pnpm prisma generate
 CMD ["pnpm", "worker"]
