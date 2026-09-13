@@ -1,8 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -10,4 +8,117 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  OPERATOR
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  phone     String?
+  email     String?
+  logoUrl   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users        User[]
+  clients      Client[]
+  services     Service[]
+  appointments Appointment[]
+
+  @@map("tenants")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String?
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         Role     @default(OPERATOR)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant       Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments Appointment[] @relation("AppointmentOperator")
+
+  @@index([tenantId])
+  @@map("users")
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  tenantId  String
+  firstName String
+  lastName  String
+  phone     String
+  email     String?
+  notes     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@index([tenantId, phone])
+  @@index([tenantId, lastName])
+  @@map("clients")
+}
+
+model Service {
+  id                     String   @id @default(cuid())
+  tenantId               String
+  name                   String
+  description            String?  @db.Text
+  price                  Decimal  @db.Decimal(10, 2)
+  durationMinutes        Int
+  isActive               Boolean  @default(true)
+  isOnlineBookingEnabled Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@index([tenantId, isActive])
+  @@map("services")
+}
+
+model Appointment {
+  id         String            @id @default(cuid())
+  tenantId   String
+  clientId   String
+  serviceId  String
+  operatorId String?
+  startTime  DateTime
+  endTime    DateTime
+  status     AppointmentStatus @default(BOOKED)
+  notes      String?           @db.Text
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client   Client  @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  service  Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  operator User?   @relation("AppointmentOperator", fields: [operatorId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, startTime])
+  @@index([tenantId, status])
+  @@map("appointments")
 }
