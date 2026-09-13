@@ -90,3 +90,17 @@ export async function requireSuperAdmin(): Promise<{ user: AuthenticatedUser }> 
 
   return { user };
 }
+
+/** Like getTenantContext(), but also redirects OPERATOR users to /dashboard. */
+export async function requireTenantAdmin(): Promise<{
+  user: AuthenticatedUser;
+  tenantId: string;
+}> {
+  const { user, tenantId } = await getTenantContext();
+
+  if (user.role !== "ADMIN") {
+    redirect("/dashboard");
+  }
+
+  return { user, tenantId };
+}

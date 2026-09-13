@@ -77,6 +77,15 @@ export default async function DashboardPage() {
             >
               Integrazioni calendario
             </Button>
+            {user.role === "ADMIN" ? (
+              <Button
+                variant="secondary"
+                nativeButton={false}
+                render={<Link href="/dashboard/staff" />}
+              >
+                Staff
+              </Button>
+            ) : null}
           </div>
 
           <DashboardManager
