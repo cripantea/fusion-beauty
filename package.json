@@ -10,7 +10,8 @@
     "worker": "tsx src/workers/index.ts",
     "worker:dev": "tsx watch src/workers/index.ts",
     "postinstall": "prisma generate",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:seed:prod": "tsx prisma/seed.prod.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
