@@ -24,23 +24,69 @@ enum AppointmentStatus {
   NO_SHOW
 }
 
-model Tenant {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  phone     String?
-  email     String?
-  logoUrl   String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum IntegrationType {
+  GOOGLE_CALENDAR
+  ICAL_URL
+}
 
-  users        User[]
-  clients      Client[]
-  services     Service[]
-  appointments Appointment[]
+model Tenant {
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique
+  phone        String?
+  email        String?
+  logoUrl      String?
+  isActive     Boolean  @default(true)
+  icsFeedToken String?  @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  users                  User[]
+  clients                Client[]
+  services               Service[]
+  appointments           Appointment[]
+  integrations           TenantIntegration[]
+  externalCalendarEvents ExternalCalendarEvent[]
 
   @@map("tenants")
+}
+
+model TenantIntegration {
+  id                  String          @id @default(cuid())
+  tenantId            String
+  type                IntegrationType
+  isEnabled           Boolean         @default(false)
+  externalCalendarUrl String?
+  credentials         Json?
+  syncToken           String?
+  lastSyncedAt        DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  tenant Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  events ExternalCalendarEvent[]
+
+  @@unique([tenantId, type])
+  @@map("tenant_integrations")
+}
+
+model ExternalCalendarEvent {
+  id            String   @id @default(cuid())
+  tenantId      String
+  integrationId String
+  externalUid   String
+  startTime     DateTime
+  endTime       DateTime
+  summary       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  integration TenantIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@unique([integrationId, externalUid])
+  @@index([tenantId, startTime])
+  @@map("external_calendar_events")
 }
 
 model User {
