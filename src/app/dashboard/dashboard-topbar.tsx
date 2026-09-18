@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 const roleLabels: Record<string, string> = {
   SUPER_ADMIN: "Super admin",
   ADMIN: "Amministratore",
-  OPERATOR: "Operatore",
+  OPERATOR: "Operatrice",
 };
 
 type DashboardTopbarProps = {
@@ -14,13 +14,26 @@ type DashboardTopbarProps = {
 };
 
 export function DashboardTopbar({ firstName, lastName, role }: DashboardTopbarProps) {
+  const initials =
+    `${firstName[0] ?? ""}${lastName[0] ?? ""}`.toUpperCase();
+
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b px-6">
-      <p className="text-sm text-muted-foreground">
-        {firstName} {lastName} — {roleLabels[role] ?? role}
-      </p>
+    <header className="flex h-14 shrink-0 items-center justify-end gap-3 border-b bg-card/80 px-6 backdrop-blur-sm">
+      <div className="text-right">
+        <div className="text-sm font-medium leading-tight">
+          {firstName} {lastName}
+        </div>
+        <div className="text-xs leading-tight text-muted-foreground">
+          {roleLabels[role] ?? role}
+        </div>
+      </div>
+
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+        {initials}
+      </div>
+
       <form action={logout}>
-        <Button type="submit" variant="outline">
+        <Button type="submit" variant="ghost" size="sm" className="text-muted-foreground">
           Esci
         </Button>
       </form>
