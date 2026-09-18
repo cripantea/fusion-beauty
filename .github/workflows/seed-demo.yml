@@ -1,0 +1,34 @@
+name: Seed demo data
+
+on:
+  workflow_dispatch:
+
+jobs:
+  seed:
+    name: Run demo seed on production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Seed via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SERVER_PORT }}
+          envs: DEPLOY_PATH
+          timeout: 60s
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            APP_DIR="${DEPLOY_PATH:-/home/cristi/fusion-beauty}"
+            cd "$APP_DIR"
+
+            echo "==> Migrazioni (in caso siano rimaste indietro)"
+            docker compose -f docker-compose.prod.yml run --rm worker npx prisma migrate deploy
+
+            echo "==> Seed dati demo"
+            docker compose -f docker-compose.prod.yml run --rm worker npx tsx prisma/seed.ts
+
+            echo "==> Seed completato"
