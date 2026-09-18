@@ -5,13 +5,19 @@ import { it } from "date-fns/locale";
 
 import { cn } from "@/lib/utils";
 
-import type { AppointmentDTO } from "./actions";
+import type { AppointmentDTO, OperatorDTO } from "./actions";
 import type { AppointmentStatusValue } from "./schema";
 
 const DAY_START_HOUR = 8;
 const DAY_END_HOUR = 20;
 const HOUR_HEIGHT = 64;
 const MIN_BLOCK_MINUTES = 20;
+
+const currencyFormatter = new Intl.NumberFormat("it-IT", {
+  style: "currency",
+  currency: "EUR",
+  maximumFractionDigits: 0,
+});
 
 const statusBlockClasses: Record<AppointmentStatusValue, string> = {
   BOOKED:
@@ -58,10 +64,103 @@ function getAppointmentPosition(appointment: AppointmentDTO, day: Date) {
 type CalendarGridProps = {
   days: Date[];
   appointments: AppointmentDTO[];
+  operators: OperatorDTO[];
+  operatorFilter: string | "all";
   onAppointmentClick: (appointment: AppointmentDTO) => void;
 };
 
-export function CalendarGrid({ days, appointments, onAppointmentClick }: CalendarGridProps) {
+export function CalendarGrid({
+  days,
+  appointments,
+  operators,
+  operatorFilter,
+  onAppointmentClick,
+}: CalendarGridProps) {
+  // In day view with no operator filter, show columns per operator
+  const isDayView = days.length === 1;
+  const showOperatorColumns = isDayView && operatorFilter === "all" && operators.length > 1;
+
+  const filteredAppointments =
+    operatorFilter === "all"
+      ? appointments
+      : appointments.filter(
+          (a) => a.operator?.id === operatorFilter || (!a.operator && operatorFilter === "none")
+        );
+
+  if (showOperatorColumns) {
+    // Day view: one column per operator
+    return (
+      <div className="flex overflow-x-auto rounded-lg border">
+        {/* Time gutter */}
+        <div className="w-14 shrink-0 border-r">
+          <div className="h-10 border-b" />
+          <div className="relative" style={{ height: GRID_HEIGHT }}>
+            {hours.map((hour) => (
+              <div
+                key={hour}
+                className="absolute left-0 w-full -translate-y-1/2 pr-2 text-right text-xs text-muted-foreground"
+                style={{ top: (hour - DAY_START_HOUR) * HOUR_HEIGHT }}
+              >
+                {String(hour).padStart(2, "0")}:00
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {operators.map((op) => {
+          const opAppointments = appointments.filter((a) => a.operator?.id === op.id);
+          const day = days[0];
+
+          return (
+            <div key={op.id} className="min-w-40 flex-1 border-r last:border-r-0">
+              <div className="flex h-10 items-center justify-center border-b bg-muted/30 text-sm font-medium">
+                {op.firstName} {op.lastName}
+              </div>
+              <div className="relative" style={{ height: GRID_HEIGHT }}>
+                {hours.map((hour) => (
+                  <div
+                    key={hour}
+                    className="absolute w-full border-t"
+                    style={{ top: (hour - DAY_START_HOUR) * HOUR_HEIGHT }}
+                  />
+                ))}
+                {opAppointments
+                  .filter((a) => isSameDay(a.startTime, day))
+                  .map((appointment) => {
+                    const { top, height } = getAppointmentPosition(appointment, day);
+                    return (
+                      <button
+                        key={appointment.id}
+                        type="button"
+                        onClick={() => onAppointmentClick(appointment)}
+                        className={cn(
+                          "absolute inset-x-1 overflow-hidden rounded-md border px-2 py-1 text-left text-xs shadow-sm transition-opacity hover:opacity-80",
+                          statusBlockClasses[appointment.status]
+                        )}
+                        style={{ top, height }}
+                      >
+                        <div className="truncate font-medium">
+                          {appointment.client.firstName} {appointment.client.lastName}
+                        </div>
+                        <div className="truncate">{appointment.service.name}</div>
+                        {appointment.price !== null && height > 40 && (
+                          <div className="truncate opacity-70">{currencyFormatter.format(appointment.price)}</div>
+                        )}
+                        {appointment.payment && (
+                          <div className="truncate text-green-700 opacity-80">✓ Pagato</div>
+                        )}
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Week view (or day view with operator filter): one column per day
   return (
     <div className="flex overflow-x-auto rounded-lg border">
       <div className="w-14 shrink-0 border-r">
@@ -80,8 +179,8 @@ export function CalendarGrid({ days, appointments, onAppointmentClick }: Calenda
       </div>
 
       {days.map((day) => {
-        const dayAppointments = appointments.filter((appointment) =>
-          isSameDay(appointment.startTime, day)
+        const dayAppointments = filteredAppointments.filter((a) =>
+          isSameDay(a.startTime, day)
         );
 
         return (
@@ -114,6 +213,17 @@ export function CalendarGrid({ days, appointments, onAppointmentClick }: Calenda
                       {appointment.client.firstName} {appointment.client.lastName}
                     </div>
                     <div className="truncate">{appointment.service.name}</div>
+                    {appointment.operator && (
+                      <div className="truncate opacity-70">
+                        {appointment.operator.firstName}
+                      </div>
+                    )}
+                    {appointment.price !== null && height > 50 && (
+                      <div className="truncate opacity-70">{currencyFormatter.format(appointment.price)}</div>
+                    )}
+                    {appointment.payment && (
+                      <div className="truncate text-green-700 opacity-80">✓</div>
+                    )}
                   </button>
                 );
               })}

@@ -1,9 +1,12 @@
 "use client";
 
 import {
+  BarChart3,
   Calendar,
+  ClipboardList,
   LayoutDashboard,
   Link2,
+  Package,
   Scissors,
   ShieldCheck,
   Users,
@@ -16,11 +19,15 @@ import { cn } from "cn";
 
 const TENANT_NAV_ITEMS = [
   { href: "/dashboard", label: "Panoramica", icon: LayoutDashboard, exact: true },
-  { href: "/dashboard/calendar", label: "Calendario", icon: Calendar },
-  { href: "/dashboard/services", label: "Catalogo trattamenti", icon: Scissors },
-  { href: "/dashboard/clients", label: "Anagrafica clienti", icon: Users },
+  { href: "/dashboard/calendar", label: "Agenda", icon: Calendar },
+  { href: "/dashboard/clients", label: "Clienti", icon: Users },
+  { href: "/dashboard/services", label: "Trattamenti", icon: Scissors },
+  { href: "/dashboard/products", label: "Prodotti", icon: Package },
+  { href: "/dashboard/requests", label: "Richieste online", icon: ClipboardList },
+  { href: "/dashboard/stats", label: "Statistiche", icon: BarChart3 },
+  { href: "/dashboard/reports", label: "Report", icon: ClipboardList },
   { href: "/dashboard/widget", label: "Widget prenotazione", icon: Wand2 },
-  { href: "/dashboard/integrations/calendar", label: "Integrazioni calendario", icon: Link2 },
+  { href: "/dashboard/integrations/calendar", label: "Integrazioni", icon: Link2 },
 ] as const;
 
 const STAFF_NAV_ITEM = {
@@ -44,11 +51,14 @@ export function DashboardSidebar({ hasTenant, isAdmin }: DashboardSidebarProps) 
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r bg-muted/30">
       <div className="flex h-16 items-center border-b px-6">
-        <span className="text-lg font-semibold">Fusion Beauty</span>
+        <span className="text-lg font-semibold tracking-tight">Beauty CRM</span>
       </div>
-      <nav className="flex flex-1 flex-col gap-1 p-3">
+      <nav className="flex flex-1 flex-col gap-0.5 p-3 overflow-y-auto">
         {items.map((item) => {
-          const isActive = "exact" in item && item.exact ? pathname === item.href : pathname.startsWith(item.href);
+          const isActive =
+            "exact" in item && item.exact
+              ? pathname === item.href
+              : pathname.startsWith(item.href);
           const Icon = item.icon;
           return (
             <Link
@@ -61,7 +71,7 @@ export function DashboardSidebar({ hasTenant, isAdmin }: DashboardSidebarProps) 
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
-              <Icon className="size-4" />
+              <Icon className="size-4 shrink-0" />
               {item.label}
             </Link>
           );

@@ -71,8 +71,17 @@ cp .env.example .env
 pnpm install
 docker compose up -d db redis
 pnpm prisma migrate dev
+pnpm db:seed        # seed demo con 50 clienti, 3 operatrici, dati completi
 pnpm dev
 ```
+
+### Credenziali demo
+
+| Ruolo | Email | Password |
+|---|---|---|
+| Super Admin | superadmin@fusion-beauty.dev | Password123! |
+| Admin centro | admin@centro-demo.it | Password123! |
+| Operatrice | giulia@centro-demo.it | Password123! |
 
 Il worker BullMQ si avvia con:
 
