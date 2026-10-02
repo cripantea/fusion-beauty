@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Rose rounded square -->
+  <rect width="32" height="32" rx="7" fill="#C06070"/>
+  <!-- Dual-flame (FusionWA style) scaled to fit: translate(7,3.5) scale(0.295) over viewBox 0 0 62 78 -->
+  <g transform="translate(7,3.5) scale(0.295)" fill="white">
+    <!-- Left flame -->
+    <path d="M 24 74 C 6 68 0 50 10 32 C 16 20 22 12 22 2 C 34 12 42 30 38 50 C 36 60 28 66 26 72 Z"/>
+    <!-- Right flame -->
+    <path d="M 36 74 C 34 64 34 56 38 48 C 44 36 52 24 52 12 C 52 4 50 0 52 0 C 66 10 74 32 68 52 C 62 68 52 76 38 76 Z"/>
+  </g>
+</svg>
