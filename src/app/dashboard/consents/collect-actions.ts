@@ -226,10 +226,35 @@ export async function collectConsent(values: CollectConsentValues): Promise<Coll
   return { success: true };
 }
 
+export type RevokeConsentResult = { success: true } | { success: false; error: string };
+
+/**
+ * Revoca un consenso firmato (diritto di revoca GDPR). Il record e il PDF originale restano
+ * come prova di ciò che è stato firmato; cambia solo lo stato, con data di revoca.
+ */
+export async function revokeConsent(recordId: string): Promise<RevokeConsentResult> {
+  const { tenantId } = await getTenantContext();
+
+  const result = await prisma.consentRecord.updateMany({
+    where: { id: recordId, tenantId, status: "SIGNED" },
+    data: { status: "REVOKED", revokedAt: new Date() },
+  });
+
+  if (result.count === 0) {
+    return { success: false, error: "Consenso non trovato o già revocato." };
+  }
+
+  return { success: true };
+}
+
 export type ConsentStateValue = "SIGNED" | "MISSING" | "OUTDATED" | "REVOKED" | "DECLINED";
 
 export type ClientConsentItemDTO = {
   templateId: string;
+  /** Ultimo consenso registrato per il modello, se presente. */
+  recordId: string | null;
+  /** Revocabile: l'ultimo consenso è firmato e accordato. */
+  revocable: boolean;
   title: string;
   type: ConsentTypeValue;
   serviceName: string | null;
@@ -241,6 +266,7 @@ export type ClientConsentItemDTO = {
 
 export type ClientConsentHistoryDTO = {
   id: string;
+  revocable: boolean;
   title: string;
   type: ConsentTypeValue;
   templateVersion: number;
@@ -303,6 +329,8 @@ export async function getClientConsents(clientId: string): Promise<ClientConsent
 
     items.push({
       templateId: template.id,
+      recordId: latest?.id ?? null,
+      revocable: latest?.status === "SIGNED" && latest.granted,
       title: template.title,
       type: template.type,
       serviceName: template.service?.name ?? null,
@@ -317,6 +345,7 @@ export async function getClientConsents(clientId: string): Promise<ClientConsent
     items,
     history: records.slice(0, 10).map((record) => ({
       id: record.id,
+      revocable: record.status === "SIGNED" && record.granted,
       title: record.titleSnapshot,
       type: record.template.type,
       templateVersion: record.templateVersion,

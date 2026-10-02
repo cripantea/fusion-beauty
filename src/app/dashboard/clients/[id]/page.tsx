@@ -102,6 +102,16 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
               {client.email ?? "-"}
             </div>
             <div>
+              <span className="text-muted-foreground">Data di nascita: </span>
+              {client.dateOfBirth
+                ? dateFormatter.format(new Date(`${client.dateOfBirth}T12:00:00`))
+                : "-"}
+            </div>
+            <div>
+              <span className="text-muted-foreground">Codice fiscale: </span>
+              {client.taxCode ?? "-"}
+            </div>
+            <div>
               <span className="text-muted-foreground">Note interne: </span>
               {client.notes ?? "-"}
             </div>

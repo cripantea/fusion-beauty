@@ -12,6 +12,9 @@ export type ClientDTO = {
   phone: string;
   email: string | null;
   notes: string | null;
+  /** "yyyy-MM-dd" (colonna DATE: nessun fuso orario). */
+  dateOfBirth: string | null;
+  taxCode: string | null;
   createdAt: Date;
 };
 
@@ -26,6 +29,8 @@ function toClientDTO(client: {
   phone: string;
   email: string | null;
   notes: string | null;
+  dateOfBirth: Date | null;
+  taxCode: string | null;
   createdAt: Date;
 }): ClientDTO {
   return {
@@ -35,12 +40,23 @@ function toClientDTO(client: {
     phone: client.phone,
     email: client.email,
     notes: client.notes,
+    dateOfBirth: client.dateOfBirth ? client.dateOfBirth.toISOString().slice(0, 10) : null,
+    taxCode: client.taxCode,
     createdAt: client.createdAt,
   };
 }
 
 function normalizeOptional(value: string | undefined): string | null {
   const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function parseDateOfBirth(value: string): Date | null {
+  return value ? new Date(`${value}T00:00:00.000Z`) : null;
+}
+
+function normalizeTaxCode(value: string): string | null {
+  const trimmed = value.trim().toUpperCase();
   return trimmed ? trimmed : null;
 }
 
@@ -114,6 +130,8 @@ export async function createClient(
       phone: parsed.data.phone,
       email: normalizeOptional(parsed.data.email),
       notes: normalizeOptional(parsed.data.notes),
+      dateOfBirth: parseDateOfBirth(parsed.data.dateOfBirth),
+      taxCode: normalizeTaxCode(parsed.data.taxCode),
     },
   });
 
@@ -139,6 +157,8 @@ export async function updateClient(
       phone: parsed.data.phone,
       email: normalizeOptional(parsed.data.email),
       notes: normalizeOptional(parsed.data.notes),
+      dateOfBirth: parseDateOfBirth(parsed.data.dateOfBirth),
+      taxCode: normalizeTaxCode(parsed.data.taxCode),
     },
   });
 

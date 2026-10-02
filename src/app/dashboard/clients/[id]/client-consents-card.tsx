@@ -1,12 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConsentCollectDialog } from "@/app/dashboard/consents/consent-collect-dialog";
+import { revokeConsent } from "@/app/dashboard/consents/collect-actions";
 import type {
   ClientConsentsDTO,
   ConsentStateValue,
@@ -40,6 +42,39 @@ type ClientConsentsCardProps = {
   clientName: string;
   consents: ClientConsentsDTO;
 };
+
+function RevokeButton({ recordId, title }: { recordId: string; title: string }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
+  function handleRevoke() {
+    if (
+      !window.confirm(
+        `Revocare il consenso "${title}"? L'operazione resta registrata e potrà essere raccolto un nuovo consenso.`
+      )
+    ) {
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await revokeConsent(recordId);
+
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+
+      toast.success("Consenso revocato.");
+      router.refresh();
+    });
+  }
+
+  return (
+    <Button variant="outline" size="sm" disabled={isPending} onClick={handleRevoke}>
+      {isPending ? "Revoca..." : "Revoca"}
+    </Button>
+  );
+}
 
 export function ClientConsentsCard({ clientId, clientName, consents }: ClientConsentsCardProps) {
   const router = useRouter();
@@ -85,6 +120,9 @@ export function ClientConsentsCard({ clientId, clientName, consents }: ClientCon
                       Firma
                     </Button>
                   ) : null}
+                  {item.revocable && item.recordId ? (
+                    <RevokeButton recordId={item.recordId} title={item.title} />
+                  ) : null}
                 </div>
               </li>
             ))}
@@ -106,6 +144,7 @@ export function ClientConsentsCard({ clientId, clientName, consents }: ClientCon
                       {record.status === "SIGNED" && !record.granted ? " · rifiutato" : ""}
                       {record.status === "REVOKED" ? " · revocato" : ""}
                     </span>
+                    {record.revocable ? <RevokeButton recordId={record.id} title={record.title} /> : null}
                     {record.hasPdf ? (
                       <>
                         <Button
