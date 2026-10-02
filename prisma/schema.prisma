@@ -24,6 +24,18 @@ enum AppointmentStatus {
   NO_SHOW
 }
 
+enum ConsentType {
+  PRIVACY_GDPR
+  MARKETING
+  TREATMENT
+}
+
+enum ConsentStatus {
+  PENDING
+  SIGNED
+  REVOKED
+}
+
 enum IntegrationType {
   GOOGLE_CALENDAR
   ICAL_URL
@@ -47,6 +59,8 @@ model Tenant {
   appointments           Appointment[]
   integrations           TenantIntegration[]
   externalCalendarEvents ExternalCalendarEvent[]
+  consentTemplates       ConsentTemplate[]
+  consentRecords         ConsentRecord[]
 
   @@map("tenants")
 }
@@ -101,26 +115,30 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  tenant       Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  appointments Appointment[] @relation("AppointmentOperator")
+  tenant            Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments      Appointment[]   @relation("AppointmentOperator")
+  collectedConsents ConsentRecord[] @relation("ConsentCollectedBy")
 
   @@index([tenantId])
   @@map("users")
 }
 
 model Client {
-  id        String   @id @default(cuid())
-  tenantId  String
-  firstName String
-  lastName  String
-  phone     String
-  email     String?
-  notes     String?  @db.Text
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String    @id @default(cuid())
+  tenantId    String
+  firstName   String
+  lastName    String
+  phone       String
+  email       String?
+  notes       String?   @db.Text
+  dateOfBirth DateTime? @db.Date
+  taxCode     String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   appointments Appointment[]
+  consents     ConsentRecord[]
 
   @@index([tenantId, phone])
   @@index([tenantId, lastName])
@@ -139,8 +157,9 @@ model Service {
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  appointments Appointment[]
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments     Appointment[]
+  consentTemplates ConsentTemplate[]
 
   @@index([tenantId, isActive])
   @@map("services")
@@ -159,12 +178,78 @@ model Appointment {
   createdAt  DateTime          @default(now())
   updatedAt  DateTime          @updatedAt
 
-  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  client   Client  @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  service  Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
-  operator User?   @relation("AppointmentOperator", fields: [operatorId], references: [id], onDelete: SetNull)
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client   Client          @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  service  Service         @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  operator User?           @relation("AppointmentOperator", fields: [operatorId], references: [id], onDelete: SetNull)
+  consents ConsentRecord[]
 
   @@index([tenantId, startTime])
   @@index([tenantId, status])
   @@map("appointments")
+}
+
+model ConsentTemplate {
+  id        String      @id @default(cuid())
+  tenantId  String
+  type      ConsentType
+  // Per i consensi TREATMENT: trattamento a cui il modello si riferisce (facoltativo).
+  serviceId String?
+  title     String
+  body      String      @db.Text
+  // Incrementata a ogni modifica del testo; i record firmati conservano la versione firmata.
+  version   Int         @default(1)
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  service Service?        @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  records ConsentRecord[]
+
+  @@index([tenantId, type, isActive])
+  @@map("consent_templates")
+}
+
+model ConsentRecord {
+  id            String        @id @default(cuid())
+  tenantId      String
+  clientId      String
+  appointmentId String?
+  templateId    String
+  collectedById String?
+  status        ConsentStatus @default(PENDING)
+
+  // Snapshot immutabile di ciò che la cliente ha effettivamente firmato.
+  templateVersion Int
+  titleSnapshot   String  @db.Text
+  bodySnapshot    String  @db.Text
+  // Risposte di anamnesi (consenso informato), se presenti.
+  answers         Json?
+  // Consenso accordato (utile per MARKETING, dove la firma può essere un rifiuto esplicito).
+  granted         Boolean @default(true)
+
+  // Chiavi relative alla radice dello storage (volume Docker), non percorsi assoluti.
+  signatureKey String?
+  pdfKey       String?
+  // SHA-256 del PDF generato, per verificarne l'integrità.
+  documentHash String?
+
+  ipAddress String?
+  userAgent String?   @db.Text
+  signedAt  DateTime?
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client      Client          @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  appointment Appointment?    @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  template    ConsentTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  collectedBy User?           @relation("ConsentCollectedBy", fields: [collectedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, clientId])
+  @@index([tenantId, status])
+  @@index([appointmentId])
+  @@map("consent_records")
 }
