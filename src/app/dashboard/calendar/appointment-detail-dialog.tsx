@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+
+import { ConsentCollectDialog } from "@/app/dashboard/consents/consent-collect-dialog";
 
 import { updateAppointmentStatus, type AppointmentDTO } from "./actions";
 import { APPOINTMENT_STATUSES, type AppointmentStatusValue } from "./schema";
@@ -65,6 +67,7 @@ export function AppointmentDetailDialog({
   onStatusChanged,
 }: AppointmentDetailDialogProps) {
   const [isPending, startTransition] = useTransition();
+  const [consentOpen, setConsentOpen] = useState(false);
 
   if (!appointment) {
     return null;
@@ -144,8 +147,23 @@ export function AppointmentDetailDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Chiudi
           </Button>
+          <Button variant="outline" onClick={() => setConsentOpen(true)}>
+            Raccogli consenso
+          </Button>
           <Button onClick={() => onEdit(appointment)}>Modifica</Button>
         </DialogFooter>
+
+        <ConsentCollectDialog
+          open={consentOpen}
+          onOpenChange={setConsentOpen}
+          clientId={appointment.client.id}
+          clientName={`${appointment.client.firstName} ${appointment.client.lastName}`}
+          appointment={{
+            id: appointment.id,
+            serviceId: appointment.service.id,
+            serviceName: appointment.service.name,
+          }}
+        />
       </DialogContent>
     </Dialog>
   );

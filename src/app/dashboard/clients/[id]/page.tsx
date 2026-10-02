@@ -11,7 +11,10 @@ import {
 import { getTenantContext } from "@/lib/auth-context";
 import { prisma } from "@/lib/prisma";
 
+import { getClientConsents } from "@/app/dashboard/consents/collect-actions";
+
 import { getClientById } from "../actions";
+import { ClientConsentsCard } from "./client-consents-card";
 import { ClientDetailHeader } from "./client-detail-header";
 
 const dateFormatter = new Intl.DateTimeFormat("it-IT", {
@@ -60,6 +63,8 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
   if (!client) {
     notFound();
   }
+
+  const consents = await getClientConsents(id);
 
   const appointments = await prisma.appointment.findMany({
     where: { tenantId, clientId: id },
@@ -134,6 +139,12 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
             )}
           </CardContent>
         </Card>
+
+        <ClientConsentsCard
+          clientId={client.id}
+          clientName={`${client.firstName} ${client.lastName}`}
+          consents={consents}
+        />
 
         <Card className="md:col-span-2">
           <CardHeader>

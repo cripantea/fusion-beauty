@@ -32,3 +32,22 @@ export const consentTemplateFormDefaultValues: ConsentTemplateFormValues = {
   body: "",
   isActive: true,
 };
+
+const PNG_DATA_URL_PREFIX = "data:image/png;base64,";
+
+export const collectConsentSchema = z.object({
+  clientId: z.string().min(1),
+  templateId: z.string().min(1),
+  appointmentId: z.string().min(1).optional(),
+  // Dati della firma come data URL PNG prodotto dal canvas.
+  signature: z
+    .string()
+    .startsWith(PNG_DATA_URL_PREFIX, "Firma non valida.")
+    .max(1_000_000, "La firma è troppo grande."),
+  // Solo per MARKETING può essere false (rifiuto esplicito firmato).
+  granted: z.boolean(),
+  anamnesis: z.string().trim().max(5000, "Massimo 5000 caratteri.").optional(),
+});
+
+export type CollectConsentValues = z.infer<typeof collectConsentSchema>;
+export { PNG_DATA_URL_PREFIX };
