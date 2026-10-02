@@ -143,7 +143,7 @@ function ConsentCollectBody({
             Nessun modello di consenso attivo. Un amministratore può crearli in &quot;Modelli consenso&quot;.
           </p>
         ) : (
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             <div className="space-y-2">
               <Label>Modello</Label>
               <Select value={templateId} onValueChange={(value) => handleTemplateChange(value ?? "")}>
@@ -173,7 +173,7 @@ function ConsentCollectBody({
                     {consentTypeLabels[selected.type]} · v{selected.version}
                     {selected.serviceName ? ` · ${selected.serviceName}` : ""}
                   </p>
-                  <div className="max-h-56 overflow-y-auto whitespace-pre-wrap rounded-lg border bg-muted/30 p-3 text-sm">
+                  <div className="max-h-56 min-w-0 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border bg-muted/30 p-3 text-sm [overflow-wrap:anywhere]">
                     {selected.body}
                   </div>
                   {selected.alreadySigned ? (

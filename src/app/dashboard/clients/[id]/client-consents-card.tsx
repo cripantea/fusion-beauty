@@ -100,10 +100,38 @@ export function ClientConsentsCard({ clientId, clientName, consents }: ClientCon
                   <span>
                     {record.title} <span className="text-muted-foreground">v{record.templateVersion}</span>
                   </span>
-                  <span className="text-muted-foreground">
-                    {record.signedAt ? dateFormatter.format(record.signedAt) : "-"}
-                    {record.status === "SIGNED" && !record.granted ? " · rifiutato" : ""}
-                    {record.status === "REVOKED" ? " · revocato" : ""}
+                  <span className="flex items-center gap-2 text-muted-foreground">
+                    <span>
+                      {record.signedAt ? dateFormatter.format(record.signedAt) : "-"}
+                      {record.status === "SIGNED" && !record.granted ? " · rifiutato" : ""}
+                      {record.status === "REVOKED" ? " · revocato" : ""}
+                    </span>
+                    {record.hasPdf ? (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          nativeButton={false}
+                          render={
+                            <a
+                              href={`/api/consents/${record.id}/pdf`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            />
+                          }
+                        >
+                          PDF
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          nativeButton={false}
+                          render={<a href={`/api/consents/${record.id}/pdf?download=1`} />}
+                        >
+                          Scarica
+                        </Button>
+                      </>
+                    ) : null}
                   </span>
                 </li>
               ))}

@@ -30,6 +30,10 @@ ENV HOSTNAME=0.0.0.0
 RUN addgroup --system --gid 1001 nodejs \
   && adduser --system --uid 1001 nextjs
 
+# Persistent storage (signatures, consent PDFs). Created and owned by the app user
+# so a freshly created named volume mounted here is writable.
+RUN mkdir -p /data/storage && chown -R nextjs:nodejs /data
+
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static

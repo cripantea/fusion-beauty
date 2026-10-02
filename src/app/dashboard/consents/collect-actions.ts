@@ -1,15 +1,17 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { headers } from "next/headers";
 
 import { getTenantContext } from "@/lib/auth-context";
+import { generateConsentPdf } from "@/lib/consent-pdf";
 import { prisma } from "@/lib/prisma";
 import { removeStorageFile, writeStorageFile } from "@/lib/storage";
 
 import {
   collectConsentSchema,
+  consentTypeLabels,
   PNG_DATA_URL_PREFIX,
   type CollectConsentValues,
   type ConsentTypeValue,
@@ -114,9 +116,13 @@ export async function collectConsent(values: CollectConsentValues): Promise<Coll
   }
   const input = parsed.data;
 
-  const [client, template] = await Promise.all([
-    prisma.client.findFirst({ where: { id: input.clientId, tenantId }, select: { id: true } }),
-    prisma.consentTemplate.findFirst({ where: { id: input.templateId, tenantId, isActive: true } }),
+  const [client, template, tenant] = await Promise.all([
+    prisma.client.findFirst({ where: { id: input.clientId, tenantId } }),
+    prisma.consentTemplate.findFirst({
+      where: { id: input.templateId, tenantId, isActive: true },
+      include: { service: { select: { name: true } } },
+    }),
+    prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true } }),
   ]);
   if (!client) {
     return { success: false, error: "Cliente non trovato." };
@@ -127,10 +133,17 @@ export async function collectConsent(values: CollectConsentValues): Promise<Coll
 
   // Solo i consensi per trattamento si agganciano a un appuntamento.
   let appointmentId: string | null = null;
+  let appointmentStart: Date | null = null;
+  let appointmentServiceName: string | null = null;
   if (input.appointmentId && template.type === "TREATMENT") {
     const appointment = await prisma.appointment.findFirst({
       where: { id: input.appointmentId, tenantId, clientId: client.id },
-      select: { id: true, serviceId: true },
+      select: {
+        id: true,
+        serviceId: true,
+        startTime: true,
+        service: { select: { name: true } },
+      },
     });
     if (!appointment) {
       return { success: false, error: "Appuntamento non trovato." };
@@ -139,6 +152,8 @@ export async function collectConsent(values: CollectConsentValues): Promise<Coll
       return { success: false, error: "Il modello non corrisponde al trattamento dell'appuntamento." };
     }
     appointmentId = appointment.id;
+    appointmentStart = appointment.startTime;
+    appointmentServiceName = appointment.service.name;
   }
 
   const signature = decodeSignature(input.signature);
@@ -152,11 +167,34 @@ export async function collectConsent(values: CollectConsentValues): Promise<Coll
 
   const id = randomUUID();
   const signatureKey = `consents/${tenantId}/${id}/signature.png`;
-  const anamnesis = template.type === "TREATMENT" ? input.anamnesis?.trim() : undefined;
-
-  await writeStorageFile(signatureKey, signature);
+  const pdfKey = `consents/${tenantId}/${id}/consent.pdf`;
+  const anamnesis = template.type === "TREATMENT" ? input.anamnesis?.trim() || null : null;
+  const granted = template.type === "MARKETING" ? input.granted : true;
+  const signedAt = new Date();
 
   try {
+    // Prima il documento, poi il record: nel database non esistono consensi firmati senza PDF.
+    const pdf = await generateConsentPdf({
+      recordId: id,
+      centerName: tenant.name,
+      typeLabel: consentTypeLabels[template.type],
+      title: template.title,
+      body: template.body,
+      version: template.version,
+      client,
+      serviceName: appointmentServiceName ?? template.service?.name ?? null,
+      appointmentStart,
+      marketingChoice: template.type === "MARKETING" ? granted : null,
+      anamnesis,
+      signedAt,
+      operatorName: `${user.firstName} ${user.lastName}`,
+      ipAddress,
+      signaturePng: signature,
+    });
+
+    await writeStorageFile(signatureKey, signature);
+    await writeStorageFile(pdfKey, pdf);
+
     await prisma.consentRecord.create({
       data: {
         id,
@@ -170,16 +208,19 @@ export async function collectConsent(values: CollectConsentValues): Promise<Coll
         titleSnapshot: template.title,
         bodySnapshot: template.body,
         answers: anamnesis ? { anamnesis } : undefined,
-        granted: template.type === "MARKETING" ? input.granted : true,
+        granted,
         signatureKey,
+        pdfKey,
+        documentHash: createHash("sha256").update(pdf).digest("hex"),
         ipAddress,
         userAgent,
-        signedAt: new Date(),
+        signedAt,
       },
     });
   } catch (error) {
-    await removeStorageFile(signatureKey);
-    throw error;
+    console.error("[consents] failed to store signed consent", error);
+    await Promise.allSettled([removeStorageFile(signatureKey), removeStorageFile(pdfKey)]);
+    return { success: false, error: "Impossibile salvare il consenso. Riprova." };
   }
 
   return { success: true };
