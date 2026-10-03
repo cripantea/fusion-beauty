@@ -1,10 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { PaymentDialog } from "@/app/dashboard/payments/payment-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,13 +14,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-import { updateAppointmentStatus, updateReminderStatus, type AppointmentDTO } from "./actions";
-import { APPOINTMENT_STATUSES, type AppointmentStatusValue } from "./schema";
+import { ConsentCollectDialog } from "@/app/dashboard/consents/consent-collect-dialog";
 
-const currencyFormatter = new Intl.NumberFormat("it-IT", {
-  style: "currency",
-  currency: "EUR",
-});
+import { updateAppointmentStatus, type AppointmentDTO } from "./actions";
+import { APPOINTMENT_STATUSES, type AppointmentStatusValue } from "./schema";
 
 const dateTimeFormatter = new Intl.DateTimeFormat("it-IT", {
   day: "2-digit",
@@ -56,20 +51,6 @@ export const statusVariants: Record<
   NO_SHOW: "destructive",
 };
 
-const reminderLabels: Record<string, string> = {
-  NONE: "Nessuno",
-  SCHEDULED: "Programmato",
-  SENT: "Inviato",
-  FAILED: "Errore",
-};
-
-const reminderVariants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  NONE: "secondary",
-  SCHEDULED: "default",
-  SENT: "outline",
-  FAILED: "destructive",
-};
-
 type AppointmentDetailDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -86,7 +67,7 @@ export function AppointmentDetailDialog({
   onStatusChanged,
 }: AppointmentDetailDialogProps) {
   const [isPending, startTransition] = useTransition();
-  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [consentOpen, setConsentOpen] = useState(false);
 
   if (!appointment) {
     return null;
@@ -95,11 +76,6 @@ export function AppointmentDetailDialog({
   const otherStatuses = APPOINTMENT_STATUSES.filter(
     (status) => status !== appointment.status
   );
-
-  const canPay =
-    appointment.status !== "CANCELLED" &&
-    appointment.status !== "NO_SHOW" &&
-    !appointment.payment;
 
   function handleStatusChange(status: AppointmentStatusValue) {
     if (!appointment) return;
@@ -117,134 +93,78 @@ export function AppointmentDetailDialog({
     });
   }
 
-  function handleSendReminder() {
-    if (!appointment) return;
-
-    startTransition(async () => {
-      const result = await updateReminderStatus(appointment.id, "SENT");
-      if (!result.success) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success("Reminder WhatsApp inviato.");
-      onStatusChanged(result.appointment);
-    });
-  }
-
   return (
-    <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              <Link
-                href={`/dashboard/clients/${appointment.client.id}`}
-                className="hover:underline"
-                onClick={() => onOpenChange(false)}
-              >
-                {appointment.client.firstName} {appointment.client.lastName}
-              </Link>
-            </DialogTitle>
-            <DialogDescription>{appointment.service.name}</DialogDescription>
-          </DialogHeader>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            {appointment.client.firstName} {appointment.client.lastName}
+          </DialogTitle>
+          <DialogDescription>{appointment.service.name}</DialogDescription>
+        </DialogHeader>
 
-          <div className="space-y-2 text-sm">
-            <div>
-              <span className="text-muted-foreground">Data e ora: </span>
-              {dateTimeFormatter.format(appointment.startTime)} –{" "}
-              {timeFormatter.format(appointment.endTime)}
-            </div>
-            <div>
-              <span className="text-muted-foreground">Operatrice: </span>
-              {appointment.operator
-                ? `${appointment.operator.firstName} ${appointment.operator.lastName}`
-                : "-"}
-            </div>
-            {appointment.price !== null && (
-              <div>
-                <span className="text-muted-foreground">Importo: </span>
-                <span className="font-medium">{currencyFormatter.format(appointment.price)}</span>
-              </div>
-            )}
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Stato: </span>
-              <Badge variant={statusVariants[appointment.status]}>
-                {statusLabels[appointment.status]}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Pagamento: </span>
-              {appointment.payment ? (
-                <Badge variant="outline" className="border-green-600 text-green-700">
-                  ✓ Pagato {currencyFormatter.format(appointment.payment.amount)}
-                </Badge>
-              ) : (
-                <Badge variant="secondary">Da incassare</Badge>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Reminder: </span>
-              <Badge variant={reminderVariants[appointment.reminderStatus]}>
-                {reminderLabels[appointment.reminderStatus]}
-              </Badge>
-            </div>
-            {appointment.notes ? (
-              <div>
-                <span className="text-muted-foreground">Note: </span>
-                {appointment.notes}
-              </div>
-            ) : null}
+        <div className="space-y-2 text-sm">
+          <div>
+            <span className="text-muted-foreground">Data e ora: </span>
+            {dateTimeFormatter.format(appointment.startTime)} –{" "}
+            {timeFormatter.format(appointment.endTime)}
           </div>
-
-          <div className="flex flex-wrap gap-2">
-            {otherStatuses.map((status) => (
-              <Button
-                key={status}
-                variant="outline"
-                size="sm"
-                disabled={isPending}
-                onClick={() => handleStatusChange(status)}
-              >
-                {statusLabels[status]}
-              </Button>
-            ))}
-            {appointment.reminderStatus === "NONE" && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isPending}
-                onClick={handleSendReminder}
-              >
-                📱 Invia reminder
-              </Button>
-            )}
+          <div>
+            <span className="text-muted-foreground">Operatore: </span>
+            {appointment.operator
+              ? `${appointment.operator.firstName} ${appointment.operator.lastName}`
+              : "-"}
           </div>
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">Stato: </span>
+            <Badge variant={statusVariants[appointment.status]}>
+              {statusLabels[appointment.status]}
+            </Badge>
+          </div>
+          {appointment.notes ? (
+            <div>
+              <span className="text-muted-foreground">Note: </span>
+              {appointment.notes}
+            </div>
+          ) : null}
+        </div>
 
-          <DialogFooter className="flex-wrap gap-2">
-            {canPay && (
-              <Button
-                className="bg-green-600 hover:bg-green-700 text-white"
-                onClick={() => setPaymentOpen(true)}
-              >
-                💳 Incassa
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Chiudi
+        <div className="flex flex-wrap gap-2">
+          {otherStatuses.map((status) => (
+            <Button
+              key={status}
+              variant="outline"
+              size="sm"
+              disabled={isPending}
+              onClick={() => handleStatusChange(status)}
+            >
+              {statusLabels[status]}
             </Button>
-            <Button onClick={() => onEdit(appointment)}>Modifica</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          ))}
+        </div>
 
-      <PaymentDialog
-        open={paymentOpen}
-        onOpenChange={setPaymentOpen}
-        appointment={appointment}
-        onSuccess={() => {
-          onStatusChanged({ ...appointment, status: "COMPLETED", payment: null });
-        }}
-      />
-    </>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Chiudi
+          </Button>
+          <Button variant="outline" onClick={() => setConsentOpen(true)}>
+            Raccogli consenso
+          </Button>
+          <Button onClick={() => onEdit(appointment)}>Modifica</Button>
+        </DialogFooter>
+
+        <ConsentCollectDialog
+          open={consentOpen}
+          onOpenChange={setConsentOpen}
+          clientId={appointment.client.id}
+          clientName={`${appointment.client.firstName} ${appointment.client.lastName}`}
+          appointment={{
+            id: appointment.id,
+            serviceId: appointment.service.id,
+            serviceName: appointment.service.name,
+          }}
+        />
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -1,105 +1,205 @@
 "use server";
 
-import { getTenantContext } from "@/lib/auth-context";
+import { requireTenantAdmin } from "@/lib/auth-context";
 import { prisma } from "@/lib/prisma";
 
-import type { ConsentStatusValue, ConsentTypeValue } from "./constants";
+import {
+  consentTemplateFormSchema,
+  type ConsentTemplateFormValues,
+  type ConsentTypeValue,
+} from "./schema";
 
-export type { ConsentTypeValue, ConsentStatusValue };
-
-export type ConsentDTO = {
+export type ConsentTemplateDTO = {
   id: string;
-  clientId: string;
   type: ConsentTypeValue;
-  status: ConsentStatusValue;
-  signedAt: Date | null;
-  content: string | null;
+  serviceId: string | null;
+  serviceName: string | null;
+  title: string;
+  body: string;
+  version: number;
+  isActive: boolean;
+  signedCount: number;
+  updatedAt: Date;
 };
 
-export type ConsentActionResult =
-  | { success: true; consent: ConsentDTO }
-  | { success: false; error: string };
+const templateInclude = {
+  service: { select: { name: true } },
+  _count: { select: { records: true } },
+} as const;
 
-function toConsentDTO(c: {
+function toTemplateDTO(template: {
   id: string;
-  clientId: string;
   type: ConsentTypeValue;
-  status: ConsentStatusValue;
-  signedAt: Date | null;
-  content: string | null;
-}): ConsentDTO {
-  return { ...c };
-}
-
-export async function getConsentsByClient(clientId: string): Promise<ConsentDTO[]> {
-  const { tenantId } = await getTenantContext();
-
-  const consents = await prisma.consent.findMany({
-    where: { tenantId, clientId },
-    orderBy: { type: "asc" },
-  });
-
-  return consents.map(toConsentDTO);
-}
-
-export async function upsertConsent(input: {
-  clientId: string;
-  type: ConsentTypeValue;
-  status: ConsentStatusValue;
-}): Promise<ConsentActionResult> {
-  const { tenantId } = await getTenantContext();
-
-  const client = await prisma.client.findFirst({ where: { id: input.clientId, tenantId } });
-  if (!client) return { success: false, error: "Cliente non trovato." };
-
-  const consent = await prisma.consent.upsert({
-    where: { clientId_type: { clientId: input.clientId, type: input.type } },
-    update: {
-      status: input.status,
-      signedAt: input.status === "GIVEN" ? new Date() : null,
-    },
-    create: {
-      tenantId,
-      clientId: input.clientId,
-      type: input.type,
-      status: input.status,
-      signedAt: input.status === "GIVEN" ? new Date() : null,
-      content: getDefaultConsentContent(input.type),
-    },
-  });
-
-  return { success: true, consent: toConsentDTO(consent) };
-}
-
-export async function getClientConsentSummary(clientId: string): Promise<{
-  total: number;
-  given: number;
-  missing: number;
-  isComplete: boolean;
-}> {
-  const { tenantId } = await getTenantContext();
-  const consents = await prisma.consent.findMany({ where: { tenantId, clientId } });
-  const allTypes: ConsentTypeValue[] = ["PRIVACY", "MARKETING", "DATA_PROCESSING", "TREATMENT_SPECIFIC"];
-  const given = consents.filter((c) => c.status === "GIVEN").length;
-  const missing = allTypes.length - consents.filter((c) => c.status !== "PENDING").length;
-
+  serviceId: string | null;
+  title: string;
+  body: string;
+  version: number;
+  isActive: boolean;
+  updatedAt: Date;
+  service: { name: string } | null;
+  _count: { records: number };
+}): ConsentTemplateDTO {
   return {
-    total: allTypes.length,
-    given,
-    missing,
-    isComplete: missing === 0 && given >= 2,
+    id: template.id,
+    type: template.type,
+    serviceId: template.serviceId,
+    serviceName: template.service?.name ?? null,
+    title: template.title,
+    body: template.body,
+    version: template.version,
+    isActive: template.isActive,
+    signedCount: template._count.records,
+    updatedAt: template.updatedAt,
   };
 }
 
-function getDefaultConsentContent(type: ConsentTypeValue): string {
-  switch (type) {
-    case "PRIVACY":
-      return "Consenso al trattamento dei dati personali ai sensi del Reg. UE 2016/679 (GDPR).";
-    case "MARKETING":
-      return "Consenso all'invio di comunicazioni commerciali, promozionali e newsletter.";
-    case "DATA_PROCESSING":
-      return "Consenso al trattamento dei dati per finalità operative e di gestione del rapporto con il centro.";
-    case "TREATMENT_SPECIFIC":
-      return "Liberatoria per il trattamento estetico. La cliente dichiara di essere stata informata su procedure, rischi e controindicazioni.";
+export async function getConsentTemplates(): Promise<ConsentTemplateDTO[]> {
+  const { tenantId } = await requireTenantAdmin();
+
+  const templates = await prisma.consentTemplate.findMany({
+    where: { tenantId },
+    orderBy: [{ type: "asc" }, { title: "asc" }],
+    include: templateInclude,
+  });
+
+  return templates.map(toTemplateDTO);
+}
+
+export type ConsentTemplateActionResult =
+  | { success: true; template: ConsentTemplateDTO }
+  | { success: false; error: string };
+
+export type ConsentTemplateDeleteResult = { success: true } | { success: false; error: string };
+
+async function resolveServiceId(
+  tenantId: string,
+  values: ConsentTemplateFormValues
+): Promise<{ ok: true; serviceId: string | null } | { ok: false; error: string }> {
+  if (values.type !== "TREATMENT" || !values.serviceId) {
+    return { ok: true, serviceId: null };
   }
+
+  const service = await prisma.service.findFirst({
+    where: { id: values.serviceId, tenantId },
+    select: { id: true },
+  });
+
+  return service ? { ok: true, serviceId: service.id } : { ok: false, error: "Trattamento non valido." };
+}
+
+export async function createConsentTemplate(
+  values: ConsentTemplateFormValues
+): Promise<ConsentTemplateActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+
+  const parsed = consentTemplateFormSchema.safeParse(values);
+  if (!parsed.success) {
+    return { success: false, error: "Controlla i dati inseriti." };
+  }
+
+  const service = await resolveServiceId(tenantId, parsed.data);
+  if (!service.ok) {
+    return { success: false, error: service.error };
+  }
+
+  const template = await prisma.consentTemplate.create({
+    data: {
+      tenantId,
+      type: parsed.data.type,
+      serviceId: service.serviceId,
+      title: parsed.data.title,
+      body: parsed.data.body,
+      isActive: parsed.data.isActive,
+    },
+    include: templateInclude,
+  });
+
+  return { success: true, template: toTemplateDTO(template) };
+}
+
+export async function updateConsentTemplate(
+  id: string,
+  values: ConsentTemplateFormValues
+): Promise<ConsentTemplateActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+
+  const parsed = consentTemplateFormSchema.safeParse(values);
+  if (!parsed.success) {
+    return { success: false, error: "Controlla i dati inseriti." };
+  }
+
+  const existing = await prisma.consentTemplate.findFirst({ where: { id, tenantId } });
+  if (!existing) {
+    return { success: false, error: "Modello non trovato." };
+  }
+
+  // Il tipo non cambia dopo la creazione: i record già firmati si riferiscono a quel tipo.
+  if (existing.type !== parsed.data.type) {
+    return { success: false, error: "Il tipo di consenso non può essere modificato." };
+  }
+
+  const service = await resolveServiceId(tenantId, parsed.data);
+  if (!service.ok) {
+    return { success: false, error: service.error };
+  }
+
+  // Il testo cambia → nuova versione. I record firmati conservano il loro snapshot.
+  const contentChanged = existing.title !== parsed.data.title || existing.body !== parsed.data.body;
+
+  const template = await prisma.consentTemplate.update({
+    where: { id },
+    data: {
+      serviceId: service.serviceId,
+      title: parsed.data.title,
+      body: parsed.data.body,
+      isActive: parsed.data.isActive,
+      ...(contentChanged ? { version: { increment: 1 } } : {}),
+    },
+    include: templateInclude,
+  });
+
+  return { success: true, template: toTemplateDTO(template) };
+}
+
+export async function toggleConsentTemplateStatus(
+  id: string,
+  isActive: boolean
+): Promise<ConsentTemplateActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+
+  const result = await prisma.consentTemplate.updateMany({ where: { id, tenantId }, data: { isActive } });
+  if (result.count === 0) {
+    return { success: false, error: "Modello non trovato." };
+  }
+
+  const template = await prisma.consentTemplate.findFirstOrThrow({
+    where: { id, tenantId },
+    include: templateInclude,
+  });
+
+  return { success: true, template: toTemplateDTO(template) };
+}
+
+/** Elimina solo modelli mai usati: quelli con consensi registrati vanno disattivati. */
+export async function deleteConsentTemplate(id: string): Promise<ConsentTemplateDeleteResult> {
+  const { tenantId } = await requireTenantAdmin();
+
+  const template = await prisma.consentTemplate.findFirst({
+    where: { id, tenantId },
+    include: { _count: { select: { records: true } } },
+  });
+  if (!template) {
+    return { success: false, error: "Modello non trovato." };
+  }
+
+  if (template._count.records > 0) {
+    return {
+      success: false,
+      error: "Questo modello ha consensi registrati: disattivalo invece di eliminarlo.",
+    };
+  }
+
+  await prisma.consentTemplate.deleteMany({ where: { id, tenantId } });
+
+  return { success: true };
 }

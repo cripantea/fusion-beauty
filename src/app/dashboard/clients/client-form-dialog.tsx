@@ -64,6 +64,8 @@ export function ClientFormDialog({
             phone: client.phone,
             email: client.email ?? "",
             notes: client.notes ?? "",
+            dateOfBirth: client.dateOfBirth ?? "",
+            taxCode: client.taxCode ?? "",
           }
         : clientFormDefaultValues
     );
@@ -158,6 +160,44 @@ export function ClientFormDialog({
                 </FormItem>
               )}
             />
+            <div className="grid grid-cols-2 items-start gap-4">
+              <FormField
+                control={form.control}
+                name="dateOfBirth"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Data di nascita</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="date"
+                        max={new Date().toISOString().slice(0, 10)}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="taxCode"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Codice fiscale</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Facoltativo"
+                        maxLength={16}
+                        autoCapitalize="characters"
+                        className="uppercase"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
             <FormField
               control={form.control}
               name="notes"
