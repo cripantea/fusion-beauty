@@ -1,3 +1,9 @@
+-- Replaces the earlier simple "consents" table (migration 20260918000000) with template-based,
+-- signed consents. IF EXISTS keeps this valid on databases that never had the old table.
+DROP TABLE IF EXISTS "consents";
+DROP TYPE IF EXISTS "ConsentType";
+DROP TYPE IF EXISTS "ConsentStatus";
+
 -- CreateEnum
 CREATE TYPE "ConsentType" AS ENUM ('PRIVACY_GDPR', 'MARKETING', 'TREATMENT');
 
