@@ -188,7 +188,7 @@ function MockClientCard() {
       </div>
       <div className="bg-white rounded-lg border border-zinc-200 p-3 space-y-2">
         <div className="font-semibold text-zinc-800 text-[11px] uppercase tracking-wide">Note</div>
-        <div className="text-zinc-600 text-[11px] italic">"Sensibile agli acidi. Preferisce Marta come operatrice. Occhio ai rossori post-trattamento."</div>
+        <div className="text-zinc-600 text-[11px] italic">&ldquo;Sensibile agli acidi. Preferisce Marta come operatrice. Occhio ai rossori post-trattamento.&rdquo;</div>
       </div>
       <div className="bg-white rounded-lg border border-zinc-200 p-3">
         <div className="font-semibold text-zinc-800 text-[11px] uppercase tracking-wide mb-2">Ultimi appuntamenti</div>
@@ -873,7 +873,7 @@ function PrimaDopo() {
         <FadeIn>
           <div className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-bold text-zinc-900 leading-tight">
-              Com'era. Com'è ora.
+              Com&apos;era. Com&apos;è ora.
             </h2>
           </div>
         </FadeIn>
@@ -976,7 +976,6 @@ function PerChiE() {
 // ─── Video Demo ───────────────────────────────────────────────────────────────
 
 function VideoDemo() {
-  const [playing, setPlaying] = useState(false);
   return (
     <section id="video-demo" className="py-20 md:py-28 bg-zinc-900">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -992,7 +991,7 @@ function VideoDemo() {
         <FadeIn delay={0.1}>
           <div
             className="relative aspect-video rounded-2xl overflow-hidden bg-zinc-800 border border-white/10 cursor-pointer group"
-            onClick={() => setPlaying(true)}
+            onClick={() => {}}
           >
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <motion.div
