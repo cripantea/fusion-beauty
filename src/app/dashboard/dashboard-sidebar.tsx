@@ -1,13 +1,10 @@
 "use client";
 
 import {
-  BarChart3,
   Calendar,
-  ClipboardList,
-  FileText,
+  FileSignature,
   LayoutDashboard,
   Link2,
-  Package,
   Scissors,
   ShieldCheck,
   Sparkles,
@@ -42,29 +39,21 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Catalogo",
-    items: [
-      { href: "/dashboard/services", label: "Trattamenti", icon: Scissors },
-      { href: "/dashboard/products", label: "Prodotti", icon: Package },
-    ],
+    items: [{ href: "/dashboard/services", label: "Trattamenti", icon: Scissors }],
   },
   {
     label: "Online",
     items: [
-      { href: "/dashboard/requests", label: "Richieste online", icon: ClipboardList },
       { href: "/dashboard/widget", label: "Widget prenotazione", icon: Wand2 },
-    ],
-  },
-  {
-    label: "Analisi",
-    items: [
-      { href: "/dashboard/stats", label: "Statistiche", icon: BarChart3 },
-      { href: "/dashboard/reports", label: "Report", icon: FileText },
       { href: "/dashboard/integrations/calendar", label: "Integrazioni", icon: Link2 },
     ],
   },
 ];
 
-const STAFF_ITEM: NavItem = { href: "/dashboard/staff", label: "Staff", icon: ShieldCheck };
+const ADMIN_ITEMS: NavItem[] = [
+  { href: "/dashboard/consents", label: "Modelli consenso", icon: FileSignature },
+  { href: "/dashboard/staff", label: "Staff", icon: ShieldCheck },
+];
 
 type DashboardSidebarProps = {
   hasTenant: boolean;
@@ -83,10 +72,9 @@ export function DashboardSidebar({ hasTenant, isAdmin }: DashboardSidebarProps) 
         NAV_GROUPS[0],
         {
           ...NAV_GROUPS[1],
-          items: [...NAV_GROUPS[1].items, ...(isAdmin ? [STAFF_ITEM] : [])],
+          items: [...NAV_GROUPS[1].items, ...(isAdmin ? ADMIN_ITEMS : [])],
         },
         NAV_GROUPS[2],
-        NAV_GROUPS[3],
       ]
     : [
         {

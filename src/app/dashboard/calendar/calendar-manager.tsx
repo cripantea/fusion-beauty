@@ -21,7 +21,6 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { getAppointments, type AppointmentDTO, type OperatorDTO } from "./actions";
 import { AppointmentDetailDialog } from "./appointment-detail-dialog";
@@ -45,10 +44,9 @@ export function CalendarManager({
   services,
   operators,
 }: CalendarManagerProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>("day");
+  const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [currentDate, setCurrentDate] = useState(() => new Date(`${initialDate}T00:00:00`));
   const [appointments, setAppointments] = useState(initialAppointments);
-  const [operatorFilter, setOperatorFilter] = useState<string>("all");
   const [isPending, startTransition] = useTransition();
   const [formDialogOpen, setFormDialogOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<AppointmentDTO | null>(null);
@@ -64,9 +62,7 @@ export function CalendarManager({
         };
 
   const days =
-    viewMode === "day"
-      ? [range.start]
-      : Array.from({ length: 7 }, (_, i) => addDays(range.start, i));
+    viewMode === "day" ? [range.start] : Array.from({ length: 7 }, (_, i) => addDays(range.start, i));
 
   function refresh(start: Date, end: Date) {
     startTransition(async () => {
@@ -109,7 +105,7 @@ export function CalendarManager({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Agenda</h1>
+          <h1 className="text-2xl font-semibold">Calendario</h1>
           <p className="text-muted-foreground">Gestisci gli appuntamenti del centro.</p>
         </div>
         <Button
@@ -118,14 +114,14 @@ export function CalendarManager({
             setFormDialogOpen(true);
           }}
         >
-          + Nuovo appuntamento
+          Nuovo appuntamento
         </Button>
       </div>
 
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={goToday}>
                 Oggi
               </Button>
@@ -152,39 +148,21 @@ export function CalendarManager({
                 <span className="text-sm text-muted-foreground">Caricamento...</span>
               ) : null}
             </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {operators.length > 1 && (
-                <Select value={operatorFilter} onValueChange={(v) => setOperatorFilter(v ?? "all")}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Tutte le operatrici" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tutte le operatrici</SelectItem>
-                    {operators.map((op) => (
-                      <SelectItem key={op.id} value={op.id}>
-                        {op.firstName} {op.lastName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              <div className="flex items-center gap-1 rounded-lg border p-1">
-                <Button
-                  variant={viewMode === "day" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setViewMode("day")}
-                >
-                  Giorno
-                </Button>
-                <Button
-                  variant={viewMode === "week" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setViewMode("week")}
-                >
-                  Settimana
-                </Button>
-              </div>
+            <div className="flex items-center gap-1 rounded-lg border p-1">
+              <Button
+                variant={viewMode === "day" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("day")}
+              >
+                Giorno
+              </Button>
+              <Button
+                variant={viewMode === "week" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("week")}
+              >
+                Settimana
+              </Button>
             </div>
           </div>
         </CardHeader>
@@ -192,8 +170,6 @@ export function CalendarManager({
           <CalendarGrid
             days={days}
             appointments={appointments}
-            operators={operators}
-            operatorFilter={operatorFilter}
             onAppointmentClick={setSelectedAppointment}
           />
         </CardContent>

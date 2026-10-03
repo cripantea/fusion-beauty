@@ -16,12 +16,9 @@ export type AppointmentDTO = {
   endTime: Date;
   status: AppointmentStatusValue;
   notes: string | null;
-  price: number | null;
-  reminderStatus: "NONE" | "SCHEDULED" | "SENT" | "FAILED";
   client: { id: string; firstName: string; lastName: string };
   service: { id: string; name: string; durationMinutes: number };
   operator: { id: string; firstName: string; lastName: string } | null;
-  payment: { id: string; amount: number; method: string } | null;
 };
 
 export type OperatorDTO = {
@@ -34,7 +31,6 @@ const appointmentInclude = {
   client: { select: { id: true, firstName: true, lastName: true } },
   service: { select: { id: true, name: true, durationMinutes: true } },
   operator: { select: { id: true, firstName: true, lastName: true } },
-  payment: { select: { id: true, amount: true, method: true } },
 } as const;
 
 function toAppointmentDTO(appointment: {
@@ -43,20 +39,11 @@ function toAppointmentDTO(appointment: {
   endTime: Date;
   status: AppointmentStatusValue;
   notes: string | null;
-  price: { toNumber(): number } | null;
-  reminderStatus: "NONE" | "SCHEDULED" | "SENT" | "FAILED";
   client: { id: string; firstName: string; lastName: string };
   service: { id: string; name: string; durationMinutes: number };
   operator: { id: string; firstName: string; lastName: string } | null;
-  payment: { id: string; amount: { toNumber(): number }; method: string } | null;
 }): AppointmentDTO {
-  return {
-    ...appointment,
-    price: appointment.price?.toNumber() ?? null,
-    payment: appointment.payment
-      ? { ...appointment.payment, amount: appointment.payment.amount.toNumber() }
-      : null,
-  };
+  return { ...appointment };
 }
 
 export async function getAppointments(input: {
@@ -153,7 +140,6 @@ export async function createAppointment(
       operatorId: operatorResult.operatorId,
       startTime: parsed.data.startTime,
       endTime,
-      price: service.price,
       notes: parsed.data.notes?.trim() ? parsed.data.notes.trim() : null,
     },
     include: appointmentInclude,
@@ -204,7 +190,6 @@ export async function updateAppointment(
       operatorId: operatorResult.operatorId,
       startTime: parsed.data.startTime,
       endTime,
-      price: service.price,
       notes: parsed.data.notes?.trim() ? parsed.data.notes.trim() : null,
     },
   });
@@ -234,32 +219,6 @@ export async function updateAppointmentStatus(
   const result = await prisma.appointment.updateMany({
     where: { id, tenantId },
     data: { status },
-  });
-
-  if (result.count === 0) {
-    return { success: false, error: "Appuntamento non trovato." };
-  }
-
-  const appointment = await prisma.appointment.findFirstOrThrow({
-    where: { id, tenantId },
-    include: appointmentInclude,
-  });
-
-  return { success: true, appointment: toAppointmentDTO(appointment) };
-}
-
-export async function updateReminderStatus(
-  id: string,
-  reminderStatus: "SCHEDULED" | "SENT" | "FAILED"
-): Promise<AppointmentActionResult> {
-  const { tenantId } = await getTenantContext();
-
-  const result = await prisma.appointment.updateMany({
-    where: { id, tenantId },
-    data: {
-      reminderStatus,
-      reminderSentAt: reminderStatus === "SENT" ? new Date() : undefined,
-    },
   });
 
   if (result.count === 0) {
