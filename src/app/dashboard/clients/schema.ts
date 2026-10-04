@@ -43,7 +43,19 @@ export const clientFormSchema = z.object({
     .string()
     .trim()
     .refine((value) => value === "" || TAX_CODE_PATTERN.test(value), "Codice fiscale non valido."),
+  city: z.string().trim().max(100, "Massimo 100 caratteri.").optional(),
+  allergies: z.string().trim().max(2000, "Massimo 2000 caratteri.").optional(),
+  healthNotes: z.string().trim().max(2000, "Massimo 2000 caratteri.").optional(),
 });
+
+/** Inserimento rapido: bastano nome, cognome e telefono; il resto arriva dal questionario. */
+export const quickClientSchema = z.object({
+  firstName: clientFormSchema.shape.firstName,
+  lastName: clientFormSchema.shape.lastName,
+  phone: clientFormSchema.shape.phone,
+});
+
+export type QuickClientValues = z.infer<typeof quickClientSchema>;
 
 export type ClientFormValues = z.infer<typeof clientFormSchema>;
 
@@ -55,4 +67,7 @@ export const clientFormDefaultValues: ClientFormValues = {
   notes: "",
   dateOfBirth: "",
   taxCode: "",
+  city: "",
+  allergies: "",
+  healthNotes: "",
 };

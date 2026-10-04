@@ -1,26 +1,32 @@
 "use client";
 
 import {
+  BarChart3,
   Calendar,
+  CreditCard,
   FileSignature,
+  FileText,
+  Inbox,
   LayoutDashboard,
   Link2,
   Scissors,
   ShieldCheck,
   Sparkles,
+  UserRoundCheck,
   Users,
   Wand2,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 
 type NavItem = {
   href: string;
   label: string;
   icon: React.ElementType;
   exact?: boolean;
+  badgeKey?: "requests";
 };
 
 type NavGroup = {
@@ -30,20 +36,32 @@ type NavGroup = {
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    label: "Operativo",
+    label: "Ogni giorno",
     items: [
       { href: "/dashboard", label: "Panoramica", icon: LayoutDashboard, exact: true },
       { href: "/dashboard/calendar", label: "Agenda", icon: Calendar },
       { href: "/dashboard/clients", label: "Clienti", icon: Users },
+      { href: "/dashboard/payments", label: "Pagamenti", icon: CreditCard },
     ],
   },
   {
-    label: "Catalogo",
-    items: [{ href: "/dashboard/services", label: "Trattamenti", icon: Scissors }],
+    label: "Da fare",
+    items: [
+      { href: "/dashboard/requests", label: "Richieste online", icon: Inbox, badgeKey: "requests" },
+      { href: "/dashboard/followup", label: "Da ricontattare", icon: UserRoundCheck },
+    ],
   },
   {
-    label: "Online",
+    label: "Andamento",
     items: [
+      { href: "/dashboard/stats", label: "Statistiche", icon: BarChart3 },
+      { href: "/dashboard/reports", label: "Report mensile", icon: FileText },
+    ],
+  },
+  {
+    label: "Centro",
+    items: [
+      { href: "/dashboard/services", label: "Trattamenti", icon: Scissors },
       { href: "/dashboard/widget", label: "Widget prenotazione", icon: Wand2 },
       { href: "/dashboard/integrations/calendar", label: "Integrazioni", icon: Link2 },
     ],
@@ -58,9 +76,16 @@ const ADMIN_ITEMS: NavItem[] = [
 type DashboardSidebarProps = {
   hasTenant: boolean;
   isAdmin: boolean;
+  tenantName: string | null;
+  pendingRequests: number;
 };
 
-export function DashboardSidebar({ hasTenant, isAdmin }: DashboardSidebarProps) {
+export function DashboardSidebar({
+  hasTenant,
+  isAdmin,
+  tenantName,
+  pendingRequests,
+}: DashboardSidebarProps) {
   const pathname = usePathname();
 
   function isActive(href: string, exact?: boolean) {
@@ -68,60 +93,89 @@ export function DashboardSidebar({ hasTenant, isAdmin }: DashboardSidebarProps) 
   }
 
   const groups: NavGroup[] = hasTenant
-    ? [
-        NAV_GROUPS[0],
-        {
-          ...NAV_GROUPS[1],
-          items: [...NAV_GROUPS[1].items, ...(isAdmin ? ADMIN_ITEMS : [])],
-        },
-        NAV_GROUPS[2],
-      ]
+    ? NAV_GROUPS.map((group) =>
+        group.label === "Centro" && isAdmin
+          ? { ...group, items: [...group.items, ...ADMIN_ITEMS] }
+          : group
+      )
     : [
         {
-          label: "Operativo",
+          label: "Ogni giorno",
           items: [{ href: "/dashboard", label: "Panoramica", icon: LayoutDashboard, exact: true }],
         },
       ];
 
+  const mobileItems = groups
+    .flatMap((group) => group.items)
+    .filter((item) =>
+      ["/dashboard", "/dashboard/calendar", "/dashboard/clients", "/dashboard/payments", "/dashboard/followup"].includes(
+        item.href
+      )
+    );
+
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r bg-card">
-      {/* Logo */}
-      <div className="flex h-16 items-center gap-3 border-b px-4">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+    <>
+    <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t bg-card/95 backdrop-blur lg:hidden print:hidden">
+      {mobileItems.map((item) => {
+        const active = isActive(item.href, item.exact);
+        const Icon = item.icon;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              "flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium",
+              active ? "text-forest" : "text-muted-foreground"
+            )}
+          >
+            <Icon className={cn("size-5", active && "text-mint-ink")} />
+            {item.label.split(" ")[0]}
+          </Link>
+        );
+      })}
+    </nav>
+    <aside className="hidden w-64 shrink-0 flex-col border-r bg-card lg:flex print:hidden">
+      <div className="flex h-16 items-center gap-3 border-b px-5">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-mint-soft text-mint-ink ring-1 ring-mint-border">
           <Sparkles className="size-4" />
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-semibold leading-tight">Beauty CRM</div>
-          <div className="truncate text-[10px] leading-tight text-muted-foreground">
-            Gestionale centri estetici
+          <div className="font-heading text-base font-bold leading-tight">Beauty CRM</div>
+          <div className="truncate text-[11px] leading-tight text-muted-foreground">
+            {tenantName ?? "Gestionale centri estetici"}
           </div>
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 py-4">
+      <nav className="flex flex-1 flex-col gap-5 overflow-y-auto px-3 py-5">
         {groups.map((group) => (
           <div key={group.label}>
-            <div className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
+            <div className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
               {group.label}
             </div>
             <div className="flex flex-col gap-0.5">
               {group.items.map((item) => {
                 const active = isActive(item.href, item.exact);
                 const Icon = item.icon;
+                const badge = item.badgeKey === "requests" ? pendingRequests : 0;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
+                      "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
                       active
-                        ? "bg-primary/10 text-primary"
+                        ? "bg-mint-soft font-semibold text-forest ring-1 ring-mint-border"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground"
                     )}
                   >
-                    <Icon className="size-4 shrink-0" />
-                    {item.label}
+                    <Icon className={cn("size-4 shrink-0", active && "text-mint-ink")} />
+                    <span className="flex-1">{item.label}</span>
+                    {badge > 0 ? (
+                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-wine px-1.5 text-[11px] font-bold text-white">
+                        {badge}
+                      </span>
+                    ) : null}
                   </Link>
                 );
               })}
@@ -130,5 +184,6 @@ export function DashboardSidebar({ hasTenant, isAdmin }: DashboardSidebarProps) 
         ))}
       </nav>
     </aside>
+    </>
   );
 }

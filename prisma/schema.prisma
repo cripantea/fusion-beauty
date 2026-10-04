@@ -24,6 +24,18 @@ enum AppointmentStatus {
   NO_SHOW
 }
 
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  OTHER
+}
+
+enum AppointmentSource {
+  INTERNAL
+  ONLINE
+}
+
 enum ConsentType {
   PRIVACY_GDPR
   MARKETING
@@ -61,6 +73,8 @@ model Tenant {
   externalCalendarEvents ExternalCalendarEvent[]
   consentTemplates       ConsentTemplate[]
   consentRecords         ConsentRecord[]
+  payments               Payment[]
+  questionnaires         ClientQuestionnaire[]
 
   @@map("tenants")
 }
@@ -118,6 +132,7 @@ model User {
   tenant            Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   appointments      Appointment[]   @relation("AppointmentOperator")
   collectedConsents ConsentRecord[] @relation("ConsentCollectedBy")
+  payments          Payment[]       @relation("PaymentCreatedBy")
 
   @@index([tenantId])
   @@map("users")
@@ -133,12 +148,20 @@ model Client {
   notes       String?   @db.Text
   dateOfBirth DateTime? @db.Date
   taxCode     String?
+  // Campi popolati dal questionario inviato via WhatsApp (o compilati a mano).
+  city              String?
+  allergies         String?   @db.Text
+  healthNotes       String?   @db.Text
+  acquisitionSource String?
+  interests         String[]  @default([])
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  appointments Appointment[]
-  consents     ConsentRecord[]
+  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments   Appointment[]
+  consents       ConsentRecord[]
+  payments       Payment[]
+  questionnaires ClientQuestionnaire[]
 
   @@index([tenantId, phone])
   @@index([tenantId, lastName])
@@ -174,6 +197,7 @@ model Appointment {
   startTime  DateTime
   endTime    DateTime
   status     AppointmentStatus @default(BOOKED)
+  source     AppointmentSource @default(INTERNAL)
   notes      String?           @db.Text
   createdAt  DateTime          @default(now())
   updatedAt  DateTime          @updatedAt
@@ -183,10 +207,53 @@ model Appointment {
   service  Service         @relation(fields: [serviceId], references: [id], onDelete: Restrict)
   operator User?           @relation("AppointmentOperator", fields: [operatorId], references: [id], onDelete: SetNull)
   consents ConsentRecord[]
+  payment  Payment?
 
   @@index([tenantId, startTime])
   @@index([tenantId, status])
   @@map("appointments")
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  tenantId      String
+  clientId      String
+  // Un solo incasso per appuntamento.
+  appointmentId String?       @unique
+  amount        Decimal       @db.Decimal(10, 2)
+  method        PaymentMethod
+  notes         String?
+  paidAt        DateTime      @default(now())
+  createdById   String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client      Client       @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  createdBy   User?        @relation("PaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, paidAt])
+  @@index([clientId])
+  @@map("payments")
+}
+
+// Questionario inviato alla cliente (link WhatsApp): le risposte popolano la scheda.
+model ClientQuestionnaire {
+  id          String    @id @default(cuid())
+  tenantId    String
+  clientId    String
+  token       String    @unique
+  sentAt      DateTime?
+  completedAt DateTime?
+  answers     Json?
+  createdAt   DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("client_questionnaires")
 }
 
 model ConsentTemplate {

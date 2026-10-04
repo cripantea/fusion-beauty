@@ -5,7 +5,7 @@ import { it } from "date-fns/locale";
 
 import { cn } from "@/lib/utils";
 
-import type { AppointmentDTO } from "./actions";
+import type { AppointmentDTO } from "./dto";
 import type { AppointmentStatusValue } from "./schema";
 
 const DAY_START_HOUR = 8;
@@ -14,16 +14,11 @@ const HOUR_HEIGHT = 64;
 const MIN_BLOCK_MINUTES = 20;
 
 const statusBlockClasses: Record<AppointmentStatusValue, string> = {
-  BOOKED:
-    "bg-slate-100 border-slate-300 text-slate-900 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100",
-  CONFIRMED:
-    "bg-blue-100 border-blue-300 text-blue-900 dark:bg-blue-950 dark:border-blue-700 dark:text-blue-100",
-  COMPLETED:
-    "bg-green-100 border-green-300 text-green-900 dark:bg-green-950 dark:border-green-700 dark:text-green-100",
-  CANCELLED:
-    "bg-red-100 border-red-300 text-red-900 line-through opacity-70 dark:bg-red-950 dark:border-red-700 dark:text-red-100",
-  NO_SHOW:
-    "bg-orange-100 border-orange-300 text-orange-900 dark:bg-orange-950 dark:border-orange-700 dark:text-orange-100",
+  BOOKED: "bg-slate-100 border-slate-300 text-slate-900",
+  CONFIRMED: "bg-emerald-100 border-emerald-300 text-emerald-950",
+  COMPLETED: "bg-forest border-forest text-forest-foreground",
+  CANCELLED: "bg-rose-100 border-rose-300 text-rose-900 line-through opacity-70",
+  NO_SHOW: "bg-amber-100 border-amber-300 text-amber-900 opacity-80",
 };
 
 const hours = Array.from(

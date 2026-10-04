@@ -1,12 +1,12 @@
 "use client";
 
+import { FileCheck2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
+import { Panel, Pill } from "@/components/boutique";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConsentCollectDialog } from "@/app/dashboard/consents/consent-collect-dialog";
 import { revokeConsent } from "@/app/dashboard/consents/collect-actions";
 import type {
@@ -29,12 +29,12 @@ const stateLabels: Record<ConsentStateValue, string> = {
   DECLINED: "Rifiutato",
 };
 
-const stateVariants: Record<ConsentStateValue, "default" | "secondary" | "destructive" | "outline"> = {
-  SIGNED: "default",
-  MISSING: "destructive",
-  OUTDATED: "secondary",
-  REVOKED: "destructive",
-  DECLINED: "outline",
+const stateTones: Record<ConsentStateValue, "mint" | "amber" | "wine" | "slate"> = {
+  SIGNED: "mint",
+  MISSING: "wine",
+  OUTDATED: "amber",
+  REVOKED: "wine",
+  DECLINED: "slate",
 };
 
 type ClientConsentsCardProps = {
@@ -87,15 +87,17 @@ export function ClientConsentsCard({ clientId, clientName, consents }: ClientCon
   }
 
   return (
-    <Card className="md:col-span-2">
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <div className="space-y-1.5">
-          <CardTitle>Consensi</CardTitle>
-          <CardDescription>Privacy, marketing e consensi informati firmati dalla cliente.</CardDescription>
-        </div>
-        <Button onClick={() => openDialog()}>Raccogli consenso</Button>
-      </CardHeader>
-      <CardContent className="space-y-6">
+    <Panel
+      title="Consensi firmati"
+      icon={FileCheck2}
+      className="md:col-span-2"
+      action={
+        <Button size="sm" className="rounded-lg" onClick={() => openDialog()}>
+          Raccogli consenso
+        </Button>
+      }
+    >
+      <div className="space-y-6 p-5">
         {consents.items.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nessun modello di consenso attivo.</p>
         ) : (
@@ -114,7 +116,10 @@ export function ClientConsentsCard({ clientId, clientName, consents }: ClientCon
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Badge variant={stateVariants[item.state]}>{stateLabels[item.state]}</Badge>
+                  <Pill tone={stateTones[item.state]}>
+                    {item.state === "SIGNED" ? "✓ " : item.state === "OUTDATED" ? "! " : ""}
+                    {stateLabels[item.state]}
+                  </Pill>
                   {item.state !== "SIGNED" && item.state !== "DECLINED" ? (
                     <Button variant="outline" size="sm" onClick={() => openDialog(item.templateId)}>
                       Firma
@@ -177,7 +182,7 @@ export function ClientConsentsCard({ clientId, clientName, consents }: ClientCon
             </ul>
           </div>
         ) : null}
-      </CardContent>
+      </div>
 
       <ConsentCollectDialog
         open={dialogOpen}
@@ -187,6 +192,6 @@ export function ClientConsentsCard({ clientId, clientName, consents }: ClientCon
         initialTemplateId={templateId}
         onCollected={() => router.refresh()}
       />
-    </Card>
+    </Panel>
   );
 }

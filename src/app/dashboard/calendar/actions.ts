@@ -3,6 +3,9 @@
 import { getTenantContext } from "@/lib/auth-context";
 import { prisma } from "@/lib/prisma";
 
+import { appointmentInclude, toAppointmentDTO, type AppointmentDTO } from "./dto";
+
+export type { AppointmentDTO } from "./dto";
 import {
   APPOINTMENT_STATUSES,
   appointmentInputSchema,
@@ -10,41 +13,11 @@ import {
   type AppointmentStatusValue,
 } from "./schema";
 
-export type AppointmentDTO = {
-  id: string;
-  startTime: Date;
-  endTime: Date;
-  status: AppointmentStatusValue;
-  notes: string | null;
-  client: { id: string; firstName: string; lastName: string };
-  service: { id: string; name: string; durationMinutes: number };
-  operator: { id: string; firstName: string; lastName: string } | null;
-};
-
 export type OperatorDTO = {
   id: string;
   firstName: string;
   lastName: string;
 };
-
-const appointmentInclude = {
-  client: { select: { id: true, firstName: true, lastName: true } },
-  service: { select: { id: true, name: true, durationMinutes: true } },
-  operator: { select: { id: true, firstName: true, lastName: true } },
-} as const;
-
-function toAppointmentDTO(appointment: {
-  id: string;
-  startTime: Date;
-  endTime: Date;
-  status: AppointmentStatusValue;
-  notes: string | null;
-  client: { id: string; firstName: string; lastName: string };
-  service: { id: string; name: string; durationMinutes: number };
-  operator: { id: string; firstName: string; lastName: string } | null;
-}): AppointmentDTO {
-  return { ...appointment };
-}
 
 export async function getAppointments(input: {
   start: Date;

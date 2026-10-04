@@ -16,18 +16,22 @@ import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import type { ClientListItemDTO } from "@/app/dashboard/clients/actions";
+import { PaymentDialog } from "@/app/dashboard/payments/payment-dialog";
 import type { ServiceDTO } from "@/app/dashboard/services/actions";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { PageHeader } from "@/components/boutique";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
-import { getAppointments, type AppointmentDTO, type OperatorDTO } from "./actions";
+import { getAppointments, type OperatorDTO } from "./actions";
+import type { AppointmentDTO } from "./dto";
+import { OperatorsGrid } from "./operators-grid";
 import { AppointmentDetailDialog } from "./appointment-detail-dialog";
 import { AppointmentFormDialog } from "./appointment-form-dialog";
 import { CalendarGrid } from "./calendar-grid";
 
-type ViewMode = "day" | "week";
+type ViewMode = "operators" | "day" | "week";
 
 type CalendarManagerProps = {
   initialAppointments: AppointmentDTO[];
@@ -44,17 +48,20 @@ export function CalendarManager({
   services,
   operators,
 }: CalendarManagerProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>("week");
+  const [viewMode, setViewMode] = useState<ViewMode>("operators");
   const [currentDate, setCurrentDate] = useState(() => new Date(`${initialDate}T00:00:00`));
   const [appointments, setAppointments] = useState(initialAppointments);
   const [isPending, startTransition] = useTransition();
   const [formDialogOpen, setFormDialogOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<AppointmentDTO | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentDTO | null>(null);
+  const [payingAppointment, setPayingAppointment] = useState<AppointmentDTO | null>(null);
+  const [defaultOperatorId, setDefaultOperatorId] = useState<string | undefined>();
+  const [clientOptions, setClientOptions] = useState(clients);
   const isFirstRender = useRef(true);
 
   const range =
-    viewMode === "day"
+    viewMode !== "week"
       ? { start: startOfDay(currentDate), end: endOfDay(currentDate) }
       : {
           start: startOfWeek(currentDate, { weekStartsOn: 1 }),
@@ -62,7 +69,7 @@ export function CalendarManager({
         };
 
   const days =
-    viewMode === "day" ? [range.start] : Array.from({ length: 7 }, (_, i) => addDays(range.start, i));
+    viewMode !== "week" ? [range.start] : Array.from({ length: 7 }, (_, i) => addDays(range.start, i));
 
   function refresh(start: Date, end: Date) {
     startTransition(async () => {
@@ -85,11 +92,11 @@ export function CalendarManager({
   }
 
   function goBack() {
-    setCurrentDate((date) => (viewMode === "day" ? subDays(date, 1) : subWeeks(date, 1)));
+    setCurrentDate((date) => (viewMode !== "week" ? subDays(date, 1) : subWeeks(date, 1)));
   }
 
   function goForward() {
-    setCurrentDate((date) => (viewMode === "day" ? addDays(date, 1) : addWeeks(date, 1)));
+    setCurrentDate((date) => (viewMode !== "week" ? addDays(date, 1) : addWeeks(date, 1)));
   }
 
   function handleAppointmentSaved() {
@@ -103,20 +110,23 @@ export function CalendarManager({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Calendario</h1>
-          <p className="text-muted-foreground">Gestisci gli appuntamenti del centro.</p>
-        </div>
-        <Button
-          onClick={() => {
-            setEditingAppointment(null);
-            setFormDialogOpen(true);
-          }}
-        >
-          Nuovo appuntamento
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="Agenda del centro"
+        title="Un'agenda semplice per tutto il centro."
+        description="Ogni operatrice vede i propri appuntamenti. Tu vedi tutto il centro in un'unica schermata."
+        actions={
+          <Button
+            className="h-10 rounded-xl px-4"
+            onClick={() => {
+              setEditingAppointment(null);
+              setDefaultOperatorId(undefined);
+              setFormDialogOpen(true);
+            }}
+          >
+            Nuovo appuntamento
+          </Button>
+        }
+      />
 
       <Card>
         <CardHeader>
@@ -150,6 +160,13 @@ export function CalendarManager({
             </div>
             <div className="flex items-center gap-1 rounded-lg border p-1">
               <Button
+                variant={viewMode === "operators" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("operators")}
+              >
+                Operatrici
+              </Button>
+              <Button
                 variant={viewMode === "day" ? "secondary" : "ghost"}
                 size="sm"
                 onClick={() => setViewMode("day")}
@@ -167,11 +184,24 @@ export function CalendarManager({
           </div>
         </CardHeader>
         <CardContent>
-          <CalendarGrid
-            days={days}
-            appointments={appointments}
-            onAppointmentClick={setSelectedAppointment}
-          />
+          {viewMode === "operators" ? (
+            <OperatorsGrid
+              appointments={appointments}
+              operators={operators}
+              onAppointmentClick={setSelectedAppointment}
+              onCreate={(operatorId) => {
+                setEditingAppointment(null);
+                setDefaultOperatorId(operatorId ?? undefined);
+                setFormDialogOpen(true);
+              }}
+            />
+          ) : (
+            <CalendarGrid
+              days={days}
+              appointments={appointments}
+              onAppointmentClick={setSelectedAppointment}
+            />
+          )}
         </CardContent>
       </Card>
 
@@ -179,11 +209,13 @@ export function CalendarManager({
         open={formDialogOpen}
         onOpenChange={setFormDialogOpen}
         appointment={editingAppointment}
-        clients={clients}
+        clients={clientOptions}
         services={services}
         operators={operators}
         defaultDate={currentDate}
+        defaultOperatorId={defaultOperatorId}
         onSuccess={handleAppointmentSaved}
+        onClientCreated={(client) => setClientOptions((current) => [...current, client])}
       />
 
       <AppointmentDetailDialog
@@ -198,6 +230,19 @@ export function CalendarManager({
           setFormDialogOpen(true);
         }}
         onStatusChanged={handleStatusChanged}
+        onCollect={(appointment) => {
+          setSelectedAppointment(null);
+          setPayingAppointment(appointment);
+        }}
+      />
+
+      <PaymentDialog
+        open={Boolean(payingAppointment)}
+        onOpenChange={(open) => {
+          if (!open) setPayingAppointment(null);
+        }}
+        appointment={payingAppointment}
+        onPaid={handleAppointmentSaved}
       />
     </div>
   );

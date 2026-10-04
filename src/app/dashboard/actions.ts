@@ -1,27 +1,9 @@
 "use server";
 
-import type { AppointmentDTO } from "@/app/dashboard/calendar/actions";
+import { appointmentInclude, toAppointmentDTO, type AppointmentDTO } from "@/app/dashboard/calendar/dto";
 import { getTenantContext } from "@/lib/auth-context";
+import { getInactiveClients, getUpcomingBirthdays } from "@/lib/insights";
 import { prisma } from "@/lib/prisma";
-
-const appointmentInclude = {
-  client: { select: { id: true, firstName: true, lastName: true } },
-  service: { select: { id: true, name: true, durationMinutes: true } },
-  operator: { select: { id: true, firstName: true, lastName: true } },
-} as const;
-
-function toAppointmentDTO(appointment: {
-  id: string;
-  startTime: Date;
-  endTime: Date;
-  status: AppointmentDTO["status"];
-  notes: string | null;
-  client: AppointmentDTO["client"];
-  service: AppointmentDTO["service"];
-  operator: AppointmentDTO["operator"];
-}): AppointmentDTO {
-  return { ...appointment };
-}
 
 function getTodayRange() {
   const start = new Date();
@@ -31,68 +13,85 @@ function getTodayRange() {
   return { start, end };
 }
 
-export type DashboardMetrics = {
-  todayAppointmentsTotal: number;
-  todayAppointmentsCompleted: number;
-  newClientsThisMonth: number;
+export type DashboardData = {
+  appointments: AppointmentDTO[];
+  completedToday: number;
   estimatedRevenueToday: number;
+  collectedToday: number;
+  newClientsToday: number;
+  operatorsToday: number;
+  totalClients: number;
+  followUp: {
+    inactive: number;
+    birthdays: number;
+    tomorrowReminders: number;
+    pendingRequests: number;
+  };
 };
 
-export async function getDashboardMetrics(): Promise<DashboardMetrics> {
+export async function getDashboardData(): Promise<DashboardData> {
   const { tenantId } = await getTenantContext();
   const { start, end } = getTodayRange();
-
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
+  const tomorrowStart = new Date(end.getTime() + 1);
+  const tomorrowEnd = new Date(tomorrowStart);
+  tomorrowEnd.setHours(23, 59, 59, 999);
 
   const [
-    todayAppointmentsTotal,
-    todayAppointmentsCompleted,
-    newClientsThisMonth,
-    revenueAppointments,
+    appointments,
+    collected,
+    newClientsToday,
+    totalClients,
+    inactive,
+    birthdays,
+    tomorrowReminders,
+    pendingRequests,
   ] = await Promise.all([
-    prisma.appointment.count({
-      where: { tenantId, startTime: { gte: start, lte: end } },
-    }),
-    prisma.appointment.count({
-      where: { tenantId, startTime: { gte: start, lte: end }, status: "COMPLETED" },
-    }),
-    prisma.client.count({
-      where: { tenantId, createdAt: { gte: monthStart } },
-    }),
     prisma.appointment.findMany({
+      where: { tenantId, startTime: { gte: start, lte: end } },
+      orderBy: { startTime: "asc" },
+      include: appointmentInclude,
+    }),
+    prisma.payment.aggregate({
+      where: { tenantId, paidAt: { gte: start, lte: end } },
+      _sum: { amount: true },
+    }),
+    prisma.client.count({ where: { tenantId, createdAt: { gte: start, lte: end } } }),
+    prisma.client.count({ where: { tenantId } }),
+    getInactiveClients(tenantId),
+    getUpcomingBirthdays(tenantId, 7),
+    prisma.appointment.count({
       where: {
         tenantId,
-        startTime: { gte: start, lte: end },
-        status: { in: ["BOOKED", "CONFIRMED", "COMPLETED"] },
+        startTime: { gte: tomorrowStart, lte: tomorrowEnd },
+        status: { in: ["BOOKED", "CONFIRMED"] },
       },
-      select: { service: { select: { price: true } } },
+    }),
+    prisma.appointment.count({
+      where: { tenantId, source: "ONLINE", status: "BOOKED", startTime: { gte: new Date() } },
     }),
   ]);
 
-  const estimatedRevenueToday = revenueAppointments.reduce(
-    (sum, appointment) => sum + appointment.service.price.toNumber(),
-    0
+  const dtos = appointments.map(toAppointmentDTO);
+  const billable = dtos.filter((appointment) =>
+    ["BOOKED", "CONFIRMED", "COMPLETED"].includes(appointment.status)
+  );
+  const operatorIds = new Set(
+    billable.map((appointment) => appointment.operator?.id).filter((id): id is string => Boolean(id))
   );
 
   return {
-    todayAppointmentsTotal,
-    todayAppointmentsCompleted,
-    newClientsThisMonth,
-    estimatedRevenueToday,
+    appointments: dtos,
+    completedToday: dtos.filter((appointment) => appointment.status === "COMPLETED").length,
+    estimatedRevenueToday: billable.reduce((sum, appointment) => sum + appointment.service.price, 0),
+    collectedToday: collected._sum.amount?.toNumber() ?? 0,
+    newClientsToday,
+    operatorsToday: operatorIds.size,
+    totalClients,
+    followUp: {
+      inactive: inactive.length,
+      birthdays: birthdays.length,
+      tomorrowReminders,
+      pendingRequests,
+    },
   };
-}
-
-export async function getTodayAppointments(): Promise<AppointmentDTO[]> {
-  const { tenantId } = await getTenantContext();
-  const { start, end } = getTodayRange();
-
-  const appointments = await prisma.appointment.findMany({
-    where: { tenantId, startTime: { gte: start, lte: end } },
-    orderBy: { startTime: "asc" },
-    include: appointmentInclude,
-  });
-
-  return appointments.map(toAppointmentDTO);
 }

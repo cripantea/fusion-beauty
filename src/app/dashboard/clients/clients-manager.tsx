@@ -1,28 +1,26 @@
 "use client";
 
+import { MessageCircle, Search, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 
+import { Avatar, EmptyState, PageHeader, Panel, Pill } from "@/components/boutique";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { formatEuro, getInitials, whatsappUrl } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 import { getClients, type ClientListItemDTO } from "./actions";
-import { ClientFormDialog } from "./client-form-dialog";
+import { toNewClientListItem } from "./list-item";
+import { QuickClientDialog } from "./quick-client-dialog";
 
 const dateFormatter = new Intl.DateTimeFormat("it-IT", {
-  day: "2-digit",
-  month: "2-digit",
+  day: "numeric",
+  month: "short",
   year: "numeric",
 });
+
+type Filter = "all" | "inactive";
 
 type ClientsManagerProps = {
   initialClients: ClientListItemDTO[];
@@ -31,138 +29,138 @@ type ClientsManagerProps = {
 export function ClientsManager({ initialClients }: ClientsManagerProps) {
   const [clients, setClients] = useState(initialClients);
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
   const [isPending, startTransition] = useTransition();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingClient, setEditingClient] = useState<ClientListItemDTO | null>(null);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function refresh(nextSearch: string) {
     startTransition(async () => {
-      const results = await getClients({ search: nextSearch });
-      setClients(results);
+      setClients(await getClients({ search: nextSearch }));
     });
   }
 
   function handleSearchChange(value: string) {
     setSearch(value);
-
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-
-    searchTimeoutRef.current = setTimeout(() => {
-      refresh(value);
-    }, 300);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(() => refresh(value), 250);
   }
 
-  function handleSaved() {
-    refresh(search);
-  }
+  const inactiveCount = clients.filter((client) => client.isInactive).length;
+  const visible = filter === "inactive" ? clients.filter((client) => client.isInactive) : clients;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Anagrafica clienti</h1>
-          <p className="text-muted-foreground">Gestisci i clienti del centro.</p>
-        </div>
-        <Button
-          onClick={() => {
-            setEditingClient(null);
-            setDialogOpen(true);
-          }}
-        >
-          Nuovo cliente
-        </Button>
-      </div>
+    <div className="mx-auto max-w-5xl space-y-6">
+      <PageHeader
+        eyebrow="Anagrafica"
+        title="Tutte le clienti, sempre sotto controllo."
+        description="Quando una cliente torna, sai subito cosa ha fatto e cosa le serve."
+        actions={
+          <Button className="h-10 rounded-xl px-4" onClick={() => setDialogOpen(true)}>
+            <UserPlus className="size-4" />
+            Nuova cliente
+          </Button>
+        }
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Clienti</CardTitle>
-          <div className="pt-2">
+      <Panel
+        title={
+          <span>
+            Le tue clienti <span className="font-normal text-muted-foreground">· {clients.length}</span>
+          </span>
+        }
+        action={
+          <div className="flex gap-1.5">
+            {(
+              [
+                ["all", "Tutte"],
+                ["inactive", `Da ricontattare (${inactiveCount})`],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setFilter(value)}
+                className={cn(
+                  "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+                  filter === value
+                    ? "border-forest bg-forest text-forest-foreground"
+                    : "border-mint-border bg-card hover:bg-mint-soft"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        }
+      >
+        <div className="border-b border-mint-border/70 p-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Cerca per nome, cognome o telefono..."
               value={search}
               onChange={(event) => handleSearchChange(event.target.value)}
-              className="sm:max-w-xs"
+              className="h-10 pl-9"
             />
           </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nome e Cognome</TableHead>
-                <TableHead>Telefono</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Note</TableHead>
-                <TableHead>Ultimo trattamento</TableHead>
-                <TableHead className="text-right">Azioni</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {clients.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
-                    {isPending ? "Caricamento..." : "Nessun cliente trovato."}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                clients.map((client) => (
-                  <TableRow key={client.id}>
-                    <TableCell className="font-medium">
-                      <Link
-                        href={`/dashboard/clients/${client.id}`}
-                        className="hover:underline"
-                      >
-                        {client.firstName} {client.lastName}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{client.phone}</TableCell>
-                    <TableCell>{client.email ?? "-"}</TableCell>
-                    <TableCell className="max-w-48 truncate" title={client.notes ?? undefined}>
-                      {client.notes ?? "-"}
-                    </TableCell>
-                    <TableCell>
-                      {client.lastAppointment
-                        ? `${dateFormatter.format(client.lastAppointment.date)} — ${client.lastAppointment.serviceName}`
-                        : "-"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          render={<Link href={`/dashboard/clients/${client.id}`} />}
-                          nativeButton={false}
-                        >
-                          Scheda
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setEditingClient(client);
-                            setDialogOpen(true);
-                          }}
-                        >
-                          Modifica
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+        </div>
 
-      <ClientFormDialog
+        {visible.length === 0 ? (
+          <EmptyState>{isPending ? "Caricamento..." : "Nessuna cliente trovata."}</EmptyState>
+        ) : (
+          <ul className="divide-y divide-mint-border/60">
+            {visible.map((client) => (
+              <li key={client.id} className="flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-mint-soft/40">
+                <Link
+                  href={`/dashboard/clients/${client.id}`}
+                  className="flex min-w-0 flex-1 items-center gap-3"
+                >
+                  <Avatar initials={getInitials(client.firstName, client.lastName)} />
+                  <span className="min-w-0">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="truncate font-semibold">
+                        {client.firstName} {client.lastName}
+                      </span>
+                      {client.visits >= 5 ? <Pill>Cliente fedele</Pill> : null}
+                      {client.isInactive ? <Pill tone="amber">Non torna da tempo</Pill> : null}
+                    </span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {client.phone}
+                      {client.lastVisit
+                        ? ` · ultima visita ${dateFormatter.format(client.lastVisit)}`
+                        : client.lastAppointment
+                          ? ` · ${client.lastAppointment.serviceName}`
+                          : " · nessuna visita"}
+                    </span>
+                  </span>
+                </Link>
+                <div className="hidden text-right text-sm sm:block">
+                  <div className="font-semibold">{formatEuro(client.totalSpent)}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {client.visits} {client.visits === 1 ? "trattamento" : "trattamenti"}
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="rounded-lg"
+                  aria-label={`WhatsApp a ${client.firstName}`}
+                  nativeButton={false}
+                  render={<a href={whatsappUrl(client.phone)} target="_blank" rel="noopener noreferrer" />}
+                >
+                  <MessageCircle className="size-4" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
+
+      <QuickClientDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        client={editingClient}
-        onSuccess={handleSaved}
+        onCreated={(client) => setClients((current) => [toNewClientListItem(client), ...current])}
       />
     </div>
   );

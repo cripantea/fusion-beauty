@@ -210,6 +210,7 @@ export async function createPublicBooking(values: unknown): Promise<CreateBookin
             startTime,
             endTime,
             status: "BOOKED",
+            source: "ONLINE",
             notes: normalizedNotes,
           },
         });

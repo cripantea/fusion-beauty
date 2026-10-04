@@ -47,6 +47,20 @@ sincronizzazione calendari.
   importazione di un calendario iCal esterno via URL (blocca gli slot
   corrispondenti nell'agenda e nel widget), e una connessione Google
   Calendar dimostrativa (stub, senza OAuth reale).
+- **Pagamenti**: incasso in un tap (Carta/POS o Contanti) da dashboard, agenda o
+  pagina Pagamenti; l'importo parte dal prezzo del trattamento e il trattamento
+  risulta completato. Totale speso e segmento "Cliente fedele" (5+ trattamenti)
+  nella scheda cliente.
+- **Nuova cliente in 10 secondi**: bastano nome, cognome e telefono; poi un link
+  WhatsApp (`wa.me`, precompilato) invia il questionario pubblico `/q/[token]` le
+  cui risposte (data di nascita, città, allergie, pelle/salute, interessi,
+  provenienza) popolano la scheda. L'invio parte dall'app WhatsApp dell'operatrice:
+  non c'è integrazione con WhatsApp Business API.
+- **Agenda per operatrice**, **Richieste online** (prenotazioni dal widget da
+  confermare/rifiutare), **Da ricontattare** (clienti inattive da 6+ mesi,
+  compleanni, promemoria di domani con messaggio WhatsApp pronto),
+  **Statistiche** (giorno/settimana/mese/anno) e **Report mensile** (CSV e
+  stampa/PDF).
 - **Gestione tenant (super-admin)**: creazione, modifica e sospensione dei
   centri estetici.
 
@@ -71,6 +85,8 @@ cp .env.example .env
 pnpm install
 docker compose up -d db redis
 pnpm prisma migrate dev
+pnpm db:seed          # utenti e catalogo di base
+pnpm db:seed:demo     # facoltativo: agenda, incassi e clienti dimostrativi
 pnpm dev
 ```
 

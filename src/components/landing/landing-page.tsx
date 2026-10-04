@@ -1240,7 +1240,7 @@ export function LandingPage() {
   const openDemo = () => setDemoOpen(true);
 
   return (
-    <>
+    <div className="theme-rose bg-background text-foreground">
       <Navbar onDemoClick={openDemo} />
       <main>
         <Hero onDemoClick={openDemo} />
@@ -1259,6 +1259,6 @@ export function LandingPage() {
       </main>
       <Footer />
       <DemoModal open={demoOpen} onClose={() => setDemoOpen(false)} />
-    </>
+    </div>
   );
 }

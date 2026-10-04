@@ -1,11 +1,14 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useMemo, useTransition } from "react";
-import { useForm } from "react-hook-form";
+import { Plus } from "lucide-react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 
-import type { ClientListItemDTO } from "@/app/dashboard/clients/actions";
+import type { ClientDTO, ClientListItemDTO } from "@/app/dashboard/clients/actions";
+import { toNewClientListItem } from "@/app/dashboard/clients/list-item";
+import { QuickClientDialog } from "@/app/dashboard/clients/quick-client-dialog";
 import type { ServiceDTO } from "@/app/dashboard/services/actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,14 +36,9 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { formatEuro } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 import { createAppointment, updateAppointment, type AppointmentDTO, type OperatorDTO } from "./actions";
 import {
@@ -53,6 +51,41 @@ import {
 
 type ClientOption = { value: string; label: string };
 
+function Chip({
+  active,
+  onClick,
+  children,
+  className,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
+        active
+          ? "border-forest bg-forest text-forest-foreground"
+          : "border-mint-border bg-card hover:bg-mint-soft",
+        className
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function addDaysToInput(base: Date, days: number) {
+  const date = new Date(base);
+  date.setDate(date.getDate() + days);
+  return toDateInputValue(date);
+}
+
 type AppointmentFormDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -61,7 +94,10 @@ type AppointmentFormDialogProps = {
   services: ServiceDTO[];
   operators: OperatorDTO[];
   defaultDate?: Date;
+  defaultOperatorId?: string;
   onSuccess: (appointment: AppointmentDTO) => void;
+  /** Una cliente creata al volo dal dialog, da aggiungere all'elenco di chi lo ospita. */
+  onClientCreated?: (client: ClientListItemDTO) => void;
 };
 
 function toDateInputValue(date: Date) {
@@ -85,39 +121,44 @@ export function AppointmentFormDialog({
   services,
   operators,
   defaultDate,
+  defaultOperatorId,
   onSuccess,
+  onClientCreated,
 }: AppointmentFormDialogProps) {
   const isEditing = Boolean(appointment);
   const [isPending, startTransition] = useTransition();
+  const [quickClientOpen, setQuickClientOpen] = useState(false);
+  const [createdClients, setCreatedClients] = useState<ClientListItemDTO[]>([]);
+  const [notesOpen, setNotesOpen] = useState(false);
 
   const form = useForm<AppointmentFormInput, unknown, AppointmentFormValues>({
     resolver: zodResolver(appointmentFormSchema),
     defaultValues: appointmentFormDefaultValues,
   });
 
+  const allClients = useMemo(() => {
+    const known = new Set(clients.map((client) => client.id));
+    return [...clients, ...createdClients.filter((client) => !known.has(client.id))];
+  }, [clients, createdClients]);
+
+  function handleClientCreated(client: ClientDTO) {
+    const item = toNewClientListItem(client);
+    setCreatedClients((current) => [...current, item]);
+    form.setValue("clientId", client.id, { shouldValidate: true });
+    onClientCreated?.(item);
+  }
+
+  const dateValue = useWatch({ control: form.control, name: "date" });
+  const notesValue = useWatch({ control: form.control, name: "notes" });
+  const showNotes = notesOpen || Boolean(notesValue);
+
   const clientOptions = useMemo<ClientOption[]>(
     () =>
-      clients.map((client) => ({
+      allClients.map((client) => ({
         value: client.id,
         label: `${client.firstName} ${client.lastName} — ${client.phone}`,
       })),
-    [clients]
-  );
-
-  const serviceLabels = useMemo(
-    () =>
-      Object.fromEntries(
-        services.map((service) => [service.id, `${service.name} (${service.durationMinutes} min)`])
-      ) as Record<string, string>,
-    [services]
-  );
-
-  const operatorLabels = useMemo(
-    () =>
-      Object.fromEntries(
-        operators.map((operator) => [operator.id, `${operator.firstName} ${operator.lastName}`])
-      ) as Record<string, string>,
-    [operators]
+    [allClients]
   );
 
   useEffect(() => {
@@ -140,9 +181,10 @@ export function AppointmentFormDialog({
       form.reset({
         ...appointmentFormDefaultValues,
         date: toDateInputValue(base),
+        operatorId: defaultOperatorId ?? NO_OPERATOR_VALUE,
       });
     }
-  }, [open, appointment, defaultDate, form]);
+  }, [open, appointment, defaultDate, defaultOperatorId, form]);
 
   function onSubmit(values: AppointmentFormValues) {
     startTransition(async () => {
@@ -180,23 +222,35 @@ export function AppointmentFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isEditing ? "Modifica appuntamento" : "Nuovo appuntamento"}</DialogTitle>
+          <DialogTitle className="text-lg">
+            {isEditing ? "Modifica appuntamento" : "Nuovo appuntamento"}
+          </DialogTitle>
           <DialogDescription>
             {isEditing
               ? "Aggiorna i dati dell'appuntamento."
-              : "Pianifica un nuovo appuntamento per il centro."}
+              : "Scegli la cliente, il trattamento e l'orario: il resto è automatico."}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
             <FormField
               control={form.control}
               name="clientId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Cliente</FormLabel>
+                  <div className="flex items-center justify-between">
+                    <FormLabel>Cliente</FormLabel>
+                    <button
+                      type="button"
+                      onClick={() => setQuickClientOpen(true)}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-mint-ink hover:underline"
+                    >
+                      <Plus className="size-3.5" />
+                      Nuova cliente
+                    </button>
+                  </div>
                   <Combobox
                     items={clientOptions}
                     value={clientOptions.find((option) => option.value === field.value) ?? null}
@@ -208,10 +262,15 @@ export function AppointmentFormDialog({
                     }
                   >
                     <FormControl>
-                      <ComboboxInput placeholder="Cerca cliente per nome o telefono..." />
+                      <ComboboxInput
+                        className="h-10"
+                        placeholder="Cerca per nome o telefono..."
+                      />
                     </FormControl>
                     <ComboboxContent>
-                      <ComboboxEmpty>Nessun cliente trovato.</ComboboxEmpty>
+                      <ComboboxEmpty>
+                        Nessuna cliente trovata. Usa “Nuova cliente” qui sopra.
+                      </ComboboxEmpty>
                       <ComboboxList>
                         {(item: ClientOption) => (
                           <ComboboxItem key={item.value} value={item}>
@@ -232,143 +291,181 @@ export function AppointmentFormDialog({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Trattamento</FormLabel>
-                  <Select
-                    value={field.value}
-                    onValueChange={(value) => {
-                      field.onChange(value);
-                      const service = services.find((item) => item.id === value);
-                      if (service) {
-                        form.setValue("durationMinutes", service.durationMinutes);
-                      }
-                    }}
-                  >
-                    <FormControl>
-                      <SelectTrigger className="w-full">
-                        <SelectValue>
-                          {(value: string | undefined) =>
-                            value ? serviceLabels[value] : "Seleziona un trattamento"
-                          }
-                        </SelectValue>
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {services.map((service) => (
-                        <SelectItem key={service.id} value={service.id}>
-                          {service.name} ({service.durationMinutes} min)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="grid max-h-48 gap-2 overflow-y-auto sm:grid-cols-2">
+                    {services.map((service) => {
+                      const active = field.value === service.id;
+                      return (
+                        <button
+                          key={service.id}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => {
+                            field.onChange(service.id);
+                            form.setValue("durationMinutes", service.durationMinutes);
+                          }}
+                          className={cn(
+                            "rounded-xl border p-3 text-left transition-colors",
+                            active
+                              ? "border-forest bg-forest text-forest-foreground"
+                              : "border-mint-border bg-card hover:bg-mint-soft"
+                          )}
+                        >
+                          <div className="text-sm font-semibold leading-tight">{service.name}</div>
+                          <div
+                            className={cn(
+                              "mt-0.5 text-xs",
+                              active ? "text-forest-foreground/75" : "text-muted-foreground"
+                            )}
+                          >
+                            {service.durationMinutes} min · {formatEuro(Number(service.price))}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="operatorId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Operatore</FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <FormControl>
-                      <SelectTrigger className="w-full">
-                        <SelectValue>
-                          {(value: string) =>
-                            value === NO_OPERATOR_VALUE
-                              ? "Nessun operatore"
-                              : operatorLabels[value]
-                          }
-                        </SelectValue>
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value={NO_OPERATOR_VALUE}>Nessun operatore</SelectItem>
-                      {operators.map((operator) => (
-                        <SelectItem key={operator.id} value={operator.id}>
-                          {operator.firstName} {operator.lastName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="date"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Data</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="time"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Ora inizio</FormLabel>
-                    <FormControl>
-                      <Input type="time" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <div className="space-y-2">
+              <FormLabel>Quando</FormLabel>
+              <div className="flex flex-wrap items-center gap-2">
+                <Chip
+                  active={dateValue === addDaysToInput(new Date(), 0)}
+                  onClick={() => form.setValue("date", addDaysToInput(new Date(), 0))}
+                >
+                  Oggi
+                </Chip>
+                <Chip
+                  active={dateValue === addDaysToInput(new Date(), 1)}
+                  onClick={() => form.setValue("date", addDaysToInput(new Date(), 1))}
+                >
+                  Domani
+                </Chip>
+              </div>
+              <div className="grid grid-cols-[1fr_8rem] gap-3">
+                <FormField
+                  control={form.control}
+                  name="date"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Input type="date" className="h-10" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="time"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Input type="time" className="h-10" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
 
-            <FormField
-              control={form.control}
-              name="durationMinutes"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Durata (minuti)</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min="1"
-                      step="1"
-                      {...field}
-                      value={field.value as number | string}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {operators.length > 0 ? (
+              <FormField
+                control={form.control}
+                name="operatorId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Operatrice</FormLabel>
+                    <div className="flex flex-wrap gap-2">
+                      <Chip
+                        active={field.value === NO_OPERATOR_VALUE}
+                        onClick={() => field.onChange(NO_OPERATOR_VALUE)}
+                      >
+                        Qualsiasi
+                      </Chip>
+                      {operators.map((operator) => (
+                        <Chip
+                          key={operator.id}
+                          active={field.value === operator.id}
+                          onClick={() => field.onChange(operator.id)}
+                        >
+                          {operator.firstName}
+                        </Chip>
+                      ))}
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : null}
 
-            <FormField
-              control={form.control}
-              name="notes"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Note</FormLabel>
-                  <FormControl>
-                    <Textarea placeholder="Note facoltative" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+            <div className="flex flex-wrap items-end gap-4">
+              <FormField
+                control={form.control}
+                name="durationMinutes"
+                render={({ field }) => (
+                  <FormItem className="w-32">
+                    <FormLabel>Durata (min)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min="1"
+                        step="1"
+                        className="h-10"
+                        {...field}
+                        value={field.value as number | string}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {showNotes ? null : (
+                <button
+                  type="button"
+                  onClick={() => setNotesOpen(true)}
+                  className="pb-2 text-sm font-semibold text-mint-ink hover:underline"
+                >
+                  + Aggiungi nota
+                </button>
               )}
-            />
+            </div>
+
+            {showNotes ? (
+              <FormField
+                control={form.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Note</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Note facoltative" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : null}
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              <Button type="button" variant="outline" className="h-10" onClick={() => onOpenChange(false)}>
                 Annulla
               </Button>
-              <Button type="submit" disabled={isPending}>
-                {isPending ? "Salvataggio..." : "Salva"}
+              <Button type="submit" className="h-10 px-6" disabled={isPending}>
+                {isPending ? "Salvataggio..." : "Salva appuntamento"}
               </Button>
             </DialogFooter>
           </form>
         </Form>
+
+        <QuickClientDialog
+          open={quickClientOpen}
+          onOpenChange={setQuickClientOpen}
+          onCreated={handleClientCreated}
+        />
       </DialogContent>
     </Dialog>
   );

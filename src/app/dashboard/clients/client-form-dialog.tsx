@@ -66,6 +66,9 @@ export function ClientFormDialog({
             notes: client.notes ?? "",
             dateOfBirth: client.dateOfBirth ?? "",
             taxCode: client.taxCode ?? "",
+            city: client.city ?? "",
+            allergies: client.allergies ?? "",
+            healthNotes: client.healthNotes ?? "",
           }
         : clientFormDefaultValues
     );
@@ -91,7 +94,7 @@ export function ClientFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{isEditing ? "Modifica cliente" : "Nuovo cliente"}</DialogTitle>
           <DialogDescription>
@@ -200,10 +203,49 @@ export function ClientFormDialog({
             </div>
             <FormField
               control={form.control}
+              name="city"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Città</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Facoltativa" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="allergies"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Allergie</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder="Es. nichel, profumi (facoltative)" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="healthNotes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Pelle e salute</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder="Pelle sensibile, gravidanza, terapie... (facoltative)" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
               name="notes"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Note</FormLabel>
+                  <FormLabel>Note personali cabina</FormLabel>
                   <FormControl>
                     <Textarea
                       placeholder="Note interne sul cliente (facoltative)"

@@ -1,14 +1,10 @@
+import { AlertCircle, Clock, Sparkles } from "lucide-react";
 import { notFound } from "next/navigation";
 
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { EmptyState, Panel, Pill } from "@/components/boutique";
 import { getTenantContext } from "@/lib/auth-context";
+import { formatEuro } from "@/lib/format";
+import { getClientStatsMap } from "@/lib/insights";
 import { prisma } from "@/lib/prisma";
 
 import { getClientConsents } from "@/app/dashboard/consents/collect-actions";
@@ -16,16 +12,17 @@ import { getClientConsents } from "@/app/dashboard/consents/collect-actions";
 import { getClientById } from "../actions";
 import { ClientConsentsCard } from "./client-consents-card";
 import { ClientDetailHeader } from "./client-detail-header";
+import { QuestionnaireCard } from "./questionnaire-card";
 
 const dateFormatter = new Intl.DateTimeFormat("it-IT", {
-  day: "2-digit",
-  month: "2-digit",
+  day: "numeric",
+  month: "long",
   year: "numeric",
 });
 
 const dateTimeFormatter = new Intl.DateTimeFormat("it-IT", {
   day: "2-digit",
-  month: "2-digit",
+  month: "short",
   year: "numeric",
   hour: "2-digit",
   minute: "2-digit",
@@ -39,15 +36,12 @@ const statusLabels: Record<string, string> = {
   NO_SHOW: "Assente",
 };
 
-const statusVariants: Record<
-  string,
-  "default" | "secondary" | "destructive" | "outline"
-> = {
-  BOOKED: "secondary",
-  CONFIRMED: "default",
-  COMPLETED: "outline",
-  CANCELLED: "destructive",
-  NO_SHOW: "destructive",
+const statusTones: Record<string, "mint" | "amber" | "wine" | "slate" | "forest"> = {
+  BOOKED: "slate",
+  CONFIRMED: "mint",
+  COMPLETED: "forest",
+  CANCELLED: "wine",
+  NO_SHOW: "amber",
 };
 
 type ClientDetailPageProps = {
@@ -64,91 +58,126 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
     notFound();
   }
 
-  const consents = await getClientConsents(id);
-
-  const appointments = await prisma.appointment.findMany({
-    where: { tenantId, clientId: id },
-    orderBy: { startTime: "desc" },
-    take: 20,
-    include: {
-      service: { select: { name: true } },
-      operator: { select: { firstName: true, lastName: true } },
-    },
-  });
-
   const now = new Date();
-  const lastAppointment = appointments.find((appointment) => appointment.startTime <= now) ?? null;
+
+  const [consents, statsMap, appointments, nextAppointment, favorites, questionnaire] =
+    await Promise.all([
+      getClientConsents(id),
+      getClientStatsMap(tenantId, [id]),
+      prisma.appointment.findMany({
+        where: { tenantId, clientId: id },
+        orderBy: { startTime: "desc" },
+        take: 20,
+        include: {
+          service: { select: { name: true, price: true } },
+          operator: { select: { firstName: true, lastName: true } },
+          payment: { select: { amount: true } },
+        },
+      }),
+      prisma.appointment.findFirst({
+        where: {
+          tenantId,
+          clientId: id,
+          startTime: { gte: now },
+          status: { in: ["BOOKED", "CONFIRMED"] },
+        },
+        orderBy: { startTime: "asc" },
+        select: { startTime: true, service: { select: { name: true } } },
+      }),
+      prisma.appointment.groupBy({
+        by: ["serviceId"],
+        where: { tenantId, clientId: id, status: "COMPLETED" },
+        _count: { _all: true },
+        orderBy: { _count: { serviceId: "desc" } },
+        take: 3,
+      }),
+      prisma.clientQuestionnaire.findFirst({
+        where: { tenantId, clientId: id },
+        orderBy: { createdAt: "desc" },
+        select: { sentAt: true, completedAt: true },
+      }),
+    ]);
+
+  const stats = statsMap.get(id) ?? { visits: 0, totalSpent: 0, lastVisit: null };
+  const favoriteServices = favorites.length
+    ? await prisma.service.findMany({
+        where: { tenantId, id: { in: favorites.map((favorite) => favorite.serviceId) } },
+        select: { id: true, name: true },
+      })
+    : [];
+  const favoriteNames = favorites
+    .map((favorite) => favoriteServices.find((service) => service.id === favorite.serviceId)?.name)
+    .filter((name): name is string => Boolean(name));
+
+  const daysSinceLastVisit = stats.lastVisit
+    ? Math.floor((now.getTime() - stats.lastVisit.getTime()) / 86_400_000)
+    : null;
+
+  const questionnaireStatus = questionnaire
+    ? questionnaire.completedAt
+      ? "completed"
+      : "sent"
+    : "none";
+  const questionnaireDate = questionnaire?.completedAt ?? questionnaire?.sentAt ?? null;
+
+  const hasMedicalInfo = Boolean(client.allergies || client.healthNotes);
 
   return (
-    <div className="space-y-6">
-      <ClientDetailHeader client={client} />
+    <div className="mx-auto max-w-5xl space-y-6">
+      <ClientDetailHeader client={client} visits={stats.visits} totalSpent={stats.totalSpent} />
 
       <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Anagrafica & contatti</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div>
-              <span className="text-muted-foreground">Nome completo: </span>
-              {client.firstName} {client.lastName}
+        <Panel title="Stato visite" icon={Clock}>
+          <dl className="space-y-3 p-5 text-sm">
+            <div className="flex justify-between gap-3 border-b border-mint-border/60 pb-3">
+              <dt className="text-muted-foreground">Ultima visita</dt>
+              <dd className="text-right font-semibold">
+                {stats.lastVisit
+                  ? `${dateFormatter.format(stats.lastVisit)} (${daysSinceLastVisit} gg fa)`
+                  : "Nessuna ancora"}
+              </dd>
             </div>
-            <div>
-              <span className="text-muted-foreground">Telefono: </span>
-              {client.phone}
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">Prossimo appuntamento</dt>
+              <dd className="text-right font-semibold text-mint-ink">
+                {nextAppointment
+                  ? `${dateTimeFormatter.format(nextAppointment.startTime)} · ${nextAppointment.service.name}`
+                  : "Non programmato"}
+              </dd>
             </div>
-            <div>
-              <span className="text-muted-foreground">Email: </span>
-              {client.email ?? "-"}
-            </div>
-            <div>
-              <span className="text-muted-foreground">Data di nascita: </span>
-              {client.dateOfBirth
-                ? dateFormatter.format(new Date(`${client.dateOfBirth}T12:00:00`))
-                : "-"}
-            </div>
-            <div>
-              <span className="text-muted-foreground">Codice fiscale: </span>
-              {client.taxCode ?? "-"}
-            </div>
-            <div>
-              <span className="text-muted-foreground">Note interne: </span>
-              {client.notes ?? "-"}
-            </div>
-            <div>
-              <span className="text-muted-foreground">Cliente dal: </span>
-              {dateFormatter.format(client.createdAt)}
-            </div>
-          </CardContent>
-        </Card>
+          </dl>
+        </Panel>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Ultimo trattamento</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm">
-            {lastAppointment ? (
-              <div className="space-y-2">
-                <div>
-                  <span className="text-muted-foreground">Data: </span>
-                  {dateTimeFormatter.format(lastAppointment.startTime)}
+        <Panel title="Trattamenti preferiti" icon={Sparkles}>
+          <div className="space-y-3 p-5">
+            {favoriteNames.length === 0 && client.interests.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Compariranno dopo i primi trattamenti o dal questionario.
+              </p>
+            ) : null}
+            {favoriteNames.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {favoriteNames.map((name) => (
+                  <Pill key={name}>{name}</Pill>
+                ))}
+              </div>
+            ) : null}
+            {client.interests.length > 0 ? (
+              <div>
+                <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Interessata a
                 </div>
-                <div>
-                  <span className="text-muted-foreground">Trattamento: </span>
-                  {lastAppointment.service.name}
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Operatore: </span>
-                  {lastAppointment.operator
-                    ? `${lastAppointment.operator.firstName} ${lastAppointment.operator.lastName}`
-                    : "-"}
+                <div className="flex flex-wrap gap-2">
+                  {client.interests.map((name) => (
+                    <Pill key={name} tone="slate">
+                      {name}
+                    </Pill>
+                  ))}
                 </div>
               </div>
-            ) : (
-              <p className="text-muted-foreground">Nessun trattamento svolto finora.</p>
-            )}
-          </CardContent>
-        </Card>
+            ) : null}
+          </div>
+        </Panel>
 
         <ClientConsentsCard
           clientId={client.id}
@@ -156,39 +185,73 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
           consents={consents}
         />
 
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle>Storico appuntamenti</CardTitle>
-            <CardDescription>Appuntamenti passati e futuri del cliente.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {appointments.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nessun appuntamento registrato.</p>
-            ) : (
-              <ul className="divide-y">
-                {appointments.map((appointment) => (
-                  <li
-                    key={appointment.id}
-                    className="flex items-center justify-between gap-4 py-3 text-sm"
-                  >
-                    <div>
-                      <div className="font-medium">{appointment.service.name}</div>
-                      <div className="text-muted-foreground">
-                        {dateTimeFormatter.format(appointment.startTime)}
-                        {appointment.operator
-                          ? ` — ${appointment.operator.firstName} ${appointment.operator.lastName}`
-                          : ""}
-                      </div>
+        <QuestionnaireCard
+          clientId={client.id}
+          status={questionnaireStatus}
+          date={questionnaireDate}
+        />
+
+        <section className="rounded-2xl border border-amber-200 bg-amber-soft p-5">
+          <h2 className="flex items-center gap-2 font-sans text-sm font-semibold text-amber-ink">
+            <AlertCircle className="size-4" />
+            Note personali cabina
+          </h2>
+          <div className="mt-2 space-y-2 text-sm text-amber-ink">
+            {client.notes ? <p>{client.notes}</p> : null}
+            {client.allergies ? (
+              <p>
+                <strong>Allergie:</strong> {client.allergies}
+              </p>
+            ) : null}
+            {client.healthNotes ? (
+              <p>
+                <strong>Pelle e salute:</strong> {client.healthNotes}
+              </p>
+            ) : null}
+            {!client.notes && !hasMedicalInfo ? (
+              <p className="opacity-75">
+                Nessuna nota. Aggiungi preferenze e attenzioni dalla scheda, oppure invia il
+                questionario.
+              </p>
+            ) : null}
+            {client.acquisitionSource ? (
+              <p className="opacity-75">Ci ha conosciuto tramite: {client.acquisitionSource}</p>
+            ) : null}
+          </div>
+        </section>
+
+        <Panel title="Storico appuntamenti" className="md:col-span-2">
+          {appointments.length === 0 ? (
+            <EmptyState>Nessun appuntamento registrato.</EmptyState>
+          ) : (
+            <ul className="divide-y divide-mint-border/60">
+              {appointments.map((appointment) => (
+                <li
+                  key={appointment.id}
+                  className="flex items-center justify-between gap-4 px-5 py-3 text-sm"
+                >
+                  <div className="min-w-0">
+                    <div className="font-semibold">{appointment.service.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {dateTimeFormatter.format(appointment.startTime)}
+                      {appointment.operator ? ` — ${appointment.operator.firstName}` : ""}
                     </div>
-                    <Badge variant={statusVariants[appointment.status]}>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-semibold">
+                      {formatEuro(
+                        (appointment.payment?.amount ?? appointment.service.price).toNumber()
+                      )}
+                    </span>
+                    <Pill tone={statusTones[appointment.status]}>
                       {statusLabels[appointment.status]}
-                    </Badge>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+                    </Pill>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
       </div>
     </div>
   );
