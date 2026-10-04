@@ -188,6 +188,7 @@ export function CalendarManager({
             <OperatorsGrid
               appointments={appointments}
               operators={operators}
+              date={currentDate}
               onAppointmentClick={setSelectedAppointment}
               onCreate={(operatorId) => {
                 setEditingAppointment(null);

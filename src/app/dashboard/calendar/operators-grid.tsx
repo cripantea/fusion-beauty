@@ -1,6 +1,8 @@
 "use client";
 
+import { differenceInMinutes, isSameDay } from "date-fns";
 import { Plus } from "lucide-react";
+import { useEffect, useRef } from "react";
 
 import { formatEuro } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -8,7 +10,18 @@ import { cn } from "@/lib/utils";
 import type { OperatorDTO } from "./actions";
 import type { AppointmentDTO } from "./dto";
 
-const timeFormatter = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" });
+const DAY_START_HOUR = 8;
+const DAY_END_HOUR = 20;
+const HOUR_HEIGHT = 80;
+const MIN_BLOCK_MINUTES = 20;
+
+const hours = Array.from(
+  { length: DAY_END_HOUR - DAY_START_HOUR },
+  (_, i) => DAY_START_HOUR + i
+);
+
+const GRID_HEIGHT = hours.length * HOUR_HEIGHT;
+const PX_PER_MINUTE = HOUR_HEIGHT / 60;
 
 const palettes = [
   { head: "bg-emerald-100 text-emerald-900 border-emerald-200", card: "bg-emerald-50 border-emerald-200 text-emerald-950" },
@@ -18,97 +31,189 @@ const palettes = [
   { head: "bg-sky-100 text-sky-900 border-sky-200", card: "bg-sky-50 border-sky-200 text-sky-950" },
 ];
 
+const timeFormatter = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" });
+
+function getPosition(appointment: AppointmentDTO, date: Date) {
+  const gridStart = new Date(date);
+  gridStart.setHours(DAY_START_HOUR, 0, 0, 0);
+  const gridEnd = new Date(date);
+  gridEnd.setHours(DAY_END_HOUR, 0, 0, 0);
+
+  const clampedStart = appointment.startTime < gridStart ? gridStart : appointment.startTime;
+  const clampedEnd = appointment.endTime > gridEnd ? gridEnd : appointment.endTime;
+
+  const topMinutes = Math.max(differenceInMinutes(clampedStart, gridStart), 0);
+  const durationMinutes = Math.max(differenceInMinutes(clampedEnd, clampedStart), MIN_BLOCK_MINUTES);
+
+  return {
+    top: topMinutes * PX_PER_MINUTE,
+    height: durationMinutes * PX_PER_MINUTE,
+  };
+}
+
+function getCurrentTimeTop(date: Date): number | null {
+  const now = new Date();
+  if (!isSameDay(now, date)) return null;
+
+  const gridStart = new Date(date);
+  gridStart.setHours(DAY_START_HOUR, 0, 0, 0);
+  const gridEnd = new Date(date);
+  gridEnd.setHours(DAY_END_HOUR, 0, 0, 0);
+
+  if (now < gridStart || now > gridEnd) return null;
+
+  return differenceInMinutes(now, gridStart) * PX_PER_MINUTE;
+}
+
 type OperatorsGridProps = {
   appointments: AppointmentDTO[];
   operators: OperatorDTO[];
+  date: Date;
   onAppointmentClick: (appointment: AppointmentDTO) => void;
   onCreate: (operatorId: string | null) => void;
 };
 
-/** Vista del giorno con una colonna per operatrice, come nella proposta. */
 export function OperatorsGrid({
   appointments,
   operators,
+  date,
   onAppointmentClick,
   onCreate,
 }: OperatorsGridProps) {
-  const unassigned = appointments.filter((appointment) => !appointment.operator);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const unassigned = appointments.filter((a) => !a.operator);
   const columns = [
     ...operators.map((operator) => ({
       id: operator.id as string | null,
       label: operator.firstName,
-      items: appointments.filter((appointment) => appointment.operator?.id === operator.id),
+      items: appointments.filter((a) => a.operator?.id === operator.id),
     })),
     ...(unassigned.length > 0 || operators.length === 0
       ? [{ id: null, label: "Senza operatrice", items: unassigned }]
       : []),
   ];
 
+  const currentTimeTop = getCurrentTimeTop(date);
+
+  useEffect(() => {
+    if (!scrollRef.current || currentTimeTop === null) return;
+    scrollRef.current.scrollTop = Math.max(currentTimeTop - 120, 0);
+  }, [currentTimeTop]);
+
   return (
-    <div
-      className="grid gap-4"
-      style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(13rem, 1fr))`, overflowX: "auto" }}
-    >
-      {columns.map((column, index) => {
-        const palette = palettes[index % palettes.length];
-        return (
-          <div key={column.id ?? "none"} className="min-w-0 space-y-3">
-            <div
-              className={cn(
-                "rounded-full border px-3 py-1.5 text-center text-xs font-bold uppercase tracking-wider",
-                palette.head
-              )}
-            >
-              {column.label}
+    <div className="rounded-lg border" style={{ overflow: "hidden" }}>
+      <div className="flex" style={{ overflowX: "auto" }}>
+        <div className="w-14 shrink-0 border-r">
+          <div className="h-10 border-b" />
+        </div>
+        {columns.map((column, index) => {
+          const palette = palettes[index % palettes.length];
+          return (
+            <div key={column.id ?? "none"} className="min-w-[200px] flex-1 border-r last:border-r-0">
+              <div
+                className={cn(
+                  "flex h-10 items-center justify-center border-b text-xs font-bold uppercase tracking-wider",
+                  palette.head
+                )}
+              >
+                {column.label}
+              </div>
             </div>
-            {column.items.map((appointment) => {
-              const cancelled = appointment.status === "CANCELLED" || appointment.status === "NO_SHOW";
-              return (
-                <button
-                  key={appointment.id}
-                  type="button"
-                  onClick={() => onAppointmentClick(appointment)}
-                  className={cn(
-                    "w-full rounded-xl border p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
-                    palette.card,
-                    cancelled && "opacity-55"
-                  )}
-                >
-                  <div className="text-xs font-bold">
-                    {timeFormatter.format(appointment.startTime)} – {timeFormatter.format(appointment.endTime)}
-                  </div>
-                  <div className={cn("mt-0.5 text-sm font-semibold", cancelled && "line-through")}>
-                    {appointment.client.firstName} {appointment.client.lastName}
-                  </div>
-                  <div className="text-xs opacity-75">{appointment.service.name}</div>
-                  <div className="mt-1.5 flex items-center gap-1.5 text-[11px] font-semibold">
-                    {appointment.payment ? (
-                      <span className="rounded-full bg-white/70 px-2 py-0.5">
-                        ✓ {formatEuro(appointment.payment.amount)}
-                      </span>
-                    ) : appointment.status === "COMPLETED" ? (
-                      <span className="rounded-full bg-amber-200/80 px-2 py-0.5">Da incassare</span>
-                    ) : appointment.status === "BOOKED" ? (
-                      <span className="rounded-full bg-white/70 px-2 py-0.5">Da confermare</span>
-                    ) : null}
-                    {appointment.source === "ONLINE" ? (
-                      <span className="rounded-full bg-white/70 px-2 py-0.5">Sito</span>
-                    ) : null}
-                  </div>
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              onClick={() => onCreate(column.id)}
-              className="flex w-full items-center justify-center gap-1 rounded-xl border border-dashed border-mint-border py-2.5 text-xs font-semibold text-mint-ink transition-colors hover:bg-mint-soft"
-            >
-              <Plus className="size-3.5" />
-              Aggiungi
-            </button>
+          );
+        })}
+      </div>
+
+      <div
+        ref={scrollRef}
+        className="flex"
+        style={{ overflowY: "auto", overflowX: "auto", maxHeight: "calc(100vh - 300px)" }}
+      >
+        <div className="w-14 shrink-0 border-r">
+          <div className="relative" style={{ height: GRID_HEIGHT }}>
+            {hours.map((hour) => (
+              <div
+                key={hour}
+                className="absolute left-0 w-full -translate-y-1/2 pr-2 text-right text-xs text-muted-foreground"
+                style={{ top: (hour - DAY_START_HOUR) * HOUR_HEIGHT }}
+              >
+                {String(hour).padStart(2, "0")}:00
+              </div>
+            ))}
           </div>
-        );
-      })}
+        </div>
+
+        {columns.map((column, index) => {
+          const palette = palettes[index % palettes.length];
+          return (
+            <div key={column.id ?? "none"} className="min-w-[200px] flex-1 border-r last:border-r-0">
+              <div className="relative" style={{ height: GRID_HEIGHT }}>
+                {hours.map((hour) => (
+                  <div
+                    key={hour}
+                    className="absolute w-full border-t border-border/50"
+                    style={{ top: (hour - DAY_START_HOUR) * HOUR_HEIGHT }}
+                  />
+                ))}
+
+                {currentTimeTop !== null && (
+                  <div
+                    className="absolute inset-x-0 z-20 h-px bg-rose-500"
+                    style={{ top: currentTimeTop }}
+                  >
+                    <div className="absolute -left-1 -top-1.5 size-3 rounded-full bg-rose-500" />
+                  </div>
+                )}
+
+                {column.items.map((appointment) => {
+                  const { top, height } = getPosition(appointment, date);
+                  const cancelled =
+                    appointment.status === "CANCELLED" || appointment.status === "NO_SHOW";
+                  return (
+                    <button
+                      key={appointment.id}
+                      type="button"
+                      onClick={() => onAppointmentClick(appointment)}
+                      className={cn(
+                        "absolute inset-x-1 overflow-hidden rounded-lg border px-2 py-1 text-left text-xs shadow-sm transition hover:opacity-80",
+                        palette.card,
+                        cancelled && "opacity-55"
+                      )}
+                      style={{ top, height }}
+                    >
+                      <div className="truncate font-bold">
+                        {timeFormatter.format(appointment.startTime)} – {timeFormatter.format(appointment.endTime)}
+                      </div>
+                      <div className={cn("truncate font-semibold", cancelled && "line-through")}>
+                        {appointment.client.firstName} {appointment.client.lastName}
+                      </div>
+                      <div className="truncate opacity-75">{appointment.service.name}</div>
+                      {appointment.payment ? (
+                        <div className="mt-0.5 truncate font-semibold">
+                          ✓ {formatEuro(appointment.payment.amount)}
+                        </div>
+                      ) : appointment.status === "COMPLETED" ? (
+                        <div className="mt-0.5 text-amber-700">Da incassare</div>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="border-t p-2">
+                <button
+                  type="button"
+                  onClick={() => onCreate(column.id)}
+                  className="flex w-full items-center justify-center gap-1 rounded-xl border border-dashed border-mint-border py-2.5 text-xs font-semibold text-mint-ink transition-colors hover:bg-mint-soft"
+                >
+                  <Plus className="size-3.5" />
+                  Aggiungi
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

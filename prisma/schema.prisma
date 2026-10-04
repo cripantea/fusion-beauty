@@ -75,6 +75,7 @@ model Tenant {
   consentRecords         ConsentRecord[]
   payments               Payment[]
   questionnaires         ClientQuestionnaire[]
+  workingHours           WorkingHours[]
 
   @@map("tenants")
 }
@@ -133,6 +134,7 @@ model User {
   appointments      Appointment[]   @relation("AppointmentOperator")
   collectedConsents ConsentRecord[] @relation("ConsentCollectedBy")
   payments          Payment[]       @relation("PaymentCreatedBy")
+  workingHours      WorkingHours[]
 
   @@index([tenantId])
   @@map("users")
@@ -319,4 +321,23 @@ model ConsentRecord {
   @@index([tenantId, status])
   @@index([appointmentId])
   @@map("consent_records")
+}
+
+model WorkingHours {
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String
+  dayOfWeek  Int
+  startTime  String
+  endTime    String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dayOfWeek])
+  @@index([tenantId, userId])
+  @@map("working_hours")
 }

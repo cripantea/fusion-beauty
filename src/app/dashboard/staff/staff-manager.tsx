@@ -17,6 +17,7 @@ import {
 
 import { toggleStaffStatus, type StaffDTO } from "./actions";
 import { StaffFormDialog } from "./staff-form-dialog";
+import { WorkingHoursDialog } from "./working-hours-dialog";
 
 const roleLabels: Record<StaffDTO["role"], string> = {
   ADMIN: "Amministratore",
@@ -33,6 +34,8 @@ export function StaffManager({ initialStaff, currentUserId }: StaffManagerProps)
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffDTO | null>(null);
   const [pendingToggleId, setPendingToggleId] = useState<string | null>(null);
+  const [workingHoursStaffId, setWorkingHoursStaffId] = useState<string | null>(null);
+  const [workingHoursStaffName, setWorkingHoursStaffName] = useState("");
   const [, startTransition] = useTransition();
 
   function openCreateDialog() {
@@ -124,6 +127,16 @@ export function StaffManager({ initialStaff, currentUserId }: StaffManagerProps)
                     <Button
                       variant="outline"
                       size="sm"
+                      onClick={() => {
+                        setWorkingHoursStaffId(member.id);
+                        setWorkingHoursStaffName(`${member.firstName} ${member.lastName}`);
+                      }}
+                    >
+                      Orari
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       disabled={pendingToggleId === member.id || member.id === currentUserId}
                       onClick={() => handleToggle(member)}
                     >
@@ -149,6 +162,12 @@ export function StaffManager({ initialStaff, currentUserId }: StaffManagerProps)
         onOpenChange={setDialogOpen}
         staff={editingStaff}
         onSuccess={upsertStaff}
+      />
+
+      <WorkingHoursDialog
+        staffId={workingHoursStaffId}
+        staffName={workingHoursStaffName}
+        onClose={() => setWorkingHoursStaffId(null)}
       />
     </div>
   );
