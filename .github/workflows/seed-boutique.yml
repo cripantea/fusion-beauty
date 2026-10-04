@@ -29,6 +29,9 @@ jobs:
             docker compose -f docker-compose.prod.yml run --rm worker npx prisma migrate deploy
 
             echo "==> Seed La Boutique del Benessere"
-            docker compose -f docker-compose.prod.yml run --rm worker npx tsx prisma/seed.boutique.ts
+            docker compose -f docker-compose.prod.yml run --rm \
+              -e ROBERTA_PASSWORD="${{ secrets.BOUTIQUE_ROBERTA_PASSWORD }}" \
+              -e GIULIA_PASSWORD="${{ secrets.BOUTIQUE_GIULIA_PASSWORD }}" \
+              worker npx tsx prisma/seed.boutique.ts
 
             echo "==> Completato"

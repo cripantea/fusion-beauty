@@ -30,8 +30,13 @@ async function main() {
     },
   });
 
-  const robertaHash = await bcrypt.hash("KFWB#hRHX!LsSC9", 10);
-  const giuliaHash = await bcrypt.hash("7THH#r2cv!rVVi9", 10);
+  const robertaPwd = process.env.ROBERTA_PASSWORD;
+  const giuliaPwd = process.env.GIULIA_PASSWORD;
+  if (!robertaPwd || !giuliaPwd) {
+    throw new Error("ROBERTA_PASSWORD e GIULIA_PASSWORD devono essere impostati come env var");
+  }
+  const robertaHash = await bcrypt.hash(robertaPwd, 10);
+  const giuliaHash = await bcrypt.hash(giuliaPwd, 10);
 
   await prisma.user.upsert({
     where: { email: "roberta@boutique.it" },
