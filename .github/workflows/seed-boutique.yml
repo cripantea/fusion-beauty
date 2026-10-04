@@ -34,4 +34,7 @@ jobs:
               -e GIULIA_PASSWORD="${{ secrets.BOUTIQUE_GIULIA_PASSWORD }}" \
               worker npx tsx prisma/seed.boutique.ts
 
+            echo "==> Import clienti da rubrica"
+            docker compose -f docker-compose.prod.yml run --rm worker npx tsx prisma/seed.boutique.clients.ts
+
             echo "==> Completato"
