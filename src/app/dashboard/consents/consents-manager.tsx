@@ -24,6 +24,7 @@ import {
   ConsentTemplateFormDialog,
   type ServiceOption,
 } from "./consent-template-form-dialog";
+import { PrintConsentDialog } from "./print-consent-dialog";
 import { consentTypeLabels } from "./schema";
 
 type ConsentsManagerProps = {
@@ -36,6 +37,7 @@ export function ConsentsManager({ initialTemplates, services }: ConsentsManagerP
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ConsentTemplateDTO | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [printTemplate, setPrintTemplate] = useState<ConsentTemplateDTO | null>(null);
   const [, startTransition] = useTransition();
 
   function openCreateDialog() {
@@ -142,6 +144,13 @@ export function ConsentsManager({ initialTemplates, services }: ConsentsManagerP
                     <Button
                       variant="outline"
                       size="sm"
+                      onClick={() => setPrintTemplate(template)}
+                    >
+                      Stampa per cliente
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       disabled={pendingId === template.id}
                       onClick={() => handleToggle(template)}
                     >
@@ -176,6 +185,13 @@ export function ConsentsManager({ initialTemplates, services }: ConsentsManagerP
         template={editingTemplate}
         services={services}
         onSuccess={upsertTemplate}
+      />
+
+      <PrintConsentDialog
+        open={printTemplate !== null}
+        onOpenChange={(open) => { if (!open) setPrintTemplate(null); }}
+        templateId={printTemplate?.id ?? ""}
+        templateTitle={printTemplate?.title ?? ""}
       />
     </div>
   );

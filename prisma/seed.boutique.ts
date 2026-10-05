@@ -124,6 +124,56 @@ async function main() {
     await upsertService(tenant.id, service);
   }
 
+  // Consenso informato Laser 808
+  const laser808Body = `DICHIARO
+
+Che attraverso questo documento RICHIEDO ED AUTORIZZO il personale de La Boutique del Benessere ad effettuare sulla mia persona il trattamento di epilazione con LASER, che si dettaglia come segue:
+
+BREVE SPIEGAZIONE DEL TRATTAMENTO
+La Boutique del Benessere utilizza un apparato laser impulsato, progettato e costruito per l'impiego nel settore estetico e opportunamente defocalizzato esclusivamente per i trattamenti di depilazione. L'interazione laser-bulbo pilifero è essenzialmente termica. Il processo, noto come "fototermolisi selettiva", richiede un certo numero di sedute (tipicamente all'incirca 10).
+
+CONTROINDICAZIONI
+Possono includere: pace-maker, patologie cardiache, patologie della pelle, epilessia, asma, trattamenti medici fotosensibilizzanti, gravidanza o allattamento, diabete, processi maligni, recente esposizione solare, uso di farmaci fotosensibilizzanti. Inoltre sono stato informato che devo comunicare al personale del Centro il consumo di qualunque sostanza farmacologica ed il cambiamento del mio stato basale (gravidanza, malattie, allergie...). E' sconsigliato, ugualmente, sulla pelle molto abbronzata o che si stia per sottoporre ai raggi UVA, presenza di tatuaggi, nevi in rilievo, aumentando in questo caso il rischio di bruciature. Nel caso di trattamento al seno: allattamento, mastopatia fibrocistica, noduli, protesi.
+
+Normalmente il trattamento non è doloroso e non presenta complicazioni, però comprendo la possibilità di "effetti secondari" che si producono raramente, come la comparsa di zone di Ipo ed Iper pigmentazione temporanea, bruciature superficiali temporanee, arrossamenti, cicatrici ed eruzioni acneiformi, come conseguenza di un effetto termico passeggero.
+
+RISCHI INERENTI IL CLIENTE E LE SUE CIRCOSTANZE PERSONALI
+Sono stato informato che dopo il trattamento è normale che la zona presenti un eritema od un edema, di solito leggero, o una piccola vescicola intradermica. Nella norma questi effetti durano solo poche ore anche se in alcuni casi possono essere più persistenti. Soprattutto il rischio è maggiore per le pelli scure o che sono state esposte al sole recentemente, in quanto la presenza di melanina è maggiore. Inoltre può presentarsi un cambio di pigmentazione (ipo o iper) che in generale è transitorio, e che trattato adeguatamente sparisce in poco tempo.
+
+CONFERMO
+Che il trattamento menzionato, mi è stato spiegato a fondo, da un professionista (operatore estetico) con parole comprensibili per me, i rischi che presenta, gli effetti indesiderati, i rischi caratteristici della mia persona, così come i disturbi o eventuali sensazioni fastidiose che occasionalmente potrei sentire. Inoltre mi sono state spiegate altre opzioni di depilazione esistenti che sono disponibili sul mercato con pro e contro delle stesse. In considerazione di quanto esposto scelgo il procedimento di epilazione LASER spiegatomi come trattamento non invasivo per l'epilazione.
+
+MI IMPEGNO
+A seguire fedelmente, o al meglio delle mie possibilità, le istruzioni del personale prima, durante e dopo il trattamento di epilazione LASER menzionato. Inoltre mi impegno ad indossare gli occhiali protettivi durante tutto il trattamento, applicare il prodotto fotoprotettivo come raccomandato dal centro, e specialmente ad evitare l'esposizione delle zone trattate al sole o a raggi UVA per un periodo di 2/4 settimane prima e dopo il trattamento, al fine di non favorire l'insorgere degli "effetti secondari" precedentemente descritti.
+
+IN FEDE dichiaro di non avere omesso o alterato i dati relativi alla mia storia clinica personale, e specialmente ciò che concerne le allergie, le malattie od i rischi personali.
+
+AUTORIZZO - Il personale del Centro ad effettuare delle fotografie della zona trattata per uso interno e che non costituiscono nessuna violazione alla mia privacy.
+
+RICONOSCO - Che i risultati ottenibili con questo trattamento non sono miracolosi, e che la sperimentazione effettuata in campo applicativo di questa tecnica, consegue un risultato del 90% dell'esito, e che esiste una casistica del 10% dei soggetti trattati che, per motivi non ben conosciuti, non consegue una riduzione superiore all'80%.
+
+COMPRENDO - che il risultato potrebbe non essere quello da me sperato e riconosco che non mi sono state date garanzie in merito.
+
+AUTORIZZO - che i miei dati vengano trattati in modo automatizzato.
+
+Mi hanno informato inoltre della mia possibilità di recesso da questo consenso. Mi sono stati chiariti tutti i dubbi circa quanto sopradescritto, e sono totalmente d'accordo con questa scrittura di CONSENSO, sottoscrivendone tutti i suoi punti ed autorizzando con la mia firma che il trattamento LASER si realizzi.`;
+
+  const existingConsent = await prisma.consentTemplate.findFirst({
+    where: { tenantId: tenant.id, title: "Consenso informato — Epilazione Laser 808nm" },
+  });
+  if (!existingConsent) {
+    await prisma.consentTemplate.create({
+      data: {
+        tenantId: tenant.id,
+        type: "TREATMENT",
+        title: "Consenso informato — Epilazione Laser 808nm",
+        body: laser808Body,
+        version: 1,
+        isActive: true,
+      },
+    });
+  }
+
   console.log(`✅ La Boutique del Benessere (slug: boutique-del-benessere) — ${services.length} servizi`);
   console.log("   roberta@boutique.it  →  ADMIN");
   console.log("   giulia@boutique.it   →  OPERATOR");

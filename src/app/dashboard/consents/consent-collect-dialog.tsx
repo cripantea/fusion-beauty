@@ -1,5 +1,6 @@
 "use client";
 
+import { MessageCircle } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -26,6 +27,7 @@ import { SignaturePad } from "@/components/signature-pad";
 
 import {
   collectConsent,
+  createConsentLink,
   getCollectableTemplates,
   type CollectableTemplateDTO,
 } from "./collect-actions";
@@ -69,6 +71,7 @@ function ConsentCollectBody({
   const [anamnesis, setAnamnesis] = useState("");
   const [signatureKey, setSignatureKey] = useState(0);
   const [isPending, startTransition] = useTransition();
+  const [isWhatsAppPending, startWhatsAppTransition] = useTransition();
 
   const appointmentId = appointment?.id;
   const serviceId = appointment?.serviceId;
@@ -126,6 +129,33 @@ function ConsentCollectBody({
     });
   }
 
+  function handleWhatsApp() {
+    if (!selected) return;
+
+    startWhatsAppTransition(async () => {
+      const result = await createConsentLink({ templateId: selected.id, clientId });
+
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+
+      const { url, phone } = result;
+
+      if (phone && phone.startsWith("+")) {
+        const digits = phone.replace(/\D/g, "").replace(/^0/, "");
+        const text = encodeURIComponent(
+          `Ciao! Ti inviamo il consenso informato da firmare prima del trattamento:\n${url}`
+        );
+        window.open(`https://wa.me/${digits}?text=${text}`, "_blank");
+        toast.success("Link WhatsApp generato");
+      } else {
+        await navigator.clipboard.writeText(url);
+        toast.success("Link copiato negli appunti");
+      }
+    });
+  }
+
   return (
     <>
         <DialogHeader>
@@ -146,24 +176,39 @@ function ConsentCollectBody({
           <div className="min-w-0 space-y-4">
             <div className="space-y-2">
               <Label>Modello</Label>
-              <Select value={templateId} onValueChange={(value) => handleTemplateChange(value ?? "")}>
-                <SelectTrigger className="w-full">
-                  <SelectValue>
-                    {(value: string) => {
-                      const template = templates.find((item) => item.id === value);
-                      return template ? template.title : "";
-                    }}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {templates.map((template) => (
-                    <SelectItem key={template.id} value={template.id}>
-                      {template.title}
-                      {template.alreadySigned ? " (già firmato)" : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Select value={templateId} onValueChange={(value) => handleTemplateChange(value ?? "")}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue>
+                      {(value: string) => {
+                        const template = templates.find((item) => item.id === value);
+                        return template ? template.title : "";
+                      }}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templates.map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.title}
+                        {template.alreadySigned ? " (già firmato)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selected ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isWhatsAppPending}
+                    onClick={handleWhatsApp}
+                    className="shrink-0 gap-1.5"
+                  >
+                    <MessageCircle className="size-4" />
+                    Invia link WhatsApp
+                  </Button>
+                ) : null}
+              </div>
             </div>
 
             {selected ? (

@@ -304,6 +304,7 @@ model ConsentRecord {
   // SHA-256 del PDF generato, per verificarne l'integrità.
   documentHash String?
 
+  token     String?   @unique
   ipAddress String?
   userAgent String?   @db.Text
   signedAt  DateTime?

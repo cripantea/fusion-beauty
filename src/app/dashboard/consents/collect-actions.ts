@@ -226,6 +226,74 @@ export async function collectConsent(values: CollectConsentValues): Promise<Coll
   return { success: true };
 }
 
+export type ClientSelectItem = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+};
+
+export async function getClientsForSelect(): Promise<ClientSelectItem[]> {
+  const { tenantId } = await getTenantContext();
+  return prisma.client.findMany({
+    where: { tenantId },
+    select: { id: true, firstName: true, lastName: true, phone: true },
+    orderBy: { lastName: "asc" },
+    take: 500,
+  });
+}
+
+export type CreateConsentLinkResult =
+  | { success: true; url: string; phone: string | null }
+  | { success: false; error: string };
+
+export async function createConsentLink(input: {
+  templateId: string;
+  clientId: string;
+}): Promise<CreateConsentLinkResult> {
+  const { tenantId } = await getTenantContext();
+
+  const [template, client] = await Promise.all([
+    prisma.consentTemplate.findFirst({
+      where: { id: input.templateId, tenantId },
+      select: { id: true },
+    }),
+    prisma.client.findFirst({
+      where: { id: input.clientId, tenantId },
+      select: { id: true, phone: true },
+    }),
+  ]);
+
+  if (!template) {
+    return { success: false, error: "Modello non trovato." };
+  }
+  if (!client) {
+    return { success: false, error: "Cliente non trovata." };
+  }
+
+  const token = randomUUID();
+  const template2 = await prisma.consentTemplate.findUniqueOrThrow({
+    where: { id: input.templateId },
+    select: { title: true, body: true, version: true },
+  });
+
+  await prisma.consentRecord.create({
+    data: {
+      tenantId,
+      clientId: client.id,
+      templateId: template.id,
+      status: "PENDING",
+      token,
+      templateVersion: template2.version,
+      titleSnapshot: template2.title,
+      bodySnapshot: template2.body,
+    },
+  });
+
+  const base = process.env.APP_BASE_URL ?? "";
+  return { success: true, url: `${base}/c/${token}`, phone: client.phone };
+}
+
 export type RevokeConsentResult = { success: true } | { success: false; error: string };
 
 /**

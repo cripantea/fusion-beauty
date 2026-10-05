@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Link2,
   Scissors,
+  Settings,
   ShieldCheck,
   Sparkles,
   UserRoundCheck,
@@ -59,9 +60,14 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Centro",
+    label: "Servizi",
     items: [
       { href: "/dashboard/services", label: "Trattamenti", icon: Scissors },
+    ],
+  },
+  {
+    label: "Impostazioni",
+    items: [
       { href: "/dashboard/widget", label: "Widget prenotazione", icon: Wand2 },
       { href: "/dashboard/integrations/calendar", label: "Integrazioni", icon: Link2 },
     ],
@@ -94,7 +100,7 @@ export function DashboardSidebar({
 
   const groups: NavGroup[] = hasTenant
     ? NAV_GROUPS.map((group) =>
-        group.label === "Centro" && isAdmin
+        group.label === "Impostazioni" && isAdmin
           ? { ...group, items: [...group.items, ...ADMIN_ITEMS] }
           : group
       )
@@ -150,7 +156,8 @@ export function DashboardSidebar({
       <nav className="flex flex-1 flex-col gap-5 overflow-y-auto px-3 py-5">
         {groups.map((group) => (
           <div key={group.label}>
-            <div className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+            <div className="mb-1.5 flex items-center gap-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+              {group.label === "Impostazioni" ? <Settings className="size-3" /> : null}
               {group.label}
             </div>
             <div className="flex flex-col gap-0.5">
