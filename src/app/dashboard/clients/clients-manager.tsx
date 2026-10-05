@@ -52,14 +52,14 @@ export function ClientsManager({ initialClients, tenantSlug }: ClientsManagerPro
   const inactiveCount = clients.filter((client) => client.isInactive).length;
   const visible = filter === "inactive" ? clients.filter((client) => client.isInactive) : clients;
 
-  const bookingUrl = tenantSlug
-    ? (typeof window !== "undefined" ? window.location.origin : "https://beauty.fusionsoft.it") + `/embed/${tenantSlug}`
+  const registerUrl = tenantSlug
+    ? (typeof window !== "undefined" ? window.location.origin : "https://beauty.fusionsoft.it") + `/registra/${tenantSlug}`
     : null;
 
-  function copyBookingLink() {
-    if (!bookingUrl) return;
+  function copyRegisterLink() {
+    if (!registerUrl) return;
     navigator.clipboard
-      .writeText(bookingUrl)
+      .writeText(registerUrl)
       .then(() => toast.success("Link copiato negli appunti."))
       .catch(() => toast.error("Impossibile copiare il link."));
   }
@@ -72,15 +72,15 @@ export function ClientsManager({ initialClients, tenantSlug }: ClientsManagerPro
         description="Quando una cliente torna, sai subito cosa ha fatto e cosa le serve."
         actions={
           <div className="flex items-center gap-2">
-            {bookingUrl && (
+            {registerUrl && (
               <div className="hidden items-center gap-1.5 rounded-xl border border-mint-border bg-mint-soft px-3 py-2 text-xs font-medium text-forest sm:flex">
                 <ExternalLink className="size-3.5 shrink-0" />
-                <span className="max-w-[180px] truncate font-mono text-[11px]">{bookingUrl.replace("https://", "")}</span>
+                <span className="max-w-[180px] truncate font-mono text-[11px]">{registerUrl.replace("https://", "")}</span>
                 <button
                   type="button"
-                  onClick={copyBookingLink}
+                  onClick={copyRegisterLink}
                   className="ml-1 rounded p-0.5 hover:bg-mint-border/60 transition-colors"
-                  title="Copia link"
+                  title="Copia link registrazione"
                 >
                   <Copy className="size-3.5" />
                 </button>
