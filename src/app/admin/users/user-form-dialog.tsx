@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useTransition } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -62,7 +62,7 @@ export function UserFormDialog({
     resolver: zodResolver(userFormSchema),
     defaultValues: userFormDefaultValues,
   });
-  const selectedRole = form.watch("role");
+  const selectedRole = useWatch({ control: form.control, name: "role" });
 
   useEffect(() => {
     if (!open) return;

@@ -50,17 +50,13 @@ export function WorkingHoursDialog({ staffId, staffName, onClose }: WorkingHours
   useEffect(() => {
     if (!staffId) return;
 
-    setRows(buildDefaults());
-
     startTransition(async () => {
       const saved = await getWorkingHours(staffId);
-      if (saved.length === 0) return;
-
-      setRows((defaults) =>
-        defaults.map((def) => {
-          const match = saved.find((s) => s.dayOfWeek === def.dayOfWeek);
-          return match ?? def;
-        })
+      const defaults = buildDefaults();
+      setRows(
+        saved.length === 0
+          ? defaults
+          : defaults.map((def) => saved.find((s) => s.dayOfWeek === def.dayOfWeek) ?? def)
       );
     });
   }, [staffId]);
