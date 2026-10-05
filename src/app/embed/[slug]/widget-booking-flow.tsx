@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format, isBefore, startOfDay } from "date-fns";
 import { it } from "date-fns/locale";
+import { Check } from "lucide-react";
 import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -60,6 +61,51 @@ type WidgetBookingFlowProps = {
   services: PublicServiceDTO[];
 };
 
+const STEPS: Step[] = ["service", "datetime", "contact"];
+
+function StepBar({ step }: { step: Step }) {
+  const current = STEPS.indexOf(step) + 1;
+  const labels = ["Trattamento", "Data e ora", "I tuoi dati"];
+  return (
+    <div className="flex items-center gap-0">
+      {labels.map((label, i) => {
+        const done = i + 1 < current;
+        const active = i + 1 === current;
+        return (
+          <div key={label} className="flex flex-1 flex-col items-center">
+            <div className="flex w-full items-center">
+              {i > 0 && (
+                <div className={`h-0.5 flex-1 ${done ? "bg-primary" : "bg-border"}`} />
+              )}
+              <div
+                className={`flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                  done
+                    ? "bg-primary text-primary-foreground"
+                    : active
+                      ? "bg-primary text-primary-foreground ring-4 ring-primary/20"
+                      : "border-2 border-border text-muted-foreground"
+                }`}
+              >
+                {done ? <Check className="size-3.5" /> : i + 1}
+              </div>
+              {i < labels.length - 1 && (
+                <div className={`h-0.5 flex-1 ${i + 1 < current ? "bg-primary" : "bg-border"}`} />
+              )}
+            </div>
+            <span
+              className={`mt-1 text-[10px] font-medium ${
+                active ? "text-primary" : done ? "text-primary/70" : "text-muted-foreground"
+              }`}
+            >
+              {label}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function WidgetBookingFlow({ slug, services }: WidgetBookingFlowProps) {
   const [step, setStep] = useState<Step>("service");
   const [selectedService, setSelectedService] = useState<PublicServiceDTO | null>(null);
@@ -69,6 +115,8 @@ export function WidgetBookingFlow({ slug, services }: WidgetBookingFlowProps) {
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [confirmation, setConfirmation] = useState<BookingConfirmation | null>(null);
+  const [privacyConsent, setPrivacyConsent] = useState(false);
+  const [privacyError, setPrivacyError] = useState("");
 
   const form = useForm<ContactFormValues>({
     resolver: zodResolver(contactFormSchema),
@@ -116,6 +164,12 @@ export function WidgetBookingFlow({ slug, services }: WidgetBookingFlowProps) {
   function handleSubmitContact(values: ContactFormValues) {
     if (!selectedService || !selectedSlot) return;
 
+    if (!privacyConsent) {
+      setPrivacyError("Devi accettare il trattamento dei dati per procedere.");
+      return;
+    }
+    setPrivacyError("");
+
     startTransition(async () => {
       const result = await createPublicBooking({
         slug,
@@ -126,7 +180,6 @@ export function WidgetBookingFlow({ slug, services }: WidgetBookingFlowProps) {
 
       if (!result.success) {
         toast.error(result.error);
-        // The slot may have just been taken by someone else: refresh the list.
         fetchSlots(selectedService, selectedDate);
         setStep("datetime");
         return;
@@ -139,39 +192,43 @@ export function WidgetBookingFlow({ slug, services }: WidgetBookingFlowProps) {
 
   if (step === "success" && confirmation) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Prenotazione confermata!</CardTitle>
-          <CardDescription>
+      <Card className="border-primary/20 bg-primary/5">
+        <CardHeader className="text-center pb-2">
+          <div className="mx-auto mb-3 flex size-14 items-center justify-center rounded-full bg-primary/10">
+            <Check className="size-7 text-primary" />
+          </div>
+          <CardTitle className="text-xl">Prenotazione confermata!</CardTitle>
+          <CardDescription className="text-base">
             Ti aspettiamo {dateTimeFormatter.format(new Date(confirmation.startTime))}.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          <div>
-            <span className="text-muted-foreground">Trattamento: </span>
-            {confirmation.serviceName}
+        <CardContent className="space-y-2 text-sm pt-2">
+          <div className="rounded-lg border border-primary/10 bg-white p-3 space-y-1.5">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Trattamento</span>
+              <span className="font-medium">{confirmation.serviceName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Cliente</span>
+              <span className="font-medium">{confirmation.clientName}</span>
+            </div>
           </div>
-          <div>
-            <span className="text-muted-foreground">Cliente: </span>
-            {confirmation.clientName}
-          </div>
+          <p className="text-center text-xs text-muted-foreground pt-1">
+            Riceverai una conferma. A presto!
+          </p>
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <p className="text-center text-xs text-muted-foreground">
-        {step === "service" && "Passo 1 di 3 — Scegli il trattamento"}
-        {step === "datetime" && "Passo 2 di 3 — Scegli data e ora"}
-        {step === "contact" && "Passo 3 di 3 — I tuoi dati"}
-      </p>
+    <div className="space-y-5">
+      {step !== "success" && <StepBar step={step} />}
 
       {step === "service" ? (
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {services.length === 0 ? (
-            <p className="text-center text-sm text-muted-foreground">
+            <p className="text-center text-sm text-muted-foreground py-8">
               Nessun trattamento disponibile per la prenotazione online al momento.
             </p>
           ) : (
@@ -184,19 +241,17 @@ export function WidgetBookingFlow({ slug, services }: WidgetBookingFlowProps) {
                 onKeyDown={(event) => {
                   if (event.key === "Enter") handleSelectService(service);
                 }}
-                className="cursor-pointer transition-colors hover:border-primary"
+                className="cursor-pointer transition-all hover:border-primary hover:shadow-sm active:scale-[0.99]"
               >
-                <CardHeader>
+                <CardHeader className="pb-1">
                   <CardTitle className="text-base">{service.name}</CardTitle>
                   {service.description ? (
                     <CardDescription>{service.description}</CardDescription>
                   ) : null}
                 </CardHeader>
-                <CardContent className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">
-                    {service.durationMinutes} min
-                  </span>
-                  <span className="font-medium">
+                <CardContent className="flex items-center justify-between text-sm pt-0">
+                  <span className="text-muted-foreground">{service.durationMinutes} min</span>
+                  <span className="font-semibold text-primary">
                     {currencyFormatter.format(service.price)}
                   </span>
                 </CardContent>
@@ -211,17 +266,16 @@ export function WidgetBookingFlow({ slug, services }: WidgetBookingFlowProps) {
           <button
             type="button"
             onClick={() => setStep("service")}
-            className="text-sm text-muted-foreground hover:underline"
+            className="text-sm text-muted-foreground hover:text-foreground hover:underline transition-colors"
           >
             ← Cambia trattamento
           </button>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="pb-2">
               <CardTitle className="text-base">{selectedService.name}</CardTitle>
               <CardDescription>
-                {selectedService.durationMinutes} min ·{" "}
-                {currencyFormatter.format(selectedService.price)}
+                {selectedService.durationMinutes} min · {currencyFormatter.format(selectedService.price)}
               </CardDescription>
             </CardHeader>
             <CardContent className="flex justify-center">
@@ -237,11 +291,11 @@ export function WidgetBookingFlow({ slug, services }: WidgetBookingFlowProps) {
 
           <div className="space-y-2">
             {slotsLoading ? (
-              <p className="text-center text-sm text-muted-foreground">
+              <p className="text-center text-sm text-muted-foreground py-4">
                 Caricamento orari disponibili...
               </p>
             ) : slots.length === 0 ? (
-              <p className="text-center text-sm text-muted-foreground">
+              <p className="text-center text-sm text-muted-foreground py-4">
                 Nessun orario disponibile per questa data. Prova un&apos;altra data.
               </p>
             ) : (
@@ -268,19 +322,20 @@ export function WidgetBookingFlow({ slug, services }: WidgetBookingFlowProps) {
           <button
             type="button"
             onClick={() => setStep("datetime")}
-            className="text-sm text-muted-foreground hover:underline"
+            className="text-sm text-muted-foreground hover:text-foreground hover:underline transition-colors"
           >
             ← Cambia data/ora
           </button>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Riepilogo</CardTitle>
-              <CardDescription>
-                {selectedService.name} —{" "}
-                {dateTimeFormatter.format(new Date(selectedSlot))}
-              </CardDescription>
-            </CardHeader>
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="pt-4 pb-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">{selectedService.name}</span>
+                <span className="text-muted-foreground">
+                  {dateTimeFormatter.format(new Date(selectedSlot))}
+                </span>
+              </div>
+            </CardContent>
           </Card>
 
           <Form {...form}>
@@ -291,7 +346,7 @@ export function WidgetBookingFlow({ slug, services }: WidgetBookingFlowProps) {
                   name="firstName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Nome</FormLabel>
+                      <FormLabel>Nome *</FormLabel>
                       <FormControl>
                         <Input placeholder="Maria" {...field} />
                       </FormControl>
@@ -304,9 +359,9 @@ export function WidgetBookingFlow({ slug, services }: WidgetBookingFlowProps) {
                   name="lastName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Cognome</FormLabel>
+                      <FormLabel>Cognome *</FormLabel>
                       <FormControl>
-                        <Input placeholder="Verdi" {...field} />
+                        <Input placeholder="Rossi" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -318,7 +373,7 @@ export function WidgetBookingFlow({ slug, services }: WidgetBookingFlowProps) {
                 name="phone"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Telefono</FormLabel>
+                    <FormLabel>Telefono *</FormLabel>
                     <FormControl>
                       <Input placeholder="+39 333 1234567" {...field} />
                     </FormControl>
@@ -331,7 +386,7 @@ export function WidgetBookingFlow({ slug, services }: WidgetBookingFlowProps) {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email (facoltativa)</FormLabel>
+                    <FormLabel>Email <span className="text-muted-foreground font-normal">(facoltativa)</span></FormLabel>
                     <FormControl>
                       <Input type="email" placeholder="maria@esempio.it" {...field} />
                     </FormControl>
@@ -344,17 +399,45 @@ export function WidgetBookingFlow({ slug, services }: WidgetBookingFlowProps) {
                 name="notes"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Note (facoltative)</FormLabel>
+                    <FormLabel>Note <span className="text-muted-foreground font-normal">(facoltative)</span></FormLabel>
                     <FormControl>
-                      <Textarea placeholder="Richieste particolari..." {...field} />
+                      <Textarea placeholder="Richieste particolari, allergie, preferenze..." rows={2} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full" disabled={isPending}>
+
+              {/* Privacy consent */}
+              <div className="rounded-xl border border-border bg-secondary/30 p-4 space-y-2">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <div className="mt-0.5 shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={privacyConsent}
+                      onChange={(e) => {
+                        setPrivacyConsent(e.target.checked);
+                        if (e.target.checked) setPrivacyError("");
+                      }}
+                      className="size-4 rounded border-border accent-primary cursor-pointer"
+                    />
+                  </div>
+                  <span className="text-sm text-foreground/80 leading-snug">
+                    Acconsento al trattamento dei miei dati personali ai sensi del Regolamento UE 2016/679 (GDPR) per la gestione della prenotazione e la comunicazione con il centro.{" "}
+                    <span className="text-muted-foreground">*</span>
+                  </span>
+                </label>
+                {privacyError && (
+                  <p className="text-sm text-destructive pl-7">{privacyError}</p>
+                )}
+              </div>
+
+              <Button type="submit" className="w-full h-11 text-base font-semibold" disabled={isPending}>
                 {isPending ? "Conferma in corso..." : "Conferma prenotazione"}
               </Button>
+              <p className="text-center text-xs text-muted-foreground">
+                I tuoi dati vengono trattati esclusivamente per la gestione della prenotazione.
+              </p>
             </form>
           </Form>
         </div>
