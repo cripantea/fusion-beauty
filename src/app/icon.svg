@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <!-- Rose rounded square -->
-  <rect width="32" height="32" rx="7" fill="#C06070"/>
+  <!-- Forest green rounded square -->
+  <rect width="32" height="32" rx="7" fill="#2B6154"/>
   <!-- Dual-flame (FusionWA style) scaled to fit: translate(7,3.5) scale(0.295) over viewBox 0 0 62 78 -->
   <g transform="translate(7,3.5) scale(0.295)" fill="white">
     <!-- Left flame -->

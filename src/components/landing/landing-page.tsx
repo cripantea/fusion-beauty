@@ -117,7 +117,7 @@ function MockDashboard() {
     { time: "14:00", name: "Anna Russo", service: "Ricostruzione unghie", price: "€55", status: "Prenotato", statusColor: "bg-zinc-100 text-zinc-600" },
   ];
   return (
-    <div className="p-4 space-y-4 bg-[oklch(0.987_0.005_80)]" style={{ fontSize: "12px" }}>
+    <div className="p-4 space-y-4 bg-background" style={{ fontSize: "12px" }}>
       <div className="grid grid-cols-4 gap-2">
         {kpis.map((k) => (
           <div key={k.label} className={cn("bg-white rounded-lg border p-2.5", k.border ?? "border-zinc-200")}>
@@ -142,7 +142,7 @@ function MockDashboard() {
           </thead>
           <tbody>
             {appointments.map((a) => (
-              <tr key={a.time} className="border-b border-zinc-50 hover:bg-zinc-50/50">
+              <tr key={a.time} className="border-b border-zinc-50 hover:bg-secondary/40">
                 <td className="px-3 py-1.5 font-medium text-zinc-800">{a.time}</td>
                 <td className="px-3 py-1.5 text-primary font-medium">{a.name}</td>
                 <td className="px-3 py-1.5 text-zinc-700">{a.service}</td>
@@ -161,7 +161,7 @@ function MockDashboard() {
 
 function MockClientCard() {
   return (
-    <div className="p-4 space-y-3 bg-[oklch(0.987_0.005_80)]" style={{ fontSize: "12px" }}>
+    <div className="p-4 space-y-3 bg-background" style={{ fontSize: "12px" }}>
       <div className="bg-white rounded-lg border border-zinc-200 p-3">
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">SF</div>
@@ -218,7 +218,7 @@ function MockRequests() {
     { name: "Laura De Luca", service: "Ricostruzione unghie", date: "Giovedì 14:00", status: "In attesa", statusColor: "bg-yellow-100 text-yellow-700" },
   ];
   return (
-    <div className="p-4 bg-[oklch(0.987_0.005_80)]" style={{ fontSize: "12px" }}>
+    <div className="p-4 bg-background" style={{ fontSize: "12px" }}>
       <div className="bg-white rounded-lg border border-zinc-200 overflow-hidden">
         <div className="px-3 py-2 border-b border-zinc-100 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -241,7 +241,7 @@ function MockRequests() {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.name} className="border-b border-zinc-50 hover:bg-zinc-50/50">
+              <tr key={r.name} className="border-b border-zinc-50 hover:bg-secondary/40">
                 <td className="px-3 py-1.5 font-medium text-zinc-800">{r.name}</td>
                 <td className="px-3 py-1.5 text-zinc-600">{r.service}</td>
                 <td className="px-3 py-1.5 text-zinc-500">{r.date}</td>
@@ -273,7 +273,7 @@ function MockFollowUp() {
     { initials: "VG", name: "Valentina Greco", inactive: "3 mesi fa", service: "Pulizia viso", visits: 18 },
   ];
   return (
-    <div className="p-4 bg-[oklch(0.987_0.005_80)] space-y-3" style={{ fontSize: "12px" }}>
+    <div className="p-4 bg-background space-y-3" style={{ fontSize: "12px" }}>
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
         <div className="font-semibold text-amber-900">12 clienti non tornano da 90+ giorni</div>
         <div className="text-amber-700 text-[11px] mt-0.5">Queste clienti potrebbero aver bisogno di un contatto.</div>
@@ -285,7 +285,7 @@ function MockFollowUp() {
         </div>
         <div className="divide-y divide-zinc-50">
           {clients.map((c) => (
-            <div key={c.name} className="flex items-center px-3 py-2 hover:bg-zinc-50/50">
+            <div key={c.name} className="flex items-center px-3 py-2 hover:bg-secondary/40">
               <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-[10px] shrink-0 mr-2">{c.initials}</div>
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-zinc-800">{c.name}</div>
@@ -462,7 +462,7 @@ function Navbar({ onDemoClick }: { onDemoClick: () => void }) {
   return (
     <header className={cn(
       "fixed top-0 left-0 right-0 z-40 transition-all duration-300",
-      scrolled ? "bg-white/95 backdrop-blur-md border-b border-zinc-100 shadow-sm" : "bg-white/90 backdrop-blur-sm"
+      scrolled ? "bg-background/95 backdrop-blur-md border-b border-border shadow-sm" : "bg-background/90 backdrop-blur-sm"
     )}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
@@ -491,7 +491,7 @@ function Navbar({ onDemoClick }: { onDemoClick: () => void }) {
       <AnimatePresence>
         {mobileOpen && (
           <motion.div
-            className="md:hidden bg-white border-t border-zinc-100 px-4 pb-4"
+            className="md:hidden bg-background border-t border-border px-4 pb-4"
             initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
           >
@@ -519,7 +519,7 @@ function Navbar({ onDemoClick }: { onDemoClick: () => void }) {
 
 function Hero({ onDemoClick }: { onDemoClick: () => void }) {
   return (
-    <section className="pt-24 pb-16 md:pt-32 md:pb-24 overflow-hidden bg-white">
+    <section className="pt-24 pb-16 md:pt-32 md:pb-24 overflow-hidden bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
           <div>
@@ -533,7 +533,7 @@ function Hero({ onDemoClick }: { onDemoClick: () => void }) {
               </div>
             </motion.div>
             <motion.h1
-              className="text-4xl sm:text-5xl lg:text-5xl xl:text-6xl font-bold text-zinc-900 leading-[1.1] tracking-tight"
+              className="font-heading text-4xl sm:text-5xl lg:text-5xl xl:text-6xl font-bold text-zinc-900 leading-[1.1]"
               initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1], delay: 0.07 }}
             >
@@ -601,7 +601,7 @@ function Hero({ onDemoClick }: { onDemoClick: () => void }) {
 
 function SocialProof() {
   return (
-    <section className="py-10 border-y border-zinc-100 bg-zinc-50/50">
+    <section className="py-10 border-y border-border bg-secondary/40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col sm:flex-row items-center gap-6 sm:gap-10">
           <p className="text-sm font-medium text-zinc-500 shrink-0">Già utilizzato da centri estetici reali</p>
@@ -650,7 +650,7 @@ function Problem() {
         <FadeIn>
           <div className="text-center max-w-2xl mx-auto mb-14">
             <div className="inline-block px-3 py-1 bg-red-50 text-red-600 rounded-full text-sm font-medium mb-4">Il problema</div>
-            <h2 className="text-3xl md:text-4xl font-bold text-zinc-900 leading-tight">
+            <h2 className="font-heading text-3xl md:text-4xl font-bold text-zinc-900 leading-tight">
               Il problema non è trovare clienti.<br />È ricordarsi cosa fare dopo.
             </h2>
             <p className="mt-4 text-lg text-zinc-500">Ogni titolare di centro estetico conosce bene queste situazioni.</p>
@@ -685,12 +685,12 @@ function ClienteAlCentro() {
     "Operatrice preferita e annotazioni operative",
   ];
   return (
-    <section className="py-20 md:py-28 bg-zinc-50/40" id="funzionalita">
+    <section className="py-20 md:py-28 bg-secondary/30" id="funzionalita">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
           <FadeIn>
             <div className="inline-block px-3 py-1 bg-primary/8 text-primary rounded-full text-sm font-medium mb-5">Scheda cliente</div>
-            <h2 className="text-3xl md:text-4xl font-bold text-zinc-900 leading-tight mb-4">
+            <h2 className="font-heading text-3xl md:text-4xl font-bold text-zinc-900 leading-tight mb-4">
               Tutta la storia del cliente, in un solo posto.
             </h2>
             <p className="text-lg text-zinc-500 mb-8">
@@ -738,7 +738,7 @@ function PipelineSection() {
           </FadeIn>
           <FadeIn delay={0.15} className="order-1 lg:order-2">
             <div className="inline-block px-3 py-1 bg-primary/8 text-primary rounded-full text-sm font-medium mb-5">Richieste online</div>
-            <h2 className="text-3xl md:text-4xl font-bold text-zinc-900 leading-tight mb-4">
+            <h2 className="font-heading text-3xl md:text-4xl font-bold text-zinc-900 leading-tight mb-4">
               Dal primo contatto al cliente.
             </h2>
             <p className="text-lg text-zinc-500 mb-8">
@@ -772,12 +772,12 @@ function FollowUpSection() {
     { icon: TrendingUp, text: "Riduci il turnover delle clienti storiche" },
   ];
   return (
-    <section className="py-20 md:py-28 bg-zinc-50/40">
+    <section className="py-20 md:py-28 bg-secondary/30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
           <FadeIn>
             <div className="inline-block px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-sm font-medium mb-5">Clienti inattive</div>
-            <h2 className="text-3xl md:text-4xl font-bold text-zinc-900 leading-tight mb-4">
+            <h2 className="font-heading text-3xl md:text-4xl font-bold text-zinc-900 leading-tight mb-4">
               Il follow-up non deve dipendere dalla memoria.
             </h2>
             <p className="text-lg text-zinc-500 mb-8">
@@ -822,7 +822,7 @@ function Benefits() {
         <FadeIn>
           <div className="text-center max-w-xl mx-auto mb-14">
             <div className="inline-block px-3 py-1 bg-primary/8 text-primary rounded-full text-sm font-medium mb-4">Benefici concreti</div>
-            <h2 className="text-3xl md:text-4xl font-bold text-zinc-900 leading-tight">
+            <h2 className="font-heading text-3xl md:text-4xl font-bold text-zinc-900 leading-tight">
               Meno memoria. Più controllo.
             </h2>
             <p className="mt-4 text-zinc-500">
@@ -868,11 +868,11 @@ function PrimaDopo() {
     { icon: Shield, label: "Consensi e pagamenti documentati" },
   ];
   return (
-    <section className="py-20 md:py-28 bg-zinc-50/50">
+    <section className="py-20 md:py-28 bg-secondary/40">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <FadeIn>
           <div className="text-center mb-14">
-            <h2 className="text-3xl md:text-4xl font-bold text-zinc-900 leading-tight">
+            <h2 className="font-heading text-3xl md:text-4xl font-bold text-zinc-900 leading-tight">
               Com&apos;era. Com&apos;è ora.
             </h2>
           </div>
@@ -947,7 +947,7 @@ function PerChiE() {
         <FadeIn>
           <div className="text-center max-w-xl mx-auto mb-14">
             <div className="inline-block px-3 py-1 bg-primary/8 text-primary rounded-full text-sm font-medium mb-4">Per chi è</div>
-            <h2 className="text-3xl md:text-4xl font-bold text-zinc-900 leading-tight">
+            <h2 className="font-heading text-3xl md:text-4xl font-bold text-zinc-900 leading-tight">
               Fusion Beauty è pensato per…
             </h2>
             <p className="mt-4 text-zinc-500 text-sm">
@@ -977,12 +977,12 @@ function PerChiE() {
 
 function VideoDemo() {
   return (
-    <section id="video-demo" className="py-20 md:py-28 bg-zinc-900">
+    <section id="video-demo" className="py-20 md:py-28 bg-[oklch(0.18_0.03_165)]">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <FadeIn>
           <div className="text-center mb-10">
             <div className="inline-block px-3 py-1 bg-white/10 text-white/70 rounded-full text-sm font-medium mb-4">Demo del prodotto</div>
-            <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight">Guarda Fusion Beauty in azione.</h2>
+            <h2 className="font-heading text-3xl md:text-4xl font-bold text-white leading-tight">Guarda Fusion Beauty in azione.</h2>
             <p className="mt-4 text-white/60 max-w-xl mx-auto">
               Un workflow reale: arriva un lead, entra nel sistema, la cliente viene seguita fino al trattamento successivo.
             </p>
@@ -1027,12 +1027,12 @@ function Pricing({ onDemoClick }: { onDemoClick: () => void }) {
     "Assistenza dedicata",
   ];
   return (
-    <section id="prezzi" className="py-20 md:py-28 bg-zinc-50/50">
+    <section id="prezzi" className="py-20 md:py-28 bg-secondary/40">
       <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
         <FadeIn>
           <div className="text-center mb-10">
             <div className="inline-block px-3 py-1 bg-primary/8 text-primary rounded-full text-sm font-medium mb-4">Prezzi</div>
-            <h2 className="text-3xl md:text-4xl font-bold text-zinc-900 leading-tight">Un piano. Nessuna sorpresa.</h2>
+            <h2 className="font-heading text-3xl md:text-4xl font-bold text-zinc-900 leading-tight">Un piano. Nessuna sorpresa.</h2>
             <p className="mt-4 text-zinc-500">Nessun costo di attivazione. Disdici quando vuoi.</p>
           </div>
         </FadeIn>
@@ -1124,7 +1124,7 @@ function FAQSection() {
         <FadeIn>
           <div className="text-center mb-12">
             <div className="inline-block px-3 py-1 bg-primary/8 text-primary rounded-full text-sm font-medium mb-4">FAQ</div>
-            <h2 className="text-3xl md:text-4xl font-bold text-zinc-900">Domande frequenti</h2>
+            <h2 className="font-heading text-3xl md:text-4xl font-bold text-zinc-900">Domande frequenti</h2>
           </div>
         </FadeIn>
         <div className="space-y-2">
@@ -1169,7 +1169,7 @@ function CTAFinale({ onDemoClick }: { onDemoClick: () => void }) {
       <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative">
         <FadeIn>
           <Sparkles className="w-8 h-8 text-white/60 mx-auto mb-5" />
-          <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight mb-4">
+          <h2 className="font-heading text-3xl md:text-4xl font-bold text-white leading-tight mb-4">
             Scopri come Fusion Beauty può adattarsi al tuo centro.
           </h2>
           <p className="text-white/70 text-lg mb-8">
@@ -1193,7 +1193,7 @@ function CTAFinale({ onDemoClick }: { onDemoClick: () => void }) {
 
 function Footer() {
   return (
-    <footer className="bg-zinc-900 text-white/60">
+    <footer className="bg-[oklch(0.18_0.03_165)] text-white/60">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid sm:grid-cols-3 gap-8 pb-8 border-b border-white/10">
           <div>
@@ -1240,7 +1240,7 @@ export function LandingPage() {
   const openDemo = () => setDemoOpen(true);
 
   return (
-    <div className="theme-rose bg-background text-foreground">
+    <div className="bg-background text-foreground">
       <Navbar onDemoClick={openDemo} />
       <main>
         <Hero onDemoClick={openDemo} />
