@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageCircle, Search, UserPlus } from "lucide-react";
+import { Copy, ExternalLink, MessageCircle, Search, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 
@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatEuro, getInitials, whatsappUrl } from "@/lib/format";
 import { cn } from "@/lib/utils";
+
+import { toast } from "sonner";
 
 import { getClients, type ClientListItemDTO } from "./actions";
 import { toNewClientListItem } from "./list-item";
@@ -24,9 +26,10 @@ type Filter = "all" | "inactive";
 
 type ClientsManagerProps = {
   initialClients: ClientListItemDTO[];
+  tenantSlug: string | null;
 };
 
-export function ClientsManager({ initialClients }: ClientsManagerProps) {
+export function ClientsManager({ initialClients, tenantSlug }: ClientsManagerProps) {
   const [clients, setClients] = useState(initialClients);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -49,6 +52,18 @@ export function ClientsManager({ initialClients }: ClientsManagerProps) {
   const inactiveCount = clients.filter((client) => client.isInactive).length;
   const visible = filter === "inactive" ? clients.filter((client) => client.isInactive) : clients;
 
+  const bookingUrl = tenantSlug
+    ? (typeof window !== "undefined" ? window.location.origin : "https://beauty.fusionsoft.it") + `/embed/${tenantSlug}`
+    : null;
+
+  function copyBookingLink() {
+    if (!bookingUrl) return;
+    navigator.clipboard
+      .writeText(bookingUrl)
+      .then(() => toast.success("Link copiato negli appunti."))
+      .catch(() => toast.error("Impossibile copiare il link."));
+  }
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
@@ -56,10 +71,26 @@ export function ClientsManager({ initialClients }: ClientsManagerProps) {
         title="Tutte le clienti, sempre sotto controllo."
         description="Quando una cliente torna, sai subito cosa ha fatto e cosa le serve."
         actions={
-          <Button className="h-10 rounded-xl px-4" onClick={() => setDialogOpen(true)}>
-            <UserPlus className="size-4" />
-            Nuova cliente
-          </Button>
+          <div className="flex items-center gap-2">
+            {bookingUrl && (
+              <div className="hidden items-center gap-1.5 rounded-xl border border-mint-border bg-mint-soft px-3 py-2 text-xs font-medium text-forest sm:flex">
+                <ExternalLink className="size-3.5 shrink-0" />
+                <span className="max-w-[180px] truncate font-mono text-[11px]">{bookingUrl.replace("https://", "")}</span>
+                <button
+                  type="button"
+                  onClick={copyBookingLink}
+                  className="ml-1 rounded p-0.5 hover:bg-mint-border/60 transition-colors"
+                  title="Copia link"
+                >
+                  <Copy className="size-3.5" />
+                </button>
+              </div>
+            )}
+            <Button className="h-10 rounded-xl px-4" onClick={() => setDialogOpen(true)}>
+              <UserPlus className="size-4" />
+              Nuova cliente
+            </Button>
+          </div>
         }
       />
 

@@ -3,6 +3,7 @@
 import {
   BarChart3,
   Calendar,
+  ChevronDown,
   CreditCard,
   FileSignature,
   FileText,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -65,13 +67,11 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/dashboard/services", label: "Trattamenti", icon: Scissors },
     ],
   },
-  {
-    label: "Impostazioni",
-    items: [
-      { href: "/dashboard/widget", label: "Widget prenotazione", icon: Wand2 },
-      { href: "/dashboard/integrations/calendar", label: "Integrazioni", icon: Link2 },
-    ],
-  },
+];
+
+const SETTINGS_ITEMS: NavItem[] = [
+  { href: "/dashboard/widget", label: "Widget prenotazione", icon: Wand2 },
+  { href: "/dashboard/integrations/calendar", label: "Integrazioni", icon: Link2 },
 ];
 
 const ADMIN_ITEMS: NavItem[] = [
@@ -93,23 +93,26 @@ export function DashboardSidebar({
   pendingRequests,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   function isActive(href: string, exact?: boolean) {
     return exact ? pathname === href : pathname.startsWith(href);
   }
 
   const groups: NavGroup[] = hasTenant
-    ? NAV_GROUPS.map((group) =>
-        group.label === "Impostazioni" && isAdmin
-          ? { ...group, items: [...group.items, ...ADMIN_ITEMS] }
-          : group
-      )
+    ? NAV_GROUPS
     : [
         {
           label: "Ogni giorno",
           items: [{ href: "/dashboard", label: "Panoramica", icon: LayoutDashboard, exact: true }],
         },
       ];
+
+  const settingsItems: NavItem[] = hasTenant
+    ? isAdmin
+      ? [...SETTINGS_ITEMS, ...ADMIN_ITEMS]
+      : SETTINGS_ITEMS
+    : [];
 
   const mobileItems = groups
     .flatMap((group) => group.items)
@@ -118,6 +121,32 @@ export function DashboardSidebar({
         item.href
       )
     );
+
+  function renderNavItem(item: NavItem) {
+    const active = isActive(item.href, item.exact);
+    const Icon = item.icon;
+    const badge = item.badgeKey === "requests" ? pendingRequests : 0;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        className={cn(
+          "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+          active
+            ? "bg-mint-soft font-semibold text-forest ring-1 ring-mint-border"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+        )}
+      >
+        <Icon className={cn("size-4 shrink-0", active && "text-mint-ink")} />
+        <span className="flex-1">{item.label}</span>
+        {badge > 0 ? (
+          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-wine px-1.5 text-[11px] font-bold text-white">
+            {badge}
+          </span>
+        ) : null}
+      </Link>
+    );
+  }
 
   return (
     <>
@@ -156,40 +185,35 @@ export function DashboardSidebar({
       <nav className="flex flex-1 flex-col gap-5 overflow-y-auto px-3 py-5">
         {groups.map((group) => (
           <div key={group.label}>
-            <div className="mb-1.5 flex items-center gap-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
-              {group.label === "Impostazioni" ? <Settings className="size-3" /> : null}
+            <div className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
               {group.label}
             </div>
             <div className="flex flex-col gap-0.5">
-              {group.items.map((item) => {
-                const active = isActive(item.href, item.exact);
-                const Icon = item.icon;
-                const badge = item.badgeKey === "requests" ? pendingRequests : 0;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-                      active
-                        ? "bg-mint-soft font-semibold text-forest ring-1 ring-mint-border"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    <Icon className={cn("size-4 shrink-0", active && "text-mint-ink")} />
-                    <span className="flex-1">{item.label}</span>
-                    {badge > 0 ? (
-                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-wine px-1.5 text-[11px] font-bold text-white">
-                        {badge}
-                      </span>
-                    ) : null}
-                  </Link>
-                );
-              })}
+              {group.items.map(renderNavItem)}
             </div>
           </div>
         ))}
       </nav>
+
+      {settingsItems.length > 0 && (
+        <div className="border-t px-3 py-3">
+          <button
+            onClick={() => setSettingsOpen((o) => !o)}
+            className="flex w-full items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60 transition-colors hover:bg-muted/60 hover:text-muted-foreground"
+          >
+            <Settings className="size-3" />
+            <span>Impostazioni</span>
+            <ChevronDown
+              className={cn("ml-auto size-3 transition-transform duration-200", settingsOpen && "rotate-180")}
+            />
+          </button>
+          {settingsOpen && (
+            <div className="mt-1 flex flex-col gap-0.5">
+              {settingsItems.map(renderNavItem)}
+            </div>
+          )}
+        </div>
+      )}
     </aside>
     </>
   );
