@@ -17,6 +17,7 @@ export type OperatorDTO = {
   id: string;
   firstName: string;
   lastName: string;
+  workingHours: { dayOfWeek: number; startTime: string; endTime: string }[];
 };
 
 export async function getAppointments(input: {
@@ -43,7 +44,15 @@ export async function getOperators(): Promise<OperatorDTO[]> {
   return prisma.user.findMany({
     where: { tenantId, isActive: true, role: { in: ["ADMIN", "OPERATOR"] } },
     orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
-    select: { id: true, firstName: true, lastName: true },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      workingHours: {
+        select: { dayOfWeek: true, startTime: true, endTime: true },
+        orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
+      },
+    },
   });
 }
 

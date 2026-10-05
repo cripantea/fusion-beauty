@@ -76,6 +76,7 @@ model Tenant {
   payments               Payment[]
   questionnaires         ClientQuestionnaire[]
   workingHours           WorkingHours[]
+  staffExceptions        StaffException[]
 
   @@map("tenants")
 }
@@ -135,6 +136,7 @@ model User {
   collectedConsents ConsentRecord[] @relation("ConsentCollectedBy")
   payments          Payment[]       @relation("PaymentCreatedBy")
   workingHours      WorkingHours[]
+  staffExceptions   StaffException[]
 
   @@index([tenantId])
   @@map("users")
@@ -338,7 +340,25 @@ model WorkingHours {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, dayOfWeek])
+  @@index([userId, dayOfWeek])
   @@index([tenantId, userId])
   @@map("working_hours")
+}
+
+model StaffException {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  date      DateTime @db.Date
+  startTime String?
+  endTime   String?
+  note      String?
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@index([userId, date])
+  @@map("staff_exceptions")
 }

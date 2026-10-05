@@ -33,6 +33,49 @@ const palettes = [
 
 const timeFormatter = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" });
 
+function timeToMinutes(t: string): number {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+}
+
+// Returns pixel bands that are OUTSIDE working hours (unavailable time)
+function getUnavailableBands(
+  workingHours: { dayOfWeek: number; startTime: string; endTime: string }[],
+  date: Date
+): { top: number; height: number }[] {
+  const dow = ((date.getDay() + 6) % 7) + 1; // 1=Mon … 7=Sun
+  const blocks = workingHours
+    .filter((wh) => wh.dayOfWeek === dow)
+    .map((wh) => ({ start: timeToMinutes(wh.startTime), end: timeToMinutes(wh.endTime) }))
+    .sort((a, b) => a.start - b.start);
+
+  if (blocks.length === 0) return [];
+
+  const gridStart = DAY_START_HOUR * 60;
+  const gridEnd = DAY_END_HOUR * 60;
+  const bands: { top: number; height: number }[] = [];
+  let cursor = gridStart;
+
+  for (const block of blocks) {
+    const blockStart = Math.max(block.start, gridStart);
+    const blockEnd = Math.min(block.end, gridEnd);
+    if (blockStart > cursor) {
+      bands.push({
+        top: (cursor - gridStart) * PX_PER_MINUTE,
+        height: (blockStart - cursor) * PX_PER_MINUTE,
+      });
+    }
+    cursor = Math.max(cursor, blockEnd);
+  }
+  if (cursor < gridEnd) {
+    bands.push({
+      top: (cursor - gridStart) * PX_PER_MINUTE,
+      height: (gridEnd - cursor) * PX_PER_MINUTE,
+    });
+  }
+  return bands;
+}
+
 function getPosition(appointment: AppointmentDTO, date: Date) {
   const gridStart = new Date(date);
   gridStart.setHours(DAY_START_HOUR, 0, 0, 0);
@@ -145,6 +188,9 @@ export function OperatorsGrid({
 
         {columns.map((column, index) => {
           const palette = palettes[index % palettes.length];
+          const operator = operators.find((o) => o.id === column.id);
+          const unavailBands = operator ? getUnavailableBands(operator.workingHours, date) : [];
+
           return (
             <div key={column.id ?? "none"} className="min-w-[200px] flex-1 border-r last:border-r-0">
               <div className="relative" style={{ height: GRID_HEIGHT }}>
@@ -153,6 +199,15 @@ export function OperatorsGrid({
                     key={hour}
                     className="absolute w-full border-t border-border/50"
                     style={{ top: (hour - DAY_START_HOUR) * HOUR_HEIGHT }}
+                  />
+                ))}
+
+                {/* Unavailable time overlay */}
+                {unavailBands.map((band, i) => (
+                  <div
+                    key={i}
+                    className="absolute inset-x-0 bg-muted/60 pointer-events-none"
+                    style={{ top: band.top, height: band.height }}
                   />
                 ))}
 
