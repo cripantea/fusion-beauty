@@ -34,9 +34,6 @@ export function DashboardTopbar({ firstName, lastName, role, tenantName }: Dashb
           <div className="text-sm font-semibold leading-tight">
             {firstName} {lastName}
           </div>
-          <div className="text-xs leading-tight text-forest-foreground/70">
-            {roleLabels[role] ?? role}
-          </div>
         </div>
         <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-mint text-xs font-bold text-forest">
           {getInitials(firstName, lastName)}

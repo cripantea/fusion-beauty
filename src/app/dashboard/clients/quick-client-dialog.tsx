@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CheckCircle2, MessageCircle } from "lucide-react";
+import { CheckCircle2, Copy, MessageCircle } from "lucide-react";
 import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -133,6 +133,26 @@ function QuickClientBody({
               <MessageCircle className="size-5" />
               Invia questionario su WhatsApp
             </Button>
+
+            {/* Copyable link */}
+            <div className="flex items-center gap-2 rounded-xl border border-mint-border bg-mint-soft/50 px-3 py-2">
+              <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-forest">
+                {created.link.url}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(created.link.url)
+                    .then(() => toast.success("Link copiato"))
+                    .catch(() => toast.error("Impossibile copiare"));
+                }}
+                className="shrink-0 rounded p-1 text-forest hover:bg-mint-border/60 transition-colors"
+                title="Copia link questionario"
+              >
+                <Copy className="size-3.5" />
+              </button>
+            </div>
+
             <Button variant="ghost" className="w-full" onClick={onClose}>
               Più tardi
             </Button>

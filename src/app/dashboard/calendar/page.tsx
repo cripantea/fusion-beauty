@@ -8,7 +8,7 @@ import { getAppointments, getOperators } from "./actions";
 import { CalendarManager } from "./calendar-manager";
 
 export default async function CalendarPage() {
-  await getTenantContext();
+  const { user } = await getTenantContext();
 
   const today = new Date();
   const weekStart = startOfWeek(today, { weekStartsOn: 1 });
@@ -28,6 +28,7 @@ export default async function CalendarPage() {
       clients={clients}
       services={services}
       operators={operators}
+      isAdmin={user.role === "ADMIN"}
     />
   );
 }

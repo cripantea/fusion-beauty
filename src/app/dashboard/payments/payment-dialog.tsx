@@ -22,6 +22,7 @@ type PaymentDialogProps = {
   onOpenChange: (open: boolean) => void;
   appointment: AppointmentDTO | null;
   onPaid: (appointment: AppointmentDTO) => void;
+  isAdmin?: boolean;
 };
 
 /** Incasso in un tap: importo precompilato col prezzo del trattamento, poi Carta/POS o Contanti. */
@@ -30,6 +31,7 @@ export function PaymentDialog({
   onOpenChange,
   appointment,
   onPaid,
+  isAdmin = false,
 }: PaymentDialogProps) {
   if (!appointment) return null;
 
@@ -46,6 +48,7 @@ export function PaymentDialog({
           appointment={appointment}
           onClose={() => onOpenChange(false)}
           onPaid={onPaid}
+          isAdmin={isAdmin}
         />
       </DialogContent>
     </Dialog>
@@ -56,23 +59,37 @@ function PaymentBody({
   appointment,
   onClose,
   onPaid,
+  isAdmin,
 }: {
   appointment: AppointmentDTO;
   onClose: () => void;
   onPaid: (appointment: AppointmentDTO) => void;
+  isAdmin: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
+  const servicePrice = Number(appointment.service.price);
   const [amount, setAmount] = useState(
-    String(appointment.payment?.amount ?? appointment.service.price),
+    String(appointment.payment?.amount ?? servicePrice),
   );
   const [notes, setNotes] = useState(appointment.payment?.notes ?? "");
+  const [discountOn, setDiscountOn] = useState(false);
+  const [discountPct, setDiscountPct] = useState("");
   const [paid, setPaid] = useState<AppointmentDTO | null>(null);
 
   const parsedAmount = Number(amount.replace(",", "."));
   const validAmount =
     Number.isFinite(parsedAmount) && parsedAmount >= 0 && amount.trim() !== "";
-  const servicePrice = Number(appointment.service.price);
   const amountDiffers = validAmount && Math.abs(parsedAmount - servicePrice) > 0.005;
+
+  function applyDiscount(pct: string) {
+    setDiscountPct(pct);
+    const p = parseFloat(pct);
+    if (Number.isFinite(p) && p >= 0 && p <= 100) {
+      const discounted = servicePrice * (1 - p / 100);
+      setAmount(String(Math.round(discounted * 100) / 100));
+      if (p > 0) setNotes(`Sconto ${p}%`);
+    }
+  }
 
   function pay(method: "CARD" | "CASH") {
     if (!validAmount) return;
@@ -139,7 +156,58 @@ function PaymentBody({
             </div>
           </div>
 
-          {amountDiffers && (
+          {/* Admin-only: discount toggle */}
+          {isAdmin && (
+            <div className="rounded-xl border border-mint-border bg-mint-soft/40 px-3 py-2.5">
+              <label className="flex cursor-pointer items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-forest">Promozione / Sconto</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={discountOn}
+                  onClick={() => {
+                    const next = !discountOn;
+                    setDiscountOn(next);
+                    if (!next) {
+                      setDiscountPct("");
+                      setAmount(String(servicePrice));
+                      setNotes("");
+                    }
+                  }}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                    discountOn ? "bg-primary" : "bg-muted-foreground/30"
+                  }`}
+                >
+                  <span
+                    className={`inline-block size-4 rounded-full bg-white shadow transition-transform ${
+                      discountOn ? "translate-x-4" : "translate-x-0.5"
+                    }`}
+                  />
+                </button>
+              </label>
+              {discountOn && (
+                <div className="mt-2 flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={discountPct}
+                    onChange={(e) => applyDiscount(e.target.value)}
+                    placeholder="0"
+                    className="h-8 w-20 text-sm"
+                  />
+                  <span className="text-sm text-muted-foreground">% di sconto</span>
+                  {discountPct && Number(discountPct) > 0 && (
+                    <span className="ml-auto text-xs font-semibold text-primary">
+                      → {formatEuro(parsedAmount)}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {amountDiffers && !discountOn && (
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">
                 Motivo variazione importo

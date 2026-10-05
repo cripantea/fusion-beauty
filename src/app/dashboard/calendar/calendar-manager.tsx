@@ -39,6 +39,7 @@ type CalendarManagerProps = {
   clients: ClientListItemDTO[];
   services: ServiceDTO[];
   operators: OperatorDTO[];
+  isAdmin: boolean;
 };
 
 export function CalendarManager({
@@ -47,6 +48,7 @@ export function CalendarManager({
   clients,
   services,
   operators,
+  isAdmin,
 }: CalendarManagerProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("operators");
   const [currentDate, setCurrentDate] = useState(() => new Date(`${initialDate}T00:00:00`));
@@ -244,6 +246,7 @@ export function CalendarManager({
         }}
         appointment={payingAppointment}
         onPaid={handleAppointmentSaved}
+        isAdmin={isAdmin}
       />
     </div>
   );
