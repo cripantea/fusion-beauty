@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { formatEuro } from "@/lib/format";
+import { useAdminView } from "@/lib/admin-view-context";
 import { cn } from "@/lib/utils";
 
 import type { OperatorDTO } from "./actions";
@@ -123,6 +124,7 @@ export function OperatorsGrid({
   onAppointmentClick,
   onCreate,
 }: OperatorsGridProps) {
+  const { isAdminView } = useAdminView();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const columns = operators.map((operator) => ({
@@ -237,11 +239,11 @@ export function OperatorsGrid({
                         {appointment.client.firstName} {appointment.client.lastName}
                       </div>
                       <div className="truncate opacity-75">{appointment.service.name}</div>
-                      {appointment.payment ? (
+                      {isAdminView && appointment.payment ? (
                         <div className="mt-0.5 truncate font-semibold">
                           ✓ {formatEuro(appointment.payment.amount)}
                         </div>
-                      ) : appointment.status === "COMPLETED" ? (
+                      ) : isAdminView && appointment.status === "COMPLETED" ? (
                         <div className="mt-0.5 text-amber-700">Da incassare</div>
                       ) : null}
                     </button>

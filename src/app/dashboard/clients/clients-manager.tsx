@@ -8,6 +8,7 @@ import { Avatar, EmptyState, PageHeader, Panel, Pill } from "@/components/boutiq
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatEuro, getInitials, whatsappUrl } from "@/lib/format";
+import { useAdminView } from "@/lib/admin-view-context";
 import { cn } from "@/lib/utils";
 
 import { toast } from "sonner";
@@ -30,6 +31,7 @@ type ClientsManagerProps = {
 };
 
 export function ClientsManager({ initialClients, tenantSlug }: ClientsManagerProps) {
+  const { isAdminView } = useAdminView();
   const [clients, setClients] = useState(initialClients);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -167,7 +169,9 @@ export function ClientsManager({ initialClients, tenantSlug }: ClientsManagerPro
                   </span>
                 </Link>
                 <div className="hidden text-right text-sm sm:block">
-                  <div className="font-semibold">{formatEuro(client.totalSpent)}</div>
+                  {isAdminView && (
+                    <div className="font-semibold">{formatEuro(client.totalSpent)}</div>
+                  )}
                   <div className="text-xs text-muted-foreground">
                     {client.visits} {client.visits === 1 ? "trattamento" : "trattamenti"}
                   </div>
