@@ -125,17 +125,11 @@ export function OperatorsGrid({
 }: OperatorsGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const unassigned = appointments.filter((a) => !a.operator);
-  const columns = [
-    ...operators.map((operator) => ({
-      id: operator.id as string | null,
-      label: operator.firstName,
-      items: appointments.filter((a) => a.operator?.id === operator.id),
-    })),
-    ...(unassigned.length > 0 || operators.length === 0
-      ? [{ id: null, label: "Senza operatrice", items: unassigned }]
-      : []),
-  ];
+  const columns = operators.map((operator) => ({
+    id: operator.id as string | null,
+    label: operator.firstName,
+    items: appointments.filter((a) => a.operator?.id === operator.id),
+  }));
 
   const currentTimeTop = getCurrentTimeTop(date);
 

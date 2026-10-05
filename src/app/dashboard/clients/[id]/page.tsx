@@ -12,6 +12,7 @@ import { getClientConsents } from "@/app/dashboard/consents/collect-actions";
 import { getClientById } from "../actions";
 import { ClientConsentsCard } from "./client-consents-card";
 import { ClientDetailHeader } from "./client-detail-header";
+import { ClientPlansCard } from "./client-plans-card";
 import { QuestionnaireCard } from "./questionnaire-card";
 
 const dateFormatter = new Intl.DateTimeFormat("it-IT", {
@@ -219,6 +220,8 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
             ) : null}
           </div>
         </section>
+
+        <ClientPlansCard clientId={client.id} />
 
         <Panel title="Storico appuntamenti" className="md:col-span-2">
           {appointments.length === 0 ? (

@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { formatEuro } from "@/lib/format";
 
 import { registerPayment } from "./actions";
@@ -64,11 +65,14 @@ function PaymentBody({
   const [amount, setAmount] = useState(
     String(appointment.payment?.amount ?? appointment.service.price),
   );
+  const [notes, setNotes] = useState(appointment.payment?.notes ?? "");
   const [paid, setPaid] = useState<AppointmentDTO | null>(null);
 
   const parsedAmount = Number(amount.replace(",", "."));
   const validAmount =
     Number.isFinite(parsedAmount) && parsedAmount >= 0 && amount.trim() !== "";
+  const servicePrice = Number(appointment.service.price);
+  const amountDiffers = validAmount && Math.abs(parsedAmount - servicePrice) > 0.005;
 
   function pay(method: "CARD" | "CASH") {
     if (!validAmount) return;
@@ -77,6 +81,7 @@ function PaymentBody({
         appointmentId: appointment.id,
         method,
         amount: parsedAmount,
+        notes: notes.trim() || undefined,
       });
       if (!result.success) {
         toast.error(result.error);
@@ -133,6 +138,22 @@ function PaymentBody({
               />
             </div>
           </div>
+
+          {amountDiffers && (
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">
+                Motivo variazione importo
+                {parsedAmount < servicePrice ? ` (sconto di ${formatEuro(servicePrice - parsedAmount)})` : ` (extra di ${formatEuro(parsedAmount - servicePrice)})`}
+              </label>
+              <Textarea
+                rows={2}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Es. sconto fedeltà, trattamento aggiuntivo…"
+                className="text-sm resize-none"
+              />
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <button

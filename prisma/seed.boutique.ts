@@ -197,6 +197,10 @@ Mi hanno informato inoltre della mia possibilità di recesso da questo consenso.
 
   const [sofia, giulia, laura, anna, emma] = upsertedClients;
 
+  // Find operator IDs
+  const roberta = await prisma.user.findFirst({ where: { tenantId: tenant.id, email: "roberta@boutique.it" } });
+  const giuliaOp = await prisma.user.findFirst({ where: { tenantId: tenant.id, email: "giulia@boutique.it" } });
+
   // Find service IDs
   const svcPulizia = await prisma.service.findFirst({ where: { tenantId: tenant.id, name: "Igiene cosmetica" } });
   const svcLaminazione = await prisma.service.findFirst({ where: { tenantId: tenant.id, name: "Laminazione ciglia o sopracciglia" } });
@@ -227,6 +231,8 @@ Mi hanno informato inoltre della mia possibilità di recesso da questo consenso.
     service: typeof svcPulizia;
     start: Date;
     status: "COMPLETED" | "BOOKED" | "CANCELLED";
+    operatorId?: string | null;
+    source?: "INTERNAL" | "ONLINE";
     paymentMethod?: "CASH" | "CARD";
     paymentAmount?: number;
     notes?: string;
@@ -255,28 +261,53 @@ Mi hanno informato inoltre della mia possibilità di recesso da questo consenso.
       paymentMethod: "CASH", paymentAmount: 45,
       notes: "3ª seduta — buoni risultati",
     },
-    // Today
+    // Today — assigned to Roberta and Giulia
     {
       client: anna, service: svcManicure,
       start: new Date(today.getTime() + 9 * 3600_000),
       status: "BOOKED",
+      operatorId: roberta?.id,
     },
     {
       client: emma, service: svcMassaggio,
       start: new Date(today.getTime() + 14.5 * 3600_000),
       status: "BOOKED",
+      operatorId: giuliaOp?.id,
     },
-    // Future
+    // Future internal
     {
       client: sofia, service: svcLaser,
       start: daysFromNow(2, 10, 30),
       status: "BOOKED",
+      operatorId: giuliaOp?.id,
       notes: "Portare consenso firmato",
     },
     {
       client: giulia, service: svcPulizia,
       start: daysFromNow(4, 16, 0),
       status: "BOOKED",
+      operatorId: roberta?.id,
+    },
+    // Online booking requests (da confermare)
+    {
+      client: laura, service: svcManicure,
+      start: daysFromNow(1, 11, 0),
+      status: "BOOKED",
+      source: "ONLINE",
+      notes: "Preferirei semipermanente rosa nude",
+    },
+    {
+      client: anna, service: svcMassaggio,
+      start: daysFromNow(3, 15, 0),
+      status: "BOOKED",
+      source: "ONLINE",
+    },
+    {
+      client: sofia, service: svcPulizia,
+      start: daysFromNow(5, 9, 30),
+      status: "BOOKED",
+      source: "ONLINE",
+      notes: "Prima visita",
     },
   ];
 
@@ -294,10 +325,11 @@ Mi hanno informato inoltre della mia possibilità di recesso da questo consenso.
         tenantId: tenant.id,
         clientId: seed.client.id,
         serviceId: seed.service.id,
+        operatorId: seed.operatorId ?? null,
         startTime: seed.start,
         endTime,
         status: seed.status,
-        source: "INTERNAL",
+        source: seed.source ?? "INTERNAL",
         notes: seed.notes ?? null,
       },
     });
@@ -322,7 +354,7 @@ Mi hanno informato inoltre della mia possibilità di recesso da questo consenso.
   console.log(`✅ La Boutique del Benessere (slug: boutique-del-benessere) — ${services.length} servizi`);
   console.log("   roberta@boutique.it  →  ADMIN");
   console.log("   giulia@boutique.it   →  OPERATOR");
-  console.log(`   ${apptSeeds.length} appuntamenti demo (con pagamenti contanti/POS)`);
+  console.log(`   ${apptSeeds.length} appuntamenti demo (con pagamenti contanti/POS, 3 richieste online)`);
 }
 
 main()

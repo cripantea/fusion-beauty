@@ -10,6 +10,7 @@ const paymentInputSchema = z.object({
   appointmentId: z.string().min(1),
   method: z.enum(["CARD", "CASH"]),
   amount: z.number().finite().min(0).max(100000),
+  notes: z.string().max(500).optional(),
 });
 
 export type PaymentActionResult =
@@ -52,9 +53,10 @@ export async function registerPayment(
         appointmentId: appointment.id,
         amount,
         method: parsed.data.method,
+        notes: parsed.data.notes?.trim() || null,
         createdById: user.id,
       },
-      update: { amount, method: parsed.data.method, paidAt: new Date() },
+      update: { amount, method: parsed.data.method, notes: parsed.data.notes?.trim() || null, paidAt: new Date() },
     }),
     prisma.appointment.update({
       where: { id: appointment.id },

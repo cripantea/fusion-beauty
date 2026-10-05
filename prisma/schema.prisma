@@ -48,6 +48,12 @@ enum ConsentStatus {
   REVOKED
 }
 
+enum PlanStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
 enum IntegrationType {
   GOOGLE_CALENDAR
   ICAL_URL
@@ -77,6 +83,7 @@ model Tenant {
   questionnaires         ClientQuestionnaire[]
   workingHours           WorkingHours[]
   staffExceptions        StaffException[]
+  clientPlans            ClientPlan[]
 
   @@map("tenants")
 }
@@ -166,6 +173,7 @@ model Client {
   consents       ConsentRecord[]
   payments       Payment[]
   questionnaires ClientQuestionnaire[]
+  plans          ClientPlan[]
 
   @@index([tenantId, phone])
   @@index([tenantId, lastName])
@@ -361,4 +369,39 @@ model StaffException {
   @@index([tenantId, userId])
   @@index([userId, date])
   @@map("staff_exceptions")
+}
+
+model ClientPlan {
+  id            String     @id @default(cuid())
+  tenantId      String
+  clientId      String
+  name          String
+  totalSessions Int
+  totalPrice    Decimal    @db.Decimal(10, 2)
+  paidAmount    Decimal    @default(0) @db.Decimal(10, 2)
+  notes         String?    @db.Text
+  status        PlanStatus @default(ACTIVE)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client   Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  sessions ClientPlanSession[]
+
+  @@index([tenantId, clientId])
+  @@map("client_plans")
+}
+
+model ClientPlanSession {
+  id            String    @id @default(cuid())
+  planId        String
+  sessionNumber Int
+  completedAt   DateTime?
+  notes         String?
+  createdAt     DateTime  @default(now())
+
+  plan ClientPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, sessionNumber])
+  @@map("client_plan_sessions")
 }
