@@ -30,7 +30,9 @@ export type DashboardData = {
 };
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const { tenantId } = await getTenantContext();
+  const { tenantId, user } = await getTenantContext();
+  const isAdmin = user.role === "ADMIN";
+  const privateFilter = isAdmin ? {} : { isPrivate: false };
   const { start, end } = getTodayRange();
   const tomorrowStart = new Date(end.getTime() + 1);
   const tomorrowEnd = new Date(tomorrowStart);
@@ -52,7 +54,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       include: appointmentInclude,
     }),
     prisma.payment.aggregate({
-      where: { tenantId, paidAt: { gte: start, lte: end } },
+      where: { tenantId, paidAt: { gte: start, lte: end }, ...privateFilter },
       _sum: { amount: true },
     }),
     prisma.client.count({ where: { tenantId, createdAt: { gte: start, lte: end } } }),

@@ -16,7 +16,6 @@ import type { ServiceDTO } from "@/app/dashboard/services/actions";
 import { EmptyState, PageHeader, Panel, Pill, StatCard } from "@/components/boutique";
 import { Button } from "@/components/ui/button";
 import { formatEuro, getInitials } from "@/lib/format";
-import { useAdminView } from "@/lib/admin-view-context";
 
 import { getDashboardData, type DashboardData } from "./actions";
 
@@ -49,7 +48,6 @@ export function DashboardManager({
   services,
   operators,
 }: DashboardManagerProps) {
-  const { isAdminView } = useAdminView();
   const [data, setData] = useState(initialData);
   const [clientOptions, setClientOptions] = useState(clients);
   const [, startTransition] = useTransition();
@@ -125,8 +123,8 @@ export function DashboardManager({
         />
         <StatCard
           label="Incasso stimato oggi"
-          value={isAdminView ? formatEuro(data.estimatedRevenueToday) : "•••"}
-          sub={isAdminView ? `${formatEuro(data.collectedToday)} già saldati` : ""}
+          value={formatEuro(data.estimatedRevenueToday)}
+          sub={`${formatEuro(data.collectedToday)} già saldati`}
           subClassName="text-amber-ink"
           icon={CreditCard}
           accent="amber"

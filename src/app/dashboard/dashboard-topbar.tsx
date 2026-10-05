@@ -1,5 +1,4 @@
 import { logout } from "@/app/login/actions";
-import { AdminViewToggle } from "@/components/admin-view-toggle";
 import { Button } from "@/components/ui/button";
 import { getInitials } from "@/lib/format";
 
@@ -8,10 +7,9 @@ type DashboardTopbarProps = {
   lastName: string;
   role: string;
   tenantName: string | null;
-  isAdmin?: boolean;
 };
 
-export function DashboardTopbar({ firstName, lastName, role, tenantName, isAdmin = false }: DashboardTopbarProps) {
+export function DashboardTopbar({ firstName, lastName, role, tenantName }: DashboardTopbarProps) {
   return (
     <header className="flex h-16 print:hidden shrink-0 items-center justify-between gap-3 bg-forest px-4 text-forest-foreground sm:px-6">
       <div className="flex min-w-0 items-center gap-3">
@@ -26,7 +24,6 @@ export function DashboardTopbar({ firstName, lastName, role, tenantName, isAdmin
       </div>
 
       <div className="flex items-center gap-3">
-        {isAdmin && <AdminViewToggle />}
         <div className="hidden text-right sm:block">
           <div className="text-sm font-semibold leading-tight">
             {firstName} {lastName}

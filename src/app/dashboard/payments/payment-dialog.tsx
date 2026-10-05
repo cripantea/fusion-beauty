@@ -72,24 +72,13 @@ function PaymentBody({
     String(appointment.payment?.amount ?? servicePrice),
   );
   const [notes, setNotes] = useState(appointment.payment?.notes ?? "");
-  const [discountOn, setDiscountOn] = useState(false);
-  const [discountPct, setDiscountPct] = useState("");
+  const [isPrivate, setIsPrivate] = useState(false);
   const [paid, setPaid] = useState<AppointmentDTO | null>(null);
 
   const parsedAmount = Number(amount.replace(",", "."));
   const validAmount =
     Number.isFinite(parsedAmount) && parsedAmount >= 0 && amount.trim() !== "";
   const amountDiffers = validAmount && Math.abs(parsedAmount - servicePrice) > 0.005;
-
-  function applyDiscount(pct: string) {
-    setDiscountPct(pct);
-    const p = parseFloat(pct);
-    if (Number.isFinite(p) && p >= 0 && p <= 100) {
-      const discounted = servicePrice * (1 - p / 100);
-      setAmount(String(Math.round(discounted * 100) / 100));
-      if (p > 0) setNotes(`Sconto ${p}%`);
-    }
-  }
 
   function pay(method: "CARD" | "CASH") {
     if (!validAmount) return;
@@ -99,6 +88,7 @@ function PaymentBody({
         method,
         amount: parsedAmount,
         notes: notes.trim() || undefined,
+        isPrivate,
       });
       if (!result.success) {
         toast.error(result.error);
@@ -156,58 +146,39 @@ function PaymentBody({
             </div>
           </div>
 
-          {/* Admin-only: discount toggle */}
+          {/* Admin-only: private payment toggle */}
           {isAdmin && (
-            <div className="rounded-xl border border-mint-border bg-mint-soft/40 px-3 py-2.5">
+            <div className={`rounded-xl border px-3 py-2.5 transition-colors ${isPrivate ? "border-rose-200 bg-rose-50" : "border-mint-border bg-mint-soft/40"}`}>
               <label className="flex cursor-pointer items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-forest">Promozione / Sconto</span>
+                <span className="text-xs font-semibold text-forest">
+                  Pagamento privato
+                  <span className="ml-1.5 font-normal text-muted-foreground">· solo admin</span>
+                </span>
                 <button
                   type="button"
                   role="switch"
-                  aria-checked={discountOn}
-                  onClick={() => {
-                    const next = !discountOn;
-                    setDiscountOn(next);
-                    if (!next) {
-                      setDiscountPct("");
-                      setAmount(String(servicePrice));
-                      setNotes("");
-                    }
-                  }}
+                  aria-checked={isPrivate}
+                  onClick={() => setIsPrivate((v) => !v)}
                   className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-                    discountOn ? "bg-primary" : "bg-muted-foreground/30"
+                    isPrivate ? "bg-rose-500" : "bg-muted-foreground/30"
                   }`}
                 >
                   <span
                     className={`inline-block size-4 rounded-full bg-white shadow transition-transform ${
-                      discountOn ? "translate-x-4" : "translate-x-0.5"
+                      isPrivate ? "translate-x-4" : "translate-x-0.5"
                     }`}
                   />
                 </button>
               </label>
-              {discountOn && (
-                <div className="mt-2 flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={discountPct}
-                    onChange={(e) => applyDiscount(e.target.value)}
-                    placeholder="0"
-                    className="h-8 w-20 text-sm"
-                  />
-                  <span className="text-sm text-muted-foreground">% di sconto</span>
-                  {discountPct && Number(discountPct) > 0 && (
-                    <span className="ml-auto text-xs font-semibold text-primary">
-                      → {formatEuro(parsedAmount)}
-                    </span>
-                  )}
-                </div>
+              {isPrivate && (
+                <p className="mt-1 text-[11px] text-rose-600">
+                  Questo incasso non sarà visibile alle operatrici.
+                </p>
               )}
             </div>
           )}
 
-          {amountDiffers && !discountOn && (
+          {amountDiffers && (
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">
                 Motivo variazione importo

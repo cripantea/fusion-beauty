@@ -235,6 +235,7 @@ model Payment {
   amount        Decimal       @db.Decimal(10, 2)
   method        PaymentMethod
   notes         String?
+  isPrivate     Boolean       @default(false)
   paidAt        DateTime      @default(now())
   createdById   String?
   createdAt     DateTime      @default(now())

@@ -11,6 +11,7 @@ const paymentInputSchema = z.object({
   method: z.enum(["CARD", "CASH"]),
   amount: z.number().finite().min(0).max(100000),
   notes: z.string().max(500).optional(),
+  isPrivate: z.boolean().optional(),
 });
 
 export type PaymentActionResult =
@@ -44,6 +45,8 @@ export async function registerPayment(
 
   const amount = Math.round(parsed.data.amount * 100) / 100;
 
+  const isPrivate = parsed.data.isPrivate ?? false;
+
   await prisma.$transaction([
     prisma.payment.upsert({
       where: { appointmentId: appointment.id },
@@ -54,9 +57,10 @@ export async function registerPayment(
         amount,
         method: parsed.data.method,
         notes: parsed.data.notes?.trim() || null,
+        isPrivate,
         createdById: user.id,
       },
-      update: { amount, method: parsed.data.method, notes: parsed.data.notes?.trim() || null, paidAt: new Date() },
+      update: { amount, method: parsed.data.method, notes: parsed.data.notes?.trim() || null, isPrivate, paidAt: new Date() },
     }),
     prisma.appointment.update({
       where: { id: appointment.id },
@@ -91,7 +95,9 @@ export type PaymentsOverview = {
 };
 
 export async function getPaymentsOverview(): Promise<PaymentsOverview> {
-  const { tenantId } = await getTenantContext();
+  const { tenantId, user } = await getTenantContext();
+  const isAdmin = user.role === "ADMIN";
+  const privateFilter = isAdmin ? {} : { isPrivate: false };
 
   const now = new Date();
   const dayStart = new Date(now);
@@ -105,11 +111,11 @@ export async function getPaymentsOverview(): Promise<PaymentsOverview> {
   const [todayGroups, monthSum, toCollect, recent] = await Promise.all([
     prisma.payment.groupBy({
       by: ["method"],
-      where: { tenantId, paidAt: { gte: dayStart, lte: dayEnd } },
+      where: { tenantId, paidAt: { gte: dayStart, lte: dayEnd }, ...privateFilter },
       _sum: { amount: true },
     }),
     prisma.payment.aggregate({
-      where: { tenantId, paidAt: { gte: monthStart } },
+      where: { tenantId, paidAt: { gte: monthStart }, ...privateFilter },
       _sum: { amount: true },
     }),
     prisma.appointment.findMany({
@@ -123,7 +129,7 @@ export async function getPaymentsOverview(): Promise<PaymentsOverview> {
       include: appointmentInclude,
     }),
     prisma.payment.findMany({
-      where: { tenantId },
+      where: { tenantId, ...privateFilter },
       orderBy: { paidAt: "desc" },
       take: 30,
       include: {
