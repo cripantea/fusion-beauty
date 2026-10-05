@@ -174,9 +174,155 @@ Mi hanno informato inoltre della mia possibilità di recesso da questo consenso.
     });
   }
 
+  // ── Demo appointments with payments ──────────────────────────────────────
+  // Find or create demo clients for appointments
+  const demoClients = [
+    { firstName: "Sofia", lastName: "Ferretti", phone: "333 234 5678", email: "sofia.ferretti@email.it" },
+    { firstName: "Giulia", lastName: "Moretti", phone: "347 891 2345", email: null },
+    { firstName: "Laura", lastName: "Bianchi", phone: "328 456 7890", email: "laura.bianchi@gmail.com" },
+    { firstName: "Anna", lastName: "Russo", phone: "335 123 4567", email: null },
+    { firstName: "Emma", lastName: "Colombo", phone: "392 678 9012", email: "emma.colombo@email.it" },
+  ];
+
+  const upsertedClients: Awaited<ReturnType<typeof prisma.client.findFirst>>[] = [];
+  for (const c of demoClients) {
+    let client = await prisma.client.findFirst({ where: { tenantId: tenant.id, phone: c.phone } });
+    if (!client) {
+      client = await prisma.client.create({
+        data: { tenantId: tenant.id, firstName: c.firstName, lastName: c.lastName, phone: c.phone, email: c.email },
+      });
+    }
+    upsertedClients.push(client);
+  }
+
+  const [sofia, giulia, laura, anna, emma] = upsertedClients;
+
+  // Find service IDs
+  const svcPulizia = await prisma.service.findFirst({ where: { tenantId: tenant.id, name: "Igiene cosmetica" } });
+  const svcLaminazione = await prisma.service.findFirst({ where: { tenantId: tenant.id, name: "Laminazione ciglia o sopracciglia" } });
+  const svcLaser = await prisma.service.findFirst({ where: { tenantId: tenant.id, name: "Laser 808 — Inguine + Ascelle" } });
+  const svcManicure = await prisma.service.findFirst({ where: { tenantId: tenant.id, name: "Manicure semipermanente" } });
+  const svcMassaggio = await prisma.service.findFirst({ where: { tenantId: tenant.id, name: "Massaggio" } });
+
+  // Today's date for relative timestamps
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  function daysAgo(n: number, h: number, m = 0): Date {
+    const d = new Date(today);
+    d.setDate(d.getDate() - n);
+    d.setHours(h, m, 0, 0);
+    return d;
+  }
+
+  function daysFromNow(n: number, h: number, m = 0): Date {
+    const d = new Date(today);
+    d.setDate(d.getDate() + n);
+    d.setHours(h, m, 0, 0);
+    return d;
+  }
+
+  type ApptSeed = {
+    client: typeof sofia;
+    service: typeof svcPulizia;
+    start: Date;
+    status: "COMPLETED" | "BOOKED" | "CANCELLED";
+    paymentMethod?: "CASH" | "CARD";
+    paymentAmount?: number;
+    notes?: string;
+  };
+
+  const apptSeeds: ApptSeed[] = [
+    // Past completed with cash
+    {
+      client: sofia, service: svcPulizia,
+      start: daysAgo(3, 10, 0),
+      status: "COMPLETED",
+      paymentMethod: "CASH", paymentAmount: 55,
+    },
+    // Past completed with POS (CARD)
+    {
+      client: giulia, service: svcLaminazione,
+      start: daysAgo(2, 14, 0),
+      status: "COMPLETED",
+      paymentMethod: "CARD", paymentAmount: 60,
+    },
+    // Past completed with cash
+    {
+      client: laura, service: svcLaser,
+      start: daysAgo(1, 11, 0),
+      status: "COMPLETED",
+      paymentMethod: "CASH", paymentAmount: 45,
+      notes: "3ª seduta — buoni risultati",
+    },
+    // Today
+    {
+      client: anna, service: svcManicure,
+      start: new Date(today.getTime() + 9 * 3600_000),
+      status: "BOOKED",
+    },
+    {
+      client: emma, service: svcMassaggio,
+      start: new Date(today.getTime() + 14.5 * 3600_000),
+      status: "BOOKED",
+    },
+    // Future
+    {
+      client: sofia, service: svcLaser,
+      start: daysFromNow(2, 10, 30),
+      status: "BOOKED",
+      notes: "Portare consenso firmato",
+    },
+    {
+      client: giulia, service: svcPulizia,
+      start: daysFromNow(4, 16, 0),
+      status: "BOOKED",
+    },
+  ];
+
+  for (const seed of apptSeeds) {
+    if (!seed.client || !seed.service) continue;
+    const endTime = new Date(seed.start.getTime() + seed.service.durationMinutes * 60_000);
+
+    const existing = await prisma.appointment.findFirst({
+      where: { tenantId: tenant.id, clientId: seed.client.id, startTime: seed.start },
+    });
+    if (existing) continue;
+
+    const appt = await prisma.appointment.create({
+      data: {
+        tenantId: tenant.id,
+        clientId: seed.client.id,
+        serviceId: seed.service.id,
+        startTime: seed.start,
+        endTime,
+        status: seed.status,
+        source: "INTERNAL",
+        notes: seed.notes ?? null,
+      },
+    });
+
+    if (seed.paymentMethod && seed.paymentAmount) {
+      const existingPayment = await prisma.payment.findUnique({ where: { appointmentId: appt.id } });
+      if (!existingPayment) {
+        await prisma.payment.create({
+          data: {
+            tenantId: tenant.id,
+            clientId: seed.client.id,
+            appointmentId: appt.id,
+            amount: seed.paymentAmount,
+            method: seed.paymentMethod,
+            paidAt: endTime,
+          },
+        });
+      }
+    }
+  }
+
   console.log(`✅ La Boutique del Benessere (slug: boutique-del-benessere) — ${services.length} servizi`);
   console.log("   roberta@boutique.it  →  ADMIN");
   console.log("   giulia@boutique.it   →  OPERATOR");
+  console.log(`   ${apptSeeds.length} appuntamenti demo (con pagamenti contanti/POS)`);
 }
 
 main()

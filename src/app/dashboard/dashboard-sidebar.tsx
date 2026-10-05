@@ -10,6 +10,7 @@ import {
   Inbox,
   LayoutDashboard,
   Link2,
+  MessageCircle,
   Scissors,
   Settings,
   ShieldCheck,
@@ -52,6 +53,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/dashboard/requests", label: "Richieste online", icon: Inbox, badgeKey: "requests" },
       { href: "/dashboard/followup", label: "Da ricontattare", icon: UserRoundCheck },
+      { href: "/dashboard/messages", label: "Messaggi", icon: MessageCircle },
     ],
   },
   {
