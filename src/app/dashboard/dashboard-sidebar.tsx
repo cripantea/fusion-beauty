@@ -20,6 +20,7 @@ import {
   Wand2,
 } from "lucide-react";
 import Link from "next/link";
+import { FusionsoftBadge } from "@/components/fusionsoft-badge";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
@@ -216,6 +217,10 @@ export function DashboardSidebar({
           )}
         </div>
       )}
+
+      <div className="border-t px-6 py-3">
+        <FusionsoftBadge className="text-[11px] opacity-70 hover:opacity-100" />
+      </div>
     </aside>
     </>
   );

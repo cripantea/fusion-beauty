@@ -1,5 +1,6 @@
 "use client";
 
+import { FusionsoftBadge } from "@/components/fusionsoft-badge";
 import { useState, useRef, useEffect } from "react";
 import { motion, useInView, AnimatePresence } from "framer-motion";
 import {
@@ -1223,6 +1224,7 @@ function Footer() {
         </div>
         <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
           <span>© {new Date().getFullYear()} Fusion Beauty. Tutti i diritti riservati.</span>
+          <FusionsoftBadge tone="dark" />
           <div className="flex gap-4">
             <a href="#" className="hover:text-white/80 transition-colors">Privacy Policy</a>
             <a href="#" className="hover:text-white/80 transition-colors">Termini di utilizzo</a>

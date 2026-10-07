@@ -22,6 +22,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { FusionsoftBadge } from "@/components/fusionsoft-badge";
 import { Input } from "@/components/ui/input";
 
 import { login } from "./actions";
@@ -55,7 +56,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>Accedi</CardTitle>
@@ -108,6 +109,7 @@ export default function LoginPage() {
           </Form>
         </CardContent>
       </Card>
+      <FusionsoftBadge className="absolute inset-x-0 bottom-6 justify-center" />
     </div>
   );
 }
