@@ -1,6 +1,7 @@
 "use client";
 
 import { Cake, MapPin, MessageCircle, Pencil, Phone } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -14,11 +15,13 @@ type ClientDetailHeaderProps = {
   client: ClientDTO;
   visits: number;
   totalSpent: number;
+  /** WhatsApp del centro collegato: il pulsante apre la chat interna invece di wa.me. */
+  whatsappConnected?: boolean;
 };
 
 const birthdayFormatter = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "long" });
 
-export function ClientDetailHeader({ client, visits, totalSpent }: ClientDetailHeaderProps) {
+export function ClientDetailHeader({ client, visits, totalSpent, whatsappConnected = false }: ClientDetailHeaderProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const router = useRouter();
 
@@ -70,7 +73,13 @@ export function ClientDetailHeader({ client, visits, totalSpent }: ClientDetailH
           <Button
             className="h-9 rounded-xl bg-mint font-semibold text-forest hover:bg-mint/85"
             nativeButton={false}
-            render={<a href={whatsappUrl(client.phone)} target="_blank" rel="noopener noreferrer" />}
+            render={
+              whatsappConnected ? (
+                <Link href={`/dashboard/messages?cliente=${client.id}`} />
+              ) : (
+                <a href={whatsappUrl(client.phone)} target="_blank" rel="noopener noreferrer" />
+              )
+            }
           >
             <MessageCircle className="size-4" />
             WhatsApp

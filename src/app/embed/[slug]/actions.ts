@@ -1,7 +1,10 @@
 "use server";
 
+import { after } from "next/server";
+
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { runAppointmentAutomation } from "@/lib/whatsapp";
 
 import { createBookingSchema, getSlotsSchema } from "./schema";
 
@@ -219,6 +222,8 @@ export async function createPublicBooking(values: unknown): Promise<CreateBookin
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     );
+
+    after(() => runAppointmentAutomation("BOOKING_REQUEST", result.appointment.id));
 
     return {
       success: true,

@@ -51,11 +51,24 @@ sincronizzazione calendari.
   pagina Pagamenti; l'importo parte dal prezzo del trattamento e il trattamento
   risulta completato. Totale speso e segmento "Cliente fedele" (5+ trattamenti)
   nella scheda cliente.
+- **Form per i siti**: costruttore di moduli (`/dashboard/forms`) con script da
+  incollare in qualsiasi sito (`/api/embed/form/<id>`, in linea o bolla popup,
+  dentro uno shadow DOM) e link diretto `/f/<id>`. Ogni invio (`/api/forms/submit`,
+  CORS aperto, honeypot, tempo minimo e limite per IP su Redis) crea o aggiorna la
+  scheda cliente confrontando le sole cifre del telefono.
+- **Agenda incorporabile**: `/api/embed/booking/<slug>?mode=inline|button|popup`
+  mette il widget in un iframe che si adatta all'altezza (postMessage).
+- **WhatsApp con Fusion WA** (come nel CRM): Fusion Beauty è un'"App" di Fusion WA
+  (`FUSION_WA_API_KEY`/`SECRET`, externalCustomerId = tenant.id). Collegamento del
+  numero con l'Embedded Signup/Coexistence (`/dashboard/whatsapp`), template Meta,
+  chat in `/dashboard/messages` (webhook `/api/webhooks/whatsapp?token=…`) e
+  messaggi automatici: richiesta online ricevuta, conferma, promemoria del giorno
+  prima e compleanni (worker, ogni 15 minuti), risposta ai form, questionario.
 - **Nuova cliente in 10 secondi**: bastano nome, cognome e telefono; poi un link
   WhatsApp (`wa.me`, precompilato) invia il questionario pubblico `/q/[token]` le
   cui risposte (data di nascita, città, allergie, pelle/salute, interessi,
-  provenienza) popolano la scheda. L'invio parte dall'app WhatsApp dell'operatrice:
-  non c'è integrazione con WhatsApp Business API.
+  provenienza) popolano la scheda. Con WhatsApp collegato il questionario parte in
+  automatico; altrimenti dall'app WhatsApp dell'operatrice.
 - **Agenda per operatrice**, **Richieste online** (prenotazioni dal widget da
   confermare/rifiutare), **Da ricontattare** (clienti inattive da 6+ mesi,
   compleanni, promemoria di domani con messaggio WhatsApp pronto),

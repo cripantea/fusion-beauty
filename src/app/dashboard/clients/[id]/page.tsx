@@ -6,6 +6,7 @@ import { getTenantContext } from "@/lib/auth-context";
 import { formatEuro } from "@/lib/format";
 import { getClientStatsMap } from "@/lib/insights";
 import { prisma } from "@/lib/prisma";
+import { hasActiveWhatsapp } from "@/lib/whatsapp";
 
 import { getClientConsents } from "@/app/dashboard/consents/collect-actions";
 
@@ -125,7 +126,12 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <ClientDetailHeader client={client} visits={stats.visits} totalSpent={stats.totalSpent} />
+      <ClientDetailHeader
+        client={client}
+        visits={stats.visits}
+        totalSpent={stats.totalSpent}
+        whatsappConnected={await hasActiveWhatsapp(tenantId)}
+      />
 
       <div className="grid gap-6 md:grid-cols-2">
         <Panel title="Stato visite" icon={Clock}>

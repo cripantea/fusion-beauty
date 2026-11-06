@@ -59,6 +59,34 @@ enum IntegrationType {
   ICAL_URL
 }
 
+enum FormDisplayMode {
+  INLINE
+  POPUP
+}
+
+enum WhatsappDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum WhatsappMessageStatus {
+  RECEIVED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+/// Messaggi automatici WhatsApp (template Meta approvati).
+enum WhatsappAutomationKind {
+  BOOKING_REQUEST
+  BOOKING_CONFIRMED
+  REMINDER
+  BIRTHDAY
+  FORM_WELCOME
+  QUESTIONNAIRE
+}
+
 model Tenant {
   id           String   @id @default(cuid())
   name         String
@@ -84,6 +112,11 @@ model Tenant {
   workingHours           WorkingHours[]
   staffExceptions        StaffException[]
   clientPlans            ClientPlan[]
+  forms                  Form[]
+  formSubmissions        FormSubmission[]
+  whatsappConnection     WhatsappConnection?
+  whatsappMessages       WhatsappMessage[]
+  whatsappAutomations    WhatsappAutomation[]
 
   @@map("tenants")
 }
@@ -138,44 +171,46 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  tenant            Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  appointments      Appointment[]   @relation("AppointmentOperator")
-  collectedConsents ConsentRecord[] @relation("ConsentCollectedBy")
-  payments          Payment[]       @relation("PaymentCreatedBy")
+  tenant            Tenant?          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments      Appointment[]    @relation("AppointmentOperator")
+  collectedConsents ConsentRecord[]  @relation("ConsentCollectedBy")
+  payments          Payment[]        @relation("PaymentCreatedBy")
   workingHours      WorkingHours[]
   staffExceptions   StaffException[]
   // Trattamenti che l'operatrice NON esegue (di default li fa tutti).
-  excludedServices  Service[]       @relation("OperatorExcludedServices")
+  excludedServices  Service[]        @relation("OperatorExcludedServices")
 
   @@index([tenantId])
   @@map("users")
 }
 
 model Client {
-  id          String    @id @default(cuid())
-  tenantId    String
-  firstName   String
-  lastName    String
-  phone       String
-  email       String?
-  notes       String?   @db.Text
-  dateOfBirth DateTime? @db.Date
-  taxCode     String?
+  id                String    @id @default(cuid())
+  tenantId          String
+  firstName         String
+  lastName          String
+  phone             String
+  email             String?
+  notes             String?   @db.Text
+  dateOfBirth       DateTime? @db.Date
+  taxCode           String?
   // Campi popolati dal questionario inviato via WhatsApp (o compilati a mano).
   city              String?
   allergies         String?   @db.Text
   healthNotes       String?   @db.Text
   acquisitionSource String?
   interests         String[]  @default([])
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  appointments   Appointment[]
-  consents       ConsentRecord[]
-  payments       Payment[]
-  questionnaires ClientQuestionnaire[]
-  plans          ClientPlan[]
+  tenant           Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  appointments     Appointment[]
+  consents         ConsentRecord[]
+  payments         Payment[]
+  questionnaires   ClientQuestionnaire[]
+  plans            ClientPlan[]
+  formSubmissions  FormSubmission[]
+  whatsappMessages WhatsappMessage[]
 
   @@index([tenantId, phone])
   @@index([tenantId, lastName])
@@ -194,7 +229,7 @@ model Service {
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
-  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   appointments      Appointment[]
   consentTemplates  ConsentTemplate[]
   excludedOperators User[]            @relation("OperatorExcludedServices")
@@ -339,15 +374,15 @@ model ConsentRecord {
 }
 
 model WorkingHours {
-  id         String   @id @default(cuid())
-  tenantId   String
-  userId     String
-  dayOfWeek  Int
-  startTime  String
-  endTime    String
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  dayOfWeek Int
+  startTime String
+  endTime   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -408,4 +443,110 @@ model ClientPlanSession {
 
   @@unique([planId, sessionNumber])
   @@map("client_plan_sessions")
+}
+
+// ── Form incorporabili nei siti ──────────────────────────────────────────────
+// Come i form del CRM: script da incollare in qualsiasi sito, in linea o come
+// bolla popup. Ogni invio crea o aggiorna la scheda cliente (stesso telefono).
+model Form {
+  id             String          @id @default(cuid())
+  tenantId       String
+  name           String
+  /// Titolo mostrato al visitatore; `name` è solo l'etichetta interna.
+  title          String
+  fields         Json
+  settings       Json
+  displayMode    FormDisplayMode @default(INLINE)
+  color          String          @default("#1f3d36")
+  welcomeMessage String          @default("")
+  enabled        Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  submissions FormSubmission[]
+
+  @@index([tenantId])
+  @@map("forms")
+}
+
+model FormSubmission {
+  id        String   @id @default(cuid())
+  tenantId  String
+  formId    String
+  clientId  String
+  payload   Json
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  form   Form   @relation(fields: [formId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([formId, createdAt])
+  @@index([clientId])
+  @@map("form_submissions")
+}
+
+// ── WhatsApp tramite Fusion WA ───────────────────────────────────────────────
+// Fusion WA custodisce token Meta e webhook: qui resta solo quale numero è
+// collegato al centro (externalCustomerId = tenant.id) per instradare i
+// messaggi in arrivo, che portano il phone_number_id.
+model WhatsappConnection {
+  id            String   @id @default(cuid())
+  tenantId      String   @unique
+  wabaId        String
+  phoneNumberId String   @unique
+  phoneNumber   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("whatsapp_connections")
+}
+
+model WhatsappMessage {
+  id           String                @id @default(cuid())
+  tenantId     String
+  clientId     String?
+  /// Numero della cliente in formato internazionale senza "+" (es. 393331234567).
+  phone        String
+  direction    WhatsappDirection
+  status       WhatsappMessageStatus
+  body         String                @db.Text
+  templateName String?
+  wamid        String?               @unique
+  error        String?
+  /// Evita doppi invii automatici (es. "reminder:<appointmentId>").
+  dedupeKey    String?
+  readAt       DateTime?
+  createdAt    DateTime              @default(now())
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, phone, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("whatsapp_messages")
+}
+
+model WhatsappAutomation {
+  id           String                 @id @default(cuid())
+  tenantId     String
+  kind         WhatsappAutomationKind
+  enabled      Boolean                @default(false)
+  templateName String
+  language     String
+  /// Testo del template (con {{1}}…), per mostrare nella chat il messaggio inviato.
+  templateBody String                 @default("")
+  /// Valori di {{1}}, {{2}}…: testo con variabili come {{nome}} o {{data}}.
+  params       String[]               @default([])
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, kind])
+  @@map("whatsapp_automations")
 }

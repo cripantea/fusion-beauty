@@ -6,6 +6,7 @@ import {
   ChevronDown,
   CreditCard,
   FileSignature,
+  FileInput,
   FileText,
   Inbox,
   LayoutDashboard,
@@ -32,7 +33,7 @@ type NavItem = {
   label: string;
   icon: React.ElementType;
   exact?: boolean;
-  badgeKey?: "requests";
+  badgeKey?: "requests" | "messages";
 };
 
 type NavGroup = {
@@ -55,7 +56,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/dashboard/requests", label: "Richieste online", icon: Inbox, badgeKey: "requests" },
       { href: "/dashboard/followup", label: "Da ricontattare", icon: UserRoundCheck },
-      { href: "/dashboard/messages", label: "Messaggi", icon: MessageCircle },
+      { href: "/dashboard/messages", label: "Messaggi", icon: MessageCircle, badgeKey: "messages" },
     ],
   },
   {
@@ -73,6 +74,15 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+// Solo per l'amministratrice: form del sito e collegamento WhatsApp.
+const ADMIN_GROUP: NavGroup = {
+  label: "Sito e WhatsApp",
+  items: [
+    { href: "/dashboard/forms", label: "Form del sito", icon: FileInput },
+    { href: "/dashboard/whatsapp", label: "WhatsApp", icon: MessageCircle },
+  ],
+};
+
 const SETTINGS_ITEMS: NavItem[] = [
   { href: "/dashboard/widget", label: "Widget prenotazione", icon: Wand2 },
   { href: "/dashboard/integrations/calendar", label: "Integrazioni", icon: Link2 },
@@ -88,6 +98,7 @@ type DashboardSidebarProps = {
   isAdmin: boolean;
   tenantName: string | null;
   pendingRequests: number;
+  unreadMessages: number;
 };
 
 export function DashboardSidebar({
@@ -95,6 +106,7 @@ export function DashboardSidebar({
   isAdmin,
   tenantName,
   pendingRequests,
+  unreadMessages,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -104,7 +116,9 @@ export function DashboardSidebar({
   }
 
   const groups: NavGroup[] = hasTenant
-    ? NAV_GROUPS
+    ? isAdmin
+      ? [...NAV_GROUPS, ADMIN_GROUP]
+      : NAV_GROUPS
     : [
         {
           label: "Ogni giorno",
@@ -129,7 +143,7 @@ export function DashboardSidebar({
   function renderNavItem(item: NavItem) {
     const active = isActive(item.href, item.exact);
     const Icon = item.icon;
-    const badge = item.badgeKey === "requests" ? pendingRequests : 0;
+    const badge = item.badgeKey === "requests" ? pendingRequests : item.badgeKey === "messages" ? unreadMessages : 0;
     return (
       <Link
         key={item.href}

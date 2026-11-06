@@ -13,6 +13,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
+import { BookingEmbedCard } from "./booking-embed-card";
+
 type WidgetPreviewProps = {
   tenantSlug: string;
   tenantName: string;
@@ -39,7 +41,6 @@ export function WidgetPreview({ tenantSlug, tenantName }: WidgetPreviewProps) {
 
   const registerUrl = `${origin}/registra/${tenantSlug}`;
   const bookingUrl = `${origin}/embed/${tenantSlug}`;
-  const embedCode = `<iframe src="${bookingUrl}" width="100%" height="700" frameborder="0"></iframe>`;
 
   function copyRegisterLink() {
     navigator.clipboard
@@ -53,13 +54,6 @@ export function WidgetPreview({ tenantSlug, tenantName }: WidgetPreviewProps) {
       .writeText(bookingUrl)
       .then(() => toast.success("Link copiato negli appunti."))
       .catch(() => toast.error("Impossibile copiare il link."));
-  }
-
-  function copyEmbed() {
-    navigator.clipboard
-      .writeText(embedCode)
-      .then(() => toast.success("Codice embed copiato negli appunti."))
-      .catch(() => toast.error("Impossibile copiare il codice."));
   }
 
   const waText = encodeURIComponent(
@@ -153,23 +147,7 @@ export function WidgetPreview({ tenantSlug, tenantName }: WidgetPreviewProps) {
         </CardContent>
       </Card>
 
-      {/* Secondary: embed code */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Codice embed per il sito</CardTitle>
-          <CardDescription>
-            Incorpora il modulo di prenotazione direttamente nel tuo sito web.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <pre className="overflow-x-auto rounded-lg border bg-muted p-3 text-xs">
-            <code>{embedCode}</code>
-          </pre>
-          <Button variant="outline" onClick={copyEmbed}>
-            Copia codice embed
-          </Button>
-        </CardContent>
-      </Card>
+      <BookingEmbedCard origin={origin} slug={tenantSlug} />
 
       {/* Live preview */}
       <Card>

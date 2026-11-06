@@ -113,11 +113,13 @@ function QuickClientBody({
               {created.client.firstName} è in archivio
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Mandale il questionario su WhatsApp: le risposte compilano da sole
-              la sua scheda.
+              {created.link.sentAutomatically
+                ? "Le abbiamo già inviato il questionario su WhatsApp: le risposte compilano da sole la sua scheda."
+                : "Mandale il questionario su WhatsApp: le risposte compilano da sole la sua scheda."}
             </p>
           </div>
           <div className="space-y-2">
+            {!created.link.sentAutomatically && (
             <Button
               size="lg"
               className="h-11 w-full bg-[#25D366] text-base font-semibold text-white hover:bg-[#1fb857]"
@@ -133,6 +135,7 @@ function QuickClientBody({
               <MessageCircle className="size-5" />
               Invia questionario su WhatsApp
             </Button>
+            )}
 
             {/* Copyable link */}
             <div className="flex items-center gap-2 rounded-xl border border-mint-border bg-mint-soft/50 px-3 py-2">
@@ -154,7 +157,7 @@ function QuickClientBody({
             </div>
 
             <Button variant="ghost" className="w-full" onClick={onClose}>
-              Più tardi
+              {created.link.sentAutomatically ? "Chiudi" : "Più tardi"}
             </Button>
           </div>
         </div>

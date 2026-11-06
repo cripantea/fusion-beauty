@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import { cn } from "@/lib/utils";
+
+import { EmbedAutoHeight } from "./auto-height";
 import { getPublicTenantWidgetData } from "./data";
 import { WidgetBookingFlow } from "./widget-booking-flow";
 
 type EmbedPageProps = {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ embed?: string }>;
 };
 
 export async function generateMetadata({ params }: EmbedPageProps): Promise<Metadata> {
@@ -17,8 +21,10 @@ export async function generateMetadata({ params }: EmbedPageProps): Promise<Meta
   };
 }
 
-export default async function EmbedPage({ params }: EmbedPageProps) {
+export default async function EmbedPage({ params, searchParams }: EmbedPageProps) {
   const { slug } = await params;
+  // ?embed=1: dentro l'iframe dello script, l'altezza la decide il contenuto.
+  const inFrame = (await searchParams).embed === "1";
   const data = await getPublicTenantWidgetData(slug);
 
   if (!data) {
@@ -28,7 +34,7 @@ export default async function EmbedPage({ params }: EmbedPageProps) {
   const { tenant, services } = data;
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md space-y-4 bg-background p-4">
+    <EmbedAutoHeight className={cn("mx-auto w-full max-w-md space-y-4 bg-background p-4", !inFrame && "min-h-screen")}>
       <div className="flex flex-col items-center gap-2 pt-6 pb-4 text-center">
         {tenant.logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -49,6 +55,6 @@ export default async function EmbedPage({ params }: EmbedPageProps) {
       </div>
 
       <WidgetBookingFlow slug={tenant.slug} services={services} />
-    </div>
+    </EmbedAutoHeight>
   );
 }

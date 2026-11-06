@@ -5,6 +5,7 @@ import { getTenantContext } from "@/lib/auth-context";
 import { whatsappUrl } from "@/lib/format";
 import { emptyStats, getClientStatsMap, INACTIVE_MONTHS, monthsAgoDate } from "@/lib/insights";
 import { prisma } from "@/lib/prisma";
+import { runAutomation } from "@/lib/whatsapp";
 import { randomBytes } from "node:crypto";
 
 import {
@@ -234,6 +235,8 @@ export async function updateClient(
 export type QuestionnaireLink = {
   url: string;
   whatsappUrl: string;
+  /** Già inviato in automatico con WhatsApp Business (Fusion WA). */
+  sentAutomatically?: boolean;
 };
 
 async function buildQuestionnaireLink(
@@ -281,7 +284,12 @@ export async function createQuickClient(values: QuickClientValues): Promise<Quic
   });
 
   const questionnaire = await buildQuestionnaireLink(tenantId, client);
-  return { success: true, client: toClientDTO(client), questionnaire };
+  const sent = await runAutomation(tenantId, "QUESTIONNAIRE", {
+    client,
+    vars: { link: questionnaire.url },
+    dedupeKey: `questionnaire:${client.id}`,
+  });
+  return { success: true, client: toClientDTO(client), questionnaire: { ...questionnaire, sentAutomatically: sent?.ok === true } };
 }
 
 export async function createQuestionnaireLink(

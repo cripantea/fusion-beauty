@@ -8,7 +8,7 @@ import { DashboardTopbar } from "./dashboard-topbar";
 export default async function DashboardLayout({ children }: LayoutProps<"/dashboard">) {
   const { user } = await getAuthContext();
 
-  const [tenant, pendingRequests] = user.tenantId
+  const [tenant, pendingRequests, unreadMessages] = user.tenantId
     ? await Promise.all([
         prisma.tenant.findUnique({ where: { id: user.tenantId }, select: { name: true } }),
         prisma.appointment.count({
@@ -19,8 +19,11 @@ export default async function DashboardLayout({ children }: LayoutProps<"/dashbo
             startTime: { gte: new Date() },
           },
         }),
+        prisma.whatsappMessage.count({
+          where: { tenantId: user.tenantId, direction: "INBOUND", readAt: null },
+        }),
       ])
-    : [null, 0];
+    : [null, 0, 0];
 
   const isAdmin = user.role === "ADMIN";
 
@@ -31,6 +34,7 @@ export default async function DashboardLayout({ children }: LayoutProps<"/dashbo
         isAdmin={isAdmin}
         tenantName={tenant?.name ?? null}
         pendingRequests={pendingRequests}
+        unreadMessages={unreadMessages}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <DashboardTopbar
