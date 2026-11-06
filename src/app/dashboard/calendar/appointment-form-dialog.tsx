@@ -149,6 +149,11 @@ export function AppointmentFormDialog({
   }
 
   const dateValue = useWatch({ control: form.control, name: "date" });
+  const serviceIdValue = useWatch({ control: form.control, name: "serviceId" });
+  const availableOperators = useMemo(
+    () => operators.filter((operator) => !operator.excludedServiceIds.includes(serviceIdValue)),
+    [operators, serviceIdValue]
+  );
   const notesValue = useWatch({ control: form.control, name: "notes" });
   const showNotes = notesOpen || Boolean(notesValue);
 
@@ -302,6 +307,10 @@ export function AppointmentFormDialog({
                           onClick={() => {
                             field.onChange(service.id);
                             form.setValue("durationMinutes", service.durationMinutes);
+                            const operatorId = form.getValues("operatorId");
+                            const excluded = operators.find((operator) => operator.id === operatorId)
+                              ?.excludedServiceIds.includes(service.id);
+                            if (excluded) form.setValue("operatorId", NO_OPERATOR_VALUE);
                           }}
                           className={cn(
                             "rounded-xl border p-3 text-left transition-colors",
@@ -386,7 +395,7 @@ export function AppointmentFormDialog({
                       >
                         Qualsiasi
                       </Chip>
-                      {operators.map((operator) => (
+                      {availableOperators.map((operator) => (
                         <Chip
                           key={operator.id}
                           active={field.value === operator.id}

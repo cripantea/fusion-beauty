@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: "Plus Jakarta Sans Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-heading: "Playfair Display Variable", ui-serif, Georgia, serif;
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-heading: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
   --color-forest: var(--forest);
   --color-forest-foreground: var(--forest-foreground);
   --color-mint: var(--mint);
@@ -52,10 +52,10 @@
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-xl: calc(var(--radius) * 1.5);
+  --radius-2xl: calc(var(--radius) * 1.5);
+  --radius-3xl: calc(var(--radius) * 1.5);
+  --radius-4xl: calc(var(--radius) * 1.5);
 }
 
 :root {
@@ -83,7 +83,7 @@
   --chart-3: oklch(0.9 0.08 165);
   --chart-4: oklch(0.78 0.15 70);
   --chart-5: oklch(0.45 0.16 10);
-  --radius: 1rem;
+  --radius: 0.5rem;
   --forest: oklch(0.31 0.045 165);
   --forest-foreground: oklch(0.97 0.02 165);
   --mint: oklch(0.8 0.17 160);
@@ -131,7 +131,7 @@
   --chart-3: oklch(0.62 0.14 28);
   --chart-4: oklch(0.72 0.08 280);
   --chart-5: oklch(0.78 0.12 55);
-  --radius: 0.75rem;
+  --radius: 0.5rem;
   /* Warm cream sidebar */
   --sidebar: oklch(0.975 0.006 80);
   --sidebar-foreground: oklch(0.135 0.01 255);
@@ -188,9 +188,13 @@
     @apply font-sans;
     scroll-behavior: smooth;
   }
+  /* Icone Lucide: tratto sottile uguale in tutti i prodotti Fusionsoft. */
+  svg.lucide {
+    stroke-width: 1.5;
+  }
   h1, h2, h3, .font-heading {
     font-family: var(--font-heading);
-    letter-spacing: -0.01em;
+    letter-spacing: -0.03em;
     font-variant-numeric: lining-nums;
   }
   /* I titoli dentro componenti UI compatti restano nel font di testo. */

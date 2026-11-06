@@ -8,13 +8,6 @@ import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   Form,
   FormControl,
   FormField,
@@ -23,6 +16,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { FusionsoftBadge } from "@/components/fusionsoft-badge";
+import { BeautyLogo } from "@/components/beauty-logo";
+import { AuthShell } from "@/components/fusionsoft-ui";
 import { Input } from "@/components/ui/input";
 
 import { login } from "./actions";
@@ -56,15 +51,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-muted/30 p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>Accedi</CardTitle>
-          <CardDescription>
-            Inserisci le tue credenziali per accedere al gestionale.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+    <AuthShell
+      brand={<BeautyLogo />}
+      title="Accedi"
+      subtitle="Inserisci le tue credenziali per accedere al gestionale."
+      footer={<FusionsoftBadge />}
+    >
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
@@ -107,9 +99,6 @@ export default function LoginPage() {
               </Button>
             </form>
           </Form>
-        </CardContent>
-      </Card>
-      <FusionsoftBadge className="absolute inset-x-0 bottom-6 justify-center" />
-    </div>
+    </AuthShell>
   );
 }

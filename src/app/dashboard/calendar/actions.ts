@@ -18,6 +18,8 @@ export type OperatorDTO = {
   firstName: string;
   lastName: string;
   workingHours: { dayOfWeek: number; startTime: string; endTime: string }[];
+  /** Trattamenti che l'operatrice non esegue. */
+  excludedServiceIds: string[];
 };
 
 export async function getAppointments(input: {
@@ -41,7 +43,7 @@ export async function getAppointments(input: {
 export async function getOperators(): Promise<OperatorDTO[]> {
   const { tenantId } = await getTenantContext();
 
-  return prisma.user.findMany({
+  const operators = await prisma.user.findMany({
     where: { tenantId, isActive: true, role: { in: ["ADMIN", "OPERATOR"] } },
     orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
     select: {
@@ -52,8 +54,14 @@ export async function getOperators(): Promise<OperatorDTO[]> {
         select: { dayOfWeek: true, startTime: true, endTime: true },
         orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
       },
+      excludedServices: { select: { id: true } },
     },
   });
+
+  return operators.map(({ excludedServices, ...operator }) => ({
+    ...operator,
+    excludedServiceIds: excludedServices.map((service) => service.id),
+  }));
 }
 
 export type AppointmentActionResult =
@@ -62,7 +70,8 @@ export type AppointmentActionResult =
 
 async function resolveOperatorId(
   tenantId: string,
-  operatorId: string | null
+  operatorId: string | null,
+  serviceId: string
 ): Promise<
   { ok: true; operatorId: string | null } | { ok: false; error: string }
 > {
@@ -72,10 +81,14 @@ async function resolveOperatorId(
 
   const operator = await prisma.user.findFirst({
     where: { id: operatorId, tenantId, role: { in: ["ADMIN", "OPERATOR"] } },
+    include: { excludedServices: { where: { id: serviceId }, select: { id: true } } },
   });
 
   if (!operator) {
     return { ok: false, error: "Operatore non valido." };
+  }
+  if (operator.excludedServices.length > 0) {
+    return { ok: false, error: `${operator.firstName} non esegue questo trattamento.` };
   }
 
   return { ok: true, operatorId: operator.id };
@@ -105,7 +118,7 @@ export async function createAppointment(
     return { success: false, error: "Trattamento non trovato." };
   }
 
-  const operatorResult = await resolveOperatorId(tenantId, parsed.data.operatorId);
+  const operatorResult = await resolveOperatorId(tenantId, parsed.data.operatorId, service.id);
   if (!operatorResult.ok) {
     return { success: false, error: operatorResult.error };
   }
@@ -155,7 +168,7 @@ export async function updateAppointment(
     return { success: false, error: "Trattamento non trovato." };
   }
 
-  const operatorResult = await resolveOperatorId(tenantId, parsed.data.operatorId);
+  const operatorResult = await resolveOperatorId(tenantId, parsed.data.operatorId, service.id);
   if (!operatorResult.ok) {
     return { success: false, error: operatorResult.error };
   }

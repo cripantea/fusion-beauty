@@ -144,6 +144,8 @@ model User {
   payments          Payment[]       @relation("PaymentCreatedBy")
   workingHours      WorkingHours[]
   staffExceptions   StaffException[]
+  // Trattamenti che l'operatrice NON esegue (di default li fa tutti).
+  excludedServices  Service[]       @relation("OperatorExcludedServices")
 
   @@index([tenantId])
   @@map("users")
@@ -193,8 +195,9 @@ model Service {
   updatedAt              DateTime @updatedAt
 
   tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  appointments     Appointment[]
-  consentTemplates ConsentTemplate[]
+  appointments      Appointment[]
+  consentTemplates  ConsentTemplate[]
+  excludedOperators User[]            @relation("OperatorExcludedServices")
 
   @@index([tenantId, isActive])
   @@map("services")

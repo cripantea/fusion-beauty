@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table";
 
 import { toggleStaffStatus, type StaffDTO } from "./actions";
+import { ServicesDialog } from "./services-dialog";
 import { StaffFormDialog } from "./staff-form-dialog";
 import { WorkingHoursDialog } from "./working-hours-dialog";
 
@@ -36,6 +37,7 @@ export function StaffManager({ initialStaff, currentUserId }: StaffManagerProps)
   const [pendingToggleId, setPendingToggleId] = useState<string | null>(null);
   const [workingHoursStaffId, setWorkingHoursStaffId] = useState<string | null>(null);
   const [workingHoursStaffName, setWorkingHoursStaffName] = useState("");
+  const [servicesStaff, setServicesStaff] = useState<{ id: string; name: string } | null>(null);
   const [, startTransition] = useTransition();
 
   function openCreateDialog() {
@@ -137,6 +139,15 @@ export function StaffManager({ initialStaff, currentUserId }: StaffManagerProps)
                     <Button
                       variant="outline"
                       size="sm"
+                      onClick={() =>
+                        setServicesStaff({ id: member.id, name: `${member.firstName} ${member.lastName}`.trim() })
+                      }
+                    >
+                      Trattamenti
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       disabled={pendingToggleId === member.id || member.id === currentUserId}
                       onClick={() => handleToggle(member)}
                     >
@@ -168,6 +179,12 @@ export function StaffManager({ initialStaff, currentUserId }: StaffManagerProps)
         staffId={workingHoursStaffId}
         staffName={workingHoursStaffName}
         onClose={() => setWorkingHoursStaffId(null)}
+      />
+
+      <ServicesDialog
+        staffId={servicesStaff?.id ?? null}
+        staffName={servicesStaff?.name ?? ""}
+        onClose={() => setServicesStaff(null)}
       />
     </div>
   );

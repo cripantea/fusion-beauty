@@ -12,7 +12,8 @@
     "postinstall": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:demo": "tsx prisma/seed.demo.ts",
-    "db:seed:prod": "tsx prisma/seed.prod.ts"
+    "db:seed:prod": "tsx prisma/seed.prod.ts",
+    "db:setup:boutique-staff": "tsx prisma/setup.boutique-staff.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

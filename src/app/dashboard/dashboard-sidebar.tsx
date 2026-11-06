@@ -14,13 +14,14 @@ import {
   Scissors,
   Settings,
   ShieldCheck,
-  Sparkles,
   UserRoundCheck,
   Users,
   Wand2,
 } from "lucide-react";
 import Link from "next/link";
 import { FusionsoftBadge } from "@/components/fusionsoft-badge";
+import { BeautyLogo } from "@/components/beauty-logo";
+import { sidebarHeadClass, sidebarItemClass, sidebarShellClass } from "@/components/fusionsoft-ui";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
@@ -133,14 +134,9 @@ export function DashboardSidebar({
       <Link
         key={item.href}
         href={item.href}
-        className={cn(
-          "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-          active
-            ? "bg-mint-soft font-semibold text-forest ring-1 ring-mint-border"
-            : "text-muted-foreground hover:bg-muted hover:text-foreground"
-        )}
+        className={sidebarItemClass(active)}
       >
-        <Icon className={cn("size-4 shrink-0", active && "text-mint-ink")} />
+        <Icon />
         <span className="flex-1">{item.label}</span>
         {badge > 0 ? (
           <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-wine px-1.5 text-[11px] font-bold text-white">
@@ -172,23 +168,20 @@ export function DashboardSidebar({
         );
       })}
     </nav>
-    <aside className="hidden w-64 shrink-0 flex-col border-r bg-card lg:flex print:hidden">
-      <div className="flex h-16 items-center gap-3 border-b px-5">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-mint-soft text-mint-ink ring-1 ring-mint-border">
-          <Sparkles className="size-4" />
-        </div>
-        <div className="min-w-0">
-          <div className="font-heading text-base font-bold leading-tight">Beauty CRM</div>
-          <div className="truncate text-[11px] leading-tight text-muted-foreground">
-            {tenantName ?? "Gestionale centri estetici"}
-          </div>
-        </div>
+    <aside className={`hidden lg:flex print:hidden ${sidebarShellClass}`}>
+      <div className={sidebarHeadClass}>
+        <Link href="/dashboard">
+          <BeautyLogo />
+        </Link>
       </div>
 
       <nav className="flex flex-1 flex-col gap-5 overflow-y-auto px-3 py-5">
+        <div className="truncate px-2.5 font-mono text-xs text-muted-foreground">
+          {tenantName ?? "Gestionale centri estetici"}
+        </div>
         {groups.map((group) => (
           <div key={group.label}>
-            <div className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+            <div className="mb-1.5 px-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground/80">
               {group.label}
             </div>
             <div className="flex flex-col gap-0.5">
@@ -218,8 +211,8 @@ export function DashboardSidebar({
         </div>
       )}
 
-      <div className="border-t px-6 py-3">
-        <FusionsoftBadge className="text-[11px] opacity-70 hover:opacity-100" />
+      <div className="border-t border-border px-4 py-3">
+        <FusionsoftBadge />
       </div>
     </aside>
     </>

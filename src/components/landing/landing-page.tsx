@@ -1,10 +1,8 @@
 "use client";
 
-import { FusionsoftBadge } from "@/components/fusionsoft-badge";
 import { useState, useRef, useEffect } from "react";
 import { motion, useInView, AnimatePresence } from "framer-motion";
 import {
-  Menu,
   X,
   ChevronDown,
   Check,
@@ -23,27 +21,8 @@ import {
   Sparkles,
 } from "lucide-react";
 
-// Dual-flame logo matching the FusionWA / Fusion Beauty brand mark
-function FusionFlame({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 62 78"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-      aria-hidden="true"
-    >
-      <path
-        d="M 24 74 C 6 68 0 50 10 32 C 16 20 22 12 22 2 C 34 12 42 30 38 50 C 36 60 28 66 26 72 Z"
-        fill="currentColor"
-      />
-      <path
-        d="M 36 74 C 34 64 34 56 38 48 C 44 36 52 24 52 12 C 52 4 50 0 52 0 C 66 10 74 32 68 52 C 62 68 52 76 38 76 Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
+import { BeautyLogo } from "@/components/beauty-logo";
+import { SiteFooter, SiteHeader, fsButton } from "@/components/fusionsoft-ui";
 import Link from "next/link";
 
 // ─── Utilities ─────────────────────────────────────────────────────────────
@@ -88,7 +67,7 @@ function BrowserFrame({
   url?: string;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-zinc-200 shadow-2xl shadow-zinc-200/60 bg-white">
+    <div className="overflow-hidden rounded-2xl border border-zinc-200 shadow-zinc-200/60 bg-white">
       <div className="flex items-center gap-3 bg-zinc-50 border-b border-zinc-200 px-4 py-3">
         <div className="flex gap-1.5 shrink-0">
           <div className="w-3 h-3 rounded-full bg-red-400" />
@@ -357,7 +336,7 @@ function DemoModal({ open, onClose }: DemoModalProps) {
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
           >
             <div
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+              className="bg-white rounded-2xl w-full max-w-md overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100">
@@ -444,75 +423,28 @@ function DemoModal({ open, onClose }: DemoModalProps) {
 // ─── Navbar ─────────────────────────────────────────────────────────────────
 
 function Navbar({ onDemoClick }: { onDemoClick: () => void }) {
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-
-  useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  const navLinks = [
-    { href: "#come-funziona", label: "Come funziona" },
-    { href: "#funzionalita", label: "Funzionalità" },
-    { href: "#prezzi", label: "Prezzi" },
-    { href: "#faq", label: "FAQ" },
-  ];
-
   return (
-    <header className={cn(
-      "fixed top-0 left-0 right-0 z-40 transition-all duration-300",
-      scrolled ? "bg-background/95 backdrop-blur-md border-b border-border shadow-sm" : "bg-background/90 backdrop-blur-sm"
-    )}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          <div className="flex items-center gap-2 font-bold text-xl text-zinc-900">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <FusionFlame className="w-[18px] h-[22px] text-white" />
-            </div>
-            <span>Fusion<span className="text-primary">Beauty</span></span>
-          </div>
-          <nav className="hidden md:flex items-center gap-6">
-            {navLinks.map((l) => (
-              <a key={l.href} href={l.href} className="text-sm text-zinc-600 hover:text-zinc-900 transition-colors font-medium">{l.label}</a>
-            ))}
-          </nav>
-          <div className="hidden md:flex items-center gap-3">
-            <Link href="/login" className="text-sm text-zinc-600 hover:text-zinc-900 transition-colors font-medium px-3 py-2 rounded-lg hover:bg-zinc-50">Accedi</Link>
-            <button onClick={onDemoClick} className="text-sm font-semibold bg-primary text-white px-4 py-2 rounded-xl hover:bg-primary/90 active:scale-[0.98] transition-all">
-              Prenota una demo
-            </button>
-          </div>
-          <button className="md:hidden p-2 rounded-lg text-zinc-600 hover:bg-zinc-100" onClick={() => setMobileOpen(!mobileOpen)}>
-            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
-        </div>
-      </div>
-      <AnimatePresence>
-        {mobileOpen && (
-          <motion.div
-            className="md:hidden bg-background border-t border-border px-4 pb-4"
-            initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <div className="space-y-1 pt-3">
-              {navLinks.map((l) => (
-                <a key={l.href} href={l.href} onClick={() => setMobileOpen(false)}
-                  className="block py-2.5 px-3 rounded-xl text-zinc-700 hover:bg-zinc-50 font-medium text-sm">{l.label}</a>
-              ))}
-              <div className="pt-3 space-y-2">
-                <Link href="/login" className="block py-2.5 px-3 rounded-xl text-zinc-700 hover:bg-zinc-50 font-medium text-sm text-center border border-zinc-200">Accedi</Link>
-                <button onClick={() => { setMobileOpen(false); onDemoClick(); }}
-                  className="w-full py-3 bg-primary text-white rounded-xl font-semibold text-sm">
-                  Prenota una demo
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </header>
+    <SiteHeader
+      brand={<BeautyLogo />}
+      nav={[
+        { href: "#come-funziona", label: "Come funziona" },
+        { href: "#funzionalita", label: "Funzionalità" },
+        { href: "#prezzi", label: "Prezzi" },
+        { href: "#faq", label: "FAQ" },
+      ]}
+      actions={
+        <>
+          <Link href="/login" className={fsButton.ghost}>Accedi</Link>
+          <button type="button" onClick={onDemoClick} className={fsButton.primary}>Prenota una demo</button>
+        </>
+      }
+      mobileActions={
+        <>
+          <Link href="/login" className={`${fsButton.outline} ${fsButton.lg}`}>Accedi</Link>
+          <button type="button" onClick={onDemoClick} className={`${fsButton.primary} ${fsButton.lg}`}>Prenota una demo</button>
+        </>
+      }
+    />
   );
 }
 
@@ -520,7 +452,7 @@ function Navbar({ onDemoClick }: { onDemoClick: () => void }) {
 
 function Hero({ onDemoClick }: { onDemoClick: () => void }) {
   return (
-    <section className="pt-24 pb-16 md:pt-32 md:pb-24 overflow-hidden bg-background">
+    <section className="pt-12 pb-16 md:pt-20 md:pb-24 overflow-hidden bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
           <div>
@@ -528,8 +460,8 @@ function Hero({ onDemoClick }: { onDemoClick: () => void }) {
               initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
             >
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/8 text-primary rounded-full text-sm font-medium mb-6">
-                <FusionFlame className="w-3.5 h-4 text-primary" />
+              <div className="inline-flex items-center gap-2 rounded-md border border-border px-2.5 py-1 font-mono text-xs text-muted-foreground mb-6">
+                <span className="size-1.5 rounded-full bg-primary" />
                 <span>CRM progettato per centri estetici</span>
               </div>
             </motion.div>
@@ -555,7 +487,7 @@ function Hero({ onDemoClick }: { onDemoClick: () => void }) {
               transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1], delay: 0.18 }}
             >
               <button onClick={onDemoClick}
-                className="flex items-center gap-2 px-6 py-3.5 bg-primary text-white rounded-xl font-semibold text-base hover:bg-primary/90 active:scale-[0.98] transition-all shadow-lg shadow-primary/20">
+                className="flex items-center gap-2 px-6 py-3.5 bg-primary text-white rounded-xl font-semibold text-base hover:bg-primary/90 active:scale-[0.98] transition-all">
                 Prenota una demo
                 <ArrowRight className="w-4 h-4" />
               </button>
@@ -996,7 +928,7 @@ function VideoDemo() {
           >
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <motion.div
-                className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white flex items-center justify-center shadow-2xl group-hover:scale-105 transition-transform"
+                className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white flex items-center justify-center group-hover:scale-105 transition-transform"
                 whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.96 }}
               >
                 <Play className="w-7 h-7 md:w-8 md:h-8 text-zinc-900 ml-1" />
@@ -1038,7 +970,7 @@ function Pricing({ onDemoClick }: { onDemoClick: () => void }) {
           </div>
         </FadeIn>
         <FadeIn delay={0.1}>
-          <div className="bg-white rounded-2xl border border-zinc-200 shadow-lg overflow-hidden">
+          <div className="bg-white rounded-2xl border border-zinc-200 overflow-hidden">
             <div className="p-8">
               <div className="flex items-center justify-between mb-6">
                 <div className="font-bold text-lg text-zinc-900">Fusion Beauty</div>
@@ -1178,7 +1110,7 @@ function CTAFinale({ onDemoClick }: { onDemoClick: () => void }) {
           </p>
           <button
             onClick={onDemoClick}
-            className="inline-flex items-center gap-2 px-8 py-4 bg-white text-primary rounded-xl font-bold text-base hover:bg-white/95 active:scale-[0.98] transition-all shadow-lg"
+            className="inline-flex items-center gap-2 px-8 py-4 bg-white text-primary rounded-xl font-bold text-base hover:bg-white/95 active:scale-[0.98] transition-all"
           >
             Prenota una demo
             <ArrowRight className="w-5 h-5" />
@@ -1194,44 +1126,30 @@ function CTAFinale({ onDemoClick }: { onDemoClick: () => void }) {
 
 function Footer() {
   return (
-    <footer className="bg-[oklch(0.18_0.03_165)] text-white/60">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid sm:grid-cols-3 gap-8 pb-8 border-b border-white/10">
-          <div>
-            <div className="flex items-center gap-2 font-bold text-white text-base mb-3">
-              <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
-                <FusionFlame className="w-[15px] h-[18px] text-white" />
-              </div>
-              Fusion<span className="text-primary/80">Beauty</span>
-            </div>
-            <p className="text-sm leading-relaxed">Gestionale CRM progettato per centri estetici e beauty center.</p>
-          </div>
-          <div>
-            <div className="font-semibold text-white/80 text-sm mb-3">Prodotto</div>
-            <div className="space-y-2">
-              {["Come funziona", "Funzionalità", "Prezzi", "FAQ"].map((l) => (
-                <a key={l} href={`#${l.toLowerCase().replace(" ", "-")}`} className="block text-sm hover:text-white/80 transition-colors">{l}</a>
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="font-semibold text-white/80 text-sm mb-3">Account</div>
-            <div className="space-y-2">
-              <Link href="/login" className="block text-sm hover:text-white/80 transition-colors">Accedi</Link>
-              <a href="#" className="block text-sm hover:text-white/80 transition-colors">Prenota una demo</a>
-            </div>
-          </div>
-        </div>
-        <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-          <span>© {new Date().getFullYear()} Fusion Beauty. Tutti i diritti riservati.</span>
-          <FusionsoftBadge tone="dark" />
-          <div className="flex gap-4">
-            <a href="#" className="hover:text-white/80 transition-colors">Privacy Policy</a>
-            <a href="#" className="hover:text-white/80 transition-colors">Termini di utilizzo</a>
-          </div>
-        </div>
-      </div>
-    </footer>
+    <SiteFooter
+      brand={<BeautyLogo />}
+      tagline="Gestionale CRM progettato per centri estetici e beauty center."
+      legalName="Fusion Beauty"
+      columns={[
+        {
+          title: "Prodotto",
+          links: [
+            { label: "Come funziona", href: "#come-funziona" },
+            { label: "Funzionalità", href: "#funzionalita" },
+            { label: "Prezzi", href: "#prezzi" },
+            { label: "FAQ", href: "#faq" },
+          ],
+        },
+        { title: "Account", links: [{ label: "Accedi", href: "/login" }] },
+        {
+          title: "Fusionsoft",
+          links: [
+            { label: "fusionsoft.it", href: "https://fusionsoft.it" },
+            { label: "Altri prodotti", href: "https://fusionsoft.it/prodotti" },
+          ],
+        },
+      ]}
+    />
   );
 }
 
