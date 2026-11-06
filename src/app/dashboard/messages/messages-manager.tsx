@@ -37,6 +37,19 @@ function shortTime(iso: string) {
   return date.toDateString() === today.toDateString() ? timeFormatter.format(date) : dayFormatter.format(date);
 }
 
+function firstNameOf(name: string) {
+  return name.startsWith("+") ? "" : name.split(" ")[0] ?? "";
+}
+
+/** Spiegazione semplice al posto dell'errore tecnico di Meta. */
+function friendlyError(error: string | null) {
+  const text = (error ?? "").toLowerCase();
+  if (/131026|not a valid whatsapp|undeliverable|non ha whatsapp/.test(text)) return "Non consegnato: questo numero forse non ha WhatsApp.";
+  if (/131049|marketing|limit/.test(text)) return "Non consegnato: WhatsApp ha bloccato il messaggio per troppi invii promozionali. Riprova tra qualche giorno.";
+  if (/131047|24|re-engagement|window/.test(text)) return "Non consegnato: è passato troppo tempo dall'ultimo messaggio della cliente. Usa un messaggio pronto.";
+  return "Non consegnato. Controlla il numero o riprova più tardi.";
+}
+
 function initials(name: string) {
   if (name.startsWith("+")) return "#";
   const parts = name.split(" ").filter(Boolean);
@@ -72,6 +85,7 @@ export function MessagesManager({
   const [newChatOpen, setNewChatOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const unreadRef = useRef(initialConversations.reduce((sum, c) => sum + c.unread, 0));
 
   const refresh = useCallback(
     async (phone: string | null) => {
@@ -79,12 +93,13 @@ export function MessagesManager({
       const nextThread = phone ? await getThread(phone) : null;
       const nextConversations = await getConversations();
       setThread(nextThread);
-      setConversations((previous) => {
-        // Il contatore nella barra laterale arriva dal layout: va ricaricato se i non letti cambiano.
-        const unread = (list: ConversationDTO[]) => list.reduce((sum, c) => sum + c.unread, 0);
-        if (unread(previous) !== unread(nextConversations)) router.refresh();
-        return nextConversations;
-      });
+      setConversations(nextConversations);
+      // Il contatore nella barra laterale arriva dal layout: va ricaricato se i non letti cambiano.
+      const unread = nextConversations.reduce((sum, c) => sum + c.unread, 0);
+      if (unread !== unreadRef.current) {
+        unreadRef.current = unread;
+        router.refresh();
+      }
     },
     [router]
   );
@@ -143,7 +158,7 @@ export function MessagesManager({
     startSending(async () => {
       const result = await sendReply(selectedPhone, text);
       if (!result.success) {
-        toast.error(result.error);
+        toast.error("Messaggio non inviato. Riprova tra poco.");
         return;
       }
       setDraft("");
@@ -165,7 +180,7 @@ export function MessagesManager({
         </div>
         <Button onClick={() => setNewChatOpen(true)}>
           <Plus className="size-4" />
-          Nuovo messaggio
+          Scrivi a una cliente
         </Button>
       </div>
 
@@ -256,23 +271,24 @@ export function MessagesManager({
 
               <div className="border-t bg-card px-4 py-3">
                 {thread && !thread.windowOpen ? (
-                  <div className="flex flex-wrap items-center gap-3">
-                    <p className="flex-1 text-xs text-muted-foreground">
-                      La cliente non ti scrive da più di 24 ore: WhatsApp permette solo un messaggio approvato (template). Quando
-                      risponde potrai scrivere liberamente.
+                  <div className="flex flex-col items-center gap-2 py-1 text-center sm:flex-row sm:text-left">
+                    <p className="flex-1 text-sm text-muted-foreground">
+                      Per riaprire la chat scegli uno dei messaggi pronti. Appena {firstNameOf(selected.name) || "la cliente"} risponde,
+                      potrai scriverle quello che vuoi.
                     </p>
                     <Button
-                      size="sm"
+                      size="lg"
+                      className="bg-[#25D366] text-white hover:bg-[#20bd5a]"
                       onClick={() => setTemplateFor({ phone: selected.phone, clientId: selected.clientId ?? undefined, name: selected.name })}
                     >
-                      <FileText className="size-3.5" />
-                      Invia template
+                      <FileText className="size-4" />
+                      Scegli un messaggio pronto
                     </Button>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
                     <Input
-                      placeholder="Scrivi un messaggio..."
+                      placeholder={`Scrivi a ${firstNameOf(selected.name) || "questa cliente"}…`}
                       value={draft}
                       disabled={!thread}
                       onChange={(e) => setDraft(e.target.value)}
@@ -338,7 +354,7 @@ function Bubble({ message }: { message: MessageDTO }) {
           message.status === "FAILED" && "ring-1 ring-red-300"
         )}
       >
-        {message.templateName ? (
+        {message.automatic ? (
           <p className="mb-0.5 text-[10px] font-semibold tracking-wide text-zinc-500 uppercase">Messaggio automatico</p>
         ) : null}
         <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.body}</p>
@@ -346,12 +362,26 @@ function Bubble({ message }: { message: MessageDTO }) {
           {timeFormatter.format(new Date(message.createdAt))}
           {outbound ? <StatusIcon className={cn("size-3", message.status === "READ" && "text-sky-500", message.status === "FAILED" && "text-red-500")} /> : null}
         </p>
-        {message.status === "FAILED" && message.error ? <p className="mt-1 text-[11px] text-red-600">{message.error}</p> : null}
+        {message.status === "FAILED" ? (
+          <p className="mt-1 text-[11px] text-red-600" title={message.error ?? undefined}>
+            {friendlyError(message.error)}
+          </p>
+        ) : null}
       </div>
     </div>
   );
 }
 
+/** Testo del messaggio pronto con le parti già compilate (le mancanti restano "…"). */
+function fillPreview(body: string, values: string[]) {
+  return body.replace(/\{\{(\d+)\}\}/g, (_, n: string) => values[Number(n) - 1]?.trim() || "…");
+}
+
+/**
+ * Messaggi pronti (template approvati da Meta) mostrati come cartoline da toccare:
+ * il nome della cliente e quello del centro si compilano da soli, eventuali altre
+ * parti si scrivono in un campo con il testo intorno ben visibile.
+ */
 function TemplateSendDialog({
   target,
   onClose,
@@ -363,94 +393,140 @@ function TemplateSendDialog({
 }) {
   const [templates, setTemplates] = useState<InboxTemplate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [choice, setChoice] = useState("");
-  const [params, setParams] = useState<string[]>([]);
+  const [chosen, setChosen] = useState<InboxTemplate | null>(null);
+  const [values, setValues] = useState<string[]>([]);
   const [isPending, startTransition] = useTransition();
   const open = target !== null;
+  const firstName = target ? firstNameOf(target.name) : "";
 
   useEffect(() => {
     if (!open || templates) return;
-    getApprovedTemplates().then((result) => {
+    getApprovedTemplates(target?.clientId).then((result) => {
       if (result.success) setTemplates(result.templates);
-      else setError(result.error);
+      else setError("Non riesco a caricare i messaggi pronti. Riprova tra poco.");
     });
-  }, [open, templates]);
+  }, [open, templates, target?.clientId]);
 
-  const template = templates?.find((t) => `${t.name}|${t.language}` === choice) ?? null;
+  function close() {
+    setChosen(null);
+    setValues([]);
+    // La prossima cliente può avere altri valori già compilati.
+    setTemplates(null);
+    onClose();
+  }
+
+  function choose(template: InboxTemplate) {
+    setChosen(template);
+    setValues(defaultsFor(template));
+  }
+
+  const missing = chosen ? values.some((v) => !v.trim()) : true;
+
+  // Valori noti dal server; per un numero senza scheda il nome lo prendiamo da quello della chat.
+  function defaultsFor(template: InboxTemplate) {
+    return template.defaults.map((value, i) => value || (i === 0 && !target?.clientId ? firstName : ""));
+  }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <Dialog open={open} onOpenChange={(next) => !next && close()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Messaggio a {target?.name}</DialogTitle>
-          <DialogDescription>Scegli un template approvato da Meta. Nelle variabili puoi usare {"{{nome}}"} e {"{{centro}}"}.</DialogDescription>
+          <DialogTitle>{chosen ? "Controlla e invia" : `Cosa vuoi mandare a ${target?.name ?? ""}?`}</DialogTitle>
+          <DialogDescription>
+            {chosen ? "Ecco il messaggio che riceverà. Se manca qualcosa, completalo qui sotto." : "Tocca il messaggio che vuoi inviare."}
+          </DialogDescription>
         </DialogHeader>
+
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        {templates === null && !error ? <p className="text-sm text-muted-foreground">Caricamento…</p> : null}
+        {templates === null && !error ? <p className="text-sm text-muted-foreground">Un attimo…</p> : null}
         {templates && templates.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nessun template approvato. Creane uno in Impostazioni → WhatsApp.</p>
+          <p className="text-sm text-muted-foreground">
+            Non ci sono ancora messaggi pronti. Chiedi a chi gestisce il gestionale di prepararli.
+          </p>
         ) : null}
-        {templates && templates.length > 0 ? (
-          <div className="space-y-3">
-            <select
-              className="h-9 w-full rounded-lg border border-input bg-background px-2 text-sm"
-              value={choice}
-              onChange={(e) => {
-                setChoice(e.target.value);
-                const next = templates.find((t) => `${t.name}|${t.language}` === e.target.value);
-                setParams(Array.from({ length: next?.variableCount ?? 0 }, (_, i) => (i === 0 ? "{{nome}}" : "")));
-              }}
-            >
-              <option value="">Scegli un template…</option>
-              {templates.map((t) => (
-                <option key={`${t.name}|${t.language}`} value={`${t.name}|${t.language}`}>
-                  {t.name} ({t.language})
-                </option>
-              ))}
-            </select>
-            {template ? <p className="rounded-xl bg-muted/50 px-3 py-2 text-sm whitespace-pre-line">{template.body}</p> : null}
-            {params.map((value, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <Label className="w-10 shrink-0 font-mono text-xs text-muted-foreground">{`{{${i + 1}}}`}</Label>
-                <Input
-                  value={value}
-                  onChange={(e) => {
-                    const next = [...params];
-                    next[i] = e.target.value;
-                    setParams(next);
-                  }}
-                />
-              </div>
+
+        {templates && templates.length > 0 && !chosen ? (
+          <div className="max-h-[60vh] space-y-2 overflow-y-auto">
+            {templates.map((template) => (
+              <button
+                key={`${template.name}|${template.language}`}
+                type="button"
+                onClick={() => choose(template)}
+                className="w-full rounded-2xl rounded-tr-sm bg-[#dcf8c6] px-4 py-3 text-left text-sm whitespace-pre-line text-zinc-900 shadow-sm transition hover:brightness-95"
+              >
+                {fillPreview(template.body, defaultsFor(template))}
+              </button>
             ))}
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={onClose}>
-                Annulla
+          </div>
+        ) : null}
+
+        {chosen ? (
+          <div className="space-y-4">
+            <div className="rounded-2xl rounded-tr-sm bg-[#dcf8c6] px-4 py-3 text-sm whitespace-pre-line text-zinc-900 shadow-sm">
+              {fillPreview(chosen.body, values)}
+            </div>
+            {values.map((value, i) => {
+              // Le parti già note restano nascoste: si chiede solo quello che manca.
+              if (defaultsFor(chosen)[i]) return null;
+              const hint = chosen.hints[i];
+              const around = chosen.body.split(`{{${i + 1}}}`);
+              const before = (around[0] ?? "").replace(/\{\{\d+\}\}/g, "…").slice(-30);
+              const after = (around[1] ?? "").replace(/\{\{\d+\}\}/g, "…").slice(0, 30);
+              return (
+                <div key={i} className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">
+                    {hint ? (
+                      <span className="font-semibold text-foreground">{hint}</span>
+                    ) : (
+                      <>
+                        Completa: «{before.trimStart()} <span className="font-semibold text-foreground">______</span> {after.trimEnd()}»
+                      </>
+                    )}
+                  </Label>
+                  <Input
+                    autoFocus={values.findIndex((v) => !v.trim()) === i}
+                    value={value}
+                    onChange={(e) => {
+                      const next = [...values];
+                      next[i] = e.target.value;
+                      setValues(next);
+                    }}
+                    placeholder="Scrivi qui"
+                  />
+                </div>
+              );
+            })}
+            <div className="flex justify-between gap-2">
+              <Button variant="outline" onClick={() => setChosen(null)}>
+                ← Altri messaggi
               </Button>
               <Button
-                disabled={!template || isPending || params.some((p) => !p.trim())}
+                size="lg"
+                className="bg-[#25D366] text-white hover:bg-[#20bd5a]"
+                disabled={missing || isPending}
                 onClick={() =>
-                  template &&
                   startTransition(async () => {
                     const result = await sendTemplateMessage({
                       phone: target?.phone,
                       clientId: target?.clientId,
-                      templateName: template.name,
-                      language: template.language,
-                      params,
+                      templateName: chosen.name,
+                      language: chosen.language,
+                      params: values,
                     });
                     if (!result.success) {
-                      toast.error(result.error);
+                      toast.error("Messaggio non inviato. Riprova tra poco.");
                       return;
                     }
-                    toast.success("Messaggio inviato.");
-                    setChoice("");
-                    setParams([]);
+                    toast.success("Messaggio inviato!");
+                    setChosen(null);
+                    setValues([]);
+                    setTemplates(null);
                     onSent(result.phone);
                   })
                 }
               >
-                <Send className="size-3.5" />
-                Invia
+                <Send className="size-4" />
+                {isPending ? "Invio…" : missing ? "Completa il messaggio" : "Invia"}
               </Button>
             </div>
           </div>
@@ -484,8 +560,8 @@ function NewChatDialog({
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Nuovo messaggio</DialogTitle>
-          <DialogDescription>Cerca la cliente per nome o telefono.</DialogDescription>
+          <DialogTitle>A chi vuoi scrivere?</DialogTitle>
+          <DialogDescription>Scrivi il nome o il numero della cliente e toccala.</DialogDescription>
         </DialogHeader>
         <Input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Es. Giulia o 333…" />
         <ul className="max-h-72 divide-y overflow-y-auto">

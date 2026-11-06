@@ -5,7 +5,7 @@ import { normalizePhoneForWhatsapp } from "@/lib/format";
 import { isFusionWaConfigured, listTemplates } from "@/lib/fusion-wa";
 import { prisma } from "@/lib/prisma";
 import { sendWhatsappTemplate, sendWhatsappText } from "@/lib/whatsapp";
-import { renderVariables } from "@/lib/whatsapp-shared";
+import { renderVariables, TEMPLATE_VARIABLES } from "@/lib/whatsapp-shared";
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -25,6 +25,8 @@ export type MessageDTO = {
   status: "RECEIVED" | "SENT" | "DELIVERED" | "READ" | "FAILED";
   body: string;
   templateName: string | null;
+  /** Partito da solo (conferma, promemoria…), non scritto da qualcuno del centro. */
+  automatic: boolean;
   error: string | null;
   createdAt: string;
 };
@@ -95,6 +97,7 @@ export async function getThread(phone: string): Promise<ThreadDTO> {
       status: m.status,
       body: m.body,
       templateName: m.templateName,
+      automatic: m.dedupeKey !== null,
       error: m.error,
       createdAt: m.createdAt.toISOString(),
     })),
@@ -111,17 +114,52 @@ export async function sendReply(phone: string, body: string): Promise<{ success:
   return result.ok ? { success: true } : { success: false, error: result.error };
 }
 
-export type InboxTemplate = { name: string; language: string; body: string; variableCount: number };
+export type InboxTemplate = {
+  name: string;
+  language: string;
+  body: string;
+  variableCount: number;
+  /** Valori già noti per ogni variabile (vuoto = da scrivere). */
+  defaults: string[];
+  /** Cosa va scritto in ogni variabile, se si sa (es. "Ora appuntamento (es. 15:30)"). */
+  hints: string[];
+};
 
-export async function getApprovedTemplates(): Promise<{ success: true; templates: InboxTemplate[] } | { success: false; error: string }> {
+/**
+ * Messaggi pronti per la chat. Se un template è usato da un messaggio automatico,
+ * le variabili con un significato noto (nome, centro, link…) si compilano da sole.
+ */
+export async function getApprovedTemplates(clientId?: string): Promise<{ success: true; templates: InboxTemplate[] } | { success: false; error: string }> {
   const { tenantId } = await getTenantContext();
   const result = await listTemplates(tenantId);
   if (!result.ok) return { success: false, error: result.error };
+
+  const [automations, tenant, client] = await Promise.all([
+    prisma.whatsappAutomation.findMany({ where: { tenantId }, select: { templateName: true, language: true, params: true } }),
+    prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true, slug: true } }),
+    clientId ? prisma.client.findFirst({ where: { id: clientId, tenantId }, select: { firstName: true, lastName: true } }) : null,
+  ]);
+  const base = (process.env.APP_BASE_URL ?? "https://beauty.fusionsoft.it").replace(/\/$/, "");
+  const known = { nome: client?.firstName ?? "", cognome: client?.lastName ?? "", centro: tenant.name, prenota: `${base}/embed/${tenant.slug}` };
+
   return {
     success: true,
     templates: result.templates
       .filter((t) => t.status === "APPROVED")
-      .map((t) => ({ name: t.name, language: t.language, body: t.body, variableCount: t.variableCount })),
+      .map((t) => {
+        const mapping = automations.find((a) => a.templateName === t.name && a.language === t.language)?.params ?? [];
+        const defaults = Array.from({ length: t.variableCount }, (_, i) => {
+          const param = mapping[i] ?? (i === 0 ? "{{nome}}" : "");
+          const filled = renderVariables(param, known);
+          // Restano da scrivere le parti non note (es. {{data}} senza un appuntamento).
+          return /\{\{/.test(filled) ? "" : filled;
+        });
+        const hints = Array.from({ length: t.variableCount }, (_, i) => {
+          const key = /^\{\{([a-z]+)\}\}$/.exec(mapping[i] ?? "")?.[1];
+          return TEMPLATE_VARIABLES.find((v) => v.key === key)?.label ?? "";
+        });
+        return { name: t.name, language: t.language, body: t.body, variableCount: t.variableCount, defaults, hints };
+      }),
   };
 }
 

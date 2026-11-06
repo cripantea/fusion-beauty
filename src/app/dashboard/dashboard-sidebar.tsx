@@ -74,18 +74,15 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-// Solo per l'amministratrice: form del sito e collegamento WhatsApp.
-const ADMIN_GROUP: NavGroup = {
-  label: "Sito e WhatsApp",
-  items: [
-    { href: "/dashboard/forms", label: "Form del sito", icon: FileInput },
-    { href: "/dashboard/whatsapp", label: "WhatsApp", icon: MessageCircle },
-  ],
-};
-
 const SETTINGS_ITEMS: NavItem[] = [
   { href: "/dashboard/widget", label: "Widget prenotazione", icon: Wand2 },
   { href: "/dashboard/integrations/calendar", label: "Integrazioni", icon: Link2 },
+];
+
+// Configurazione del centro (form, WhatsApp): solo per l'amministratrice, in cima alle impostazioni.
+const ADMIN_SETUP_ITEMS: NavItem[] = [
+  { href: "/dashboard/forms", label: "Form del sito", icon: FileInput },
+  { href: "/dashboard/whatsapp", label: "WhatsApp", icon: MessageCircle },
 ];
 
 const ADMIN_ITEMS: NavItem[] = [
@@ -116,9 +113,7 @@ export function DashboardSidebar({
   }
 
   const groups: NavGroup[] = hasTenant
-    ? isAdmin
-      ? [...NAV_GROUPS, ADMIN_GROUP]
-      : NAV_GROUPS
+    ? NAV_GROUPS
     : [
         {
           label: "Ogni giorno",
@@ -128,9 +123,12 @@ export function DashboardSidebar({
 
   const settingsItems: NavItem[] = hasTenant
     ? isAdmin
-      ? [...SETTINGS_ITEMS, ...ADMIN_ITEMS]
+      ? [...ADMIN_SETUP_ITEMS, ...SETTINGS_ITEMS, ...ADMIN_ITEMS]
       : SETTINGS_ITEMS
     : [];
+
+  // Su una pagina delle impostazioni il menu resta aperto: si vede dove si è.
+  const showSettings = settingsOpen || settingsItems.some((item) => isActive(item.href, item.exact));
 
   const mobileItems = groups
     .flatMap((group) => group.items)
@@ -214,10 +212,10 @@ export function DashboardSidebar({
             <Settings className="size-3" />
             <span>Impostazioni</span>
             <ChevronDown
-              className={cn("ml-auto size-3 transition-transform duration-200", settingsOpen && "rotate-180")}
+              className={cn("ml-auto size-3 transition-transform duration-200", showSettings && "rotate-180")}
             />
           </button>
-          {settingsOpen && (
+          {showSettings && (
             <div className="mt-1 flex flex-col gap-0.5">
               {settingsItems.map(renderNavItem)}
             </div>
