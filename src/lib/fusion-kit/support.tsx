@@ -1,6 +1,7 @@
 // Fusion Kit — componenti condivisi: pulsanti di accesso e widget "Assistenza".
 import { fusionIdEnabled, kitConfig } from "./config";
 import { supportWidgetToken } from "./service";
+import { FusionSupportClient } from "./support-client";
 
 /**
  * Pulsanti "Continua con Google" e "Accedi con Fusion ID" per la pagina di login.
@@ -78,16 +79,17 @@ export function FusionSupport({
   const { controlUrl, secret, product } = kitConfig();
   if (!user || !controlUrl || !secret || !product) return null;
   return (
-    <script
+    <FusionSupportClient
       src={`${controlUrl}/fusion-kit/widget.js`}
-      data-product={product}
-      data-token={supportWidgetToken(user)}
-      data-desk={controlUrl}
-      data-position={position}
-      data-button={button ? "on" : "off"}
-      data-offset={offset}
-      data-release={process.env.FUSION_RELEASE ?? process.env.GIT_COMMIT ?? ""}
-      defer
+      attrs={{
+        "data-product": product,
+        "data-token": supportWidgetToken(user),
+        "data-desk": controlUrl,
+        "data-position": position,
+        "data-button": button ? "on" : "off",
+        "data-offset": String(offset),
+        "data-release": process.env.FUSION_RELEASE ?? process.env.GIT_COMMIT ?? "",
+      }}
     />
   );
 }
