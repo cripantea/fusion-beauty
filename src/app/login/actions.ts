@@ -6,6 +6,8 @@ import { z } from "zod";
 
 import { clearSessionCookie, setSessionCookie } from "@/lib/auth/cookies";
 import { createSessionToken } from "@/lib/auth/session";
+import { postLogoutRedirect } from "@/lib/fusion-id";
+import { legacyLoginEnabled } from "@/lib/fusion-kit/config";
 import { prisma } from "@/lib/prisma";
 
 const loginSchema = z.object({
@@ -21,6 +23,10 @@ export async function login(
   _prevState: LoginState,
   formData: FormData
 ): Promise<LoginState> {
+  if (!legacyLoginEnabled()) {
+    return { error: "Accedi con Fusion ID." };
+  }
+
   const parsed = loginSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
@@ -65,5 +71,5 @@ export async function login(
 
 export async function logout() {
   await clearSessionCookie();
-  redirect("/login");
+  redirect(await postLogoutRedirect());
 }

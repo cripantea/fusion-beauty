@@ -1,5 +1,6 @@
 import { PageTransition } from "@/components/ui/page-transition";
 import { getAuthContext } from "@/lib/auth-context";
+import { FusionSupport } from "@/lib/fusion-kit";
 import { prisma } from "@/lib/prisma";
 
 import { DashboardSidebar } from "./dashboard-sidebar";
@@ -46,6 +47,11 @@ export default async function DashboardLayout({ children }: LayoutProps<"/dashbo
           </footer>
         </PageTransition>
       </div>
+      {/* Su mobile in basso c'è la barra di navigazione: il pulsante Assistenza sta sopra. */}
+      <FusionSupport
+        offset={64}
+        user={{ id: user.id, email: user.email, name: `${user.firstName} ${user.lastName}`.trim(), role: user.role, tenantId: user.tenantId, tenantName: tenant?.name ?? null }}
+      />
     </div>
   );
 }
