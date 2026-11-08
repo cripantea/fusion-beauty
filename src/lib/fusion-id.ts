@@ -16,16 +16,16 @@ export class FusionLinkError extends Error {}
 export async function linkFusionIdentity(claims: FusionClaims): Promise<string> {
   let user = await prisma.user.findUnique({ where: { fusionIdSub: claims.sub }, include: { tenant: { select: { isActive: true } } } });
   if (!user) {
-    if (!claims.emailVerified) throw new FusionLinkError("Conferma prima la tua email in Fusion ID, poi riprova.");
+    if (!claims.emailVerified) throw new FusionLinkError("Conferma prima la tua email (trovi il link nella posta), poi riprova.");
     const byEmail = await prisma.user.findUnique({ where: { email: claims.email } });
     if (!byEmail) throw new FusionLinkError(`Non c'è un account Beauty Fusion per ${claims.email}. Chiedi un invito al tuo centro.`);
-    if (byEmail.fusionIdSub && byEmail.fusionIdSub !== claims.sub) throw new FusionLinkError("Questo account è già collegato a un altro accesso Fusion ID.");
+    if (byEmail.fusionIdSub && byEmail.fusionIdSub !== claims.sub) throw new FusionLinkError("Questo account è già collegato a un altro accesso: entra con quello o scrivi all'assistenza.");
     user = await prisma.user.update({ where: { id: byEmail.id }, data: { fusionIdSub: claims.sub }, include: { tenant: { select: { isActive: true } } } });
   }
   if (!user.isActive) throw new FusionLinkError("Il tuo utente è disattivato: chiedi al titolare del centro.");
   if (user.tenant && !user.tenant.isActive) throw new FusionLinkError("Il centro associato a questo account è stato sospeso.");
   if (user.role === "SUPER_ADMIN" && !claims.amr.includes("mfa")) {
-    throw new FusionLinkError("Per entrare come superadmin serve la verifica in due passaggi: attivala in Fusion ID.");
+    throw new FusionLinkError("Per entrare come superadmin serve la verifica in due passaggi: attivala nella pagina di accesso.");
   }
   return user.id;
 }

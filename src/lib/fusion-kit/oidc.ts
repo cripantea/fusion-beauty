@@ -26,7 +26,7 @@ async function discovery(): Promise<Discovery> {
   if (discoveryCache && Date.now() - discoveryCache.at < 3600_000) return discoveryCache.value;
   const { issuer } = fusionConfig();
   const res = await fetch(`${issuer}/.well-known/openid-configuration`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Fusion ID non raggiungibile (${res.status})`);
+  if (!res.ok) throw new Error(`Servizio di accesso non raggiungibile (${res.status})`);
   const value = (await res.json()) as Discovery;
   discoveryCache = { at: Date.now(), value };
   return value;
@@ -151,17 +151,17 @@ export async function finishFusionLogin(request: Request): Promise<{ claims: Fus
     }),
     cache: "no-store",
   });
-  if (!res.ok) throw new FusionLoginError(`Fusion ID ha rifiutato l'accesso (${res.status}).`);
+  if (!res.ok) throw new FusionLoginError(`Il servizio di accesso ha rifiutato l'accesso (${res.status}).`);
   const tokens = (await res.json()) as { id_token?: string };
-  if (!tokens.id_token) throw new FusionLoginError("Risposta di Fusion ID senza id_token.");
+  if (!tokens.id_token) throw new FusionLoginError("Risposta del servizio di accesso senza id_token.");
 
   const c = JSON.parse(Buffer.from(tokens.id_token.split(".")[1], "base64url").toString()) as Record<string, unknown>;
   const aud = Array.isArray(c.aud) ? c.aud : [c.aud];
   const now = Math.floor(Date.now() / 1000);
   if (c.iss !== d.issuer || !aud.includes(cfg.clientId) || typeof c.exp !== "number" || c.exp < now - 30 || c.nonce !== st.nonce) {
-    throw new FusionLoginError("Token di Fusion ID non valido.");
+    throw new FusionLoginError("Token di accesso non valido.");
   }
-  if (typeof c.sub !== "string" || typeof c.email !== "string") throw new FusionLoginError("Fusion ID non ha fornito l'email.");
+  if (typeof c.sub !== "string" || typeof c.email !== "string") throw new FusionLoginError("Il servizio di accesso non ha fornito l'email.");
 
   return {
     claims: {

@@ -24,7 +24,7 @@ export async function login(
   formData: FormData
 ): Promise<LoginState> {
   if (!legacyLoginEnabled()) {
-    return { error: "Accedi con Fusion ID." };
+    return { error: "Accedi con Google o con «Accedi con email»." };
   }
 
   const parsed = loginSchema.safeParse({

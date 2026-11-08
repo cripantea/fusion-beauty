@@ -1,10 +1,11 @@
 // Fusion Kit — componenti condivisi: pulsanti di accesso e widget "Assistenza".
-import { fusionIdEnabled, kitConfig } from "./config";
+import { fusionIdEnabled, kitConfig, legacyLoginEnabled } from "./config";
 import { supportWidgetToken } from "./service";
 import { FusionSupportClient } from "./support-client";
 
 /**
- * Pulsanti "Continua con Google" e "Accedi con Fusion ID" per la pagina di login.
+ * Pulsanti di accesso per la pagina di login: "Continua con Google" (va dritto alla scelta
+ * dell'account Google) e, quando il vecchio modulo è spento, "Accedi con email".
  * Link semplici (niente JavaScript): funzionano in server e client component.
  */
 export function FusionLoginButtons({
@@ -15,7 +16,7 @@ export function FusionLoginButtons({
   returnTo?: string | null;
   className?: string;
   /** Testi per i prodotti in più lingue (default in italiano). */
-  labels?: { google?: string; fusionId?: string };
+  labels?: { google?: string; email?: string };
 }) {
   if (!fusionIdEnabled()) return null;
   const q = returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : "";
@@ -35,20 +36,22 @@ export function FusionLoginButtons({
           {labels.google ?? "Continua con Google"}
         </a>
       )}
+      {!legacyLoginEnabled() && (
       <a href={`/auth/fusion/login?x=1${q}`} className={btn}>
         <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <rect x="3" y="11" width="18" height="11" rx="2" />
           <path d="M7 11V7a5 5 0 0 1 10 0v4" />
         </svg>
-        {labels.fusionId ?? "Accedi con Fusion ID"}
+        {labels.email ?? "Accedi con email"}
       </a>
+      )}
     </div>
   );
 }
 
-/** Separatore "oppure" tra i pulsanti Fusion ID e il vecchio modulo con password. */
-export function FusionLoginDivider({ label = "oppure con la password di prima" }: { label?: string }) {
-  if (!fusionIdEnabled()) return null;
+/** Separatore "oppure" tra "Continua con Google" e il modulo email/password. */
+export function FusionLoginDivider({ label = "oppure" }: { label?: string }) {
+  if (!fusionIdEnabled() || !process.env.FUSION_ID_GOOGLE_IDP_ID) return null;
   return (
     <div className="my-4 flex items-center gap-3 text-xs text-zinc-500">
       <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />

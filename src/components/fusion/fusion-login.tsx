@@ -6,8 +6,8 @@ import { useSearchParams } from "next/navigation";
 type Config = { enabled: boolean; google: boolean; legacy: boolean };
 
 /**
- * Pulsanti di Fusion ID sopra il vecchio modulo email/password (children), che resta
- * finché FUSION_ID_LEGACY_LOGIN non è "off".
+ * "Continua con Google" sopra il modulo email/password (children), che resta finché
+ * FUSION_ID_LEGACY_LOGIN non è "off"; poi al suo posto compare "Accedi con email".
  */
 export function FusionLogin({ returnTo, children, dark = false }: { returnTo?: string; children: React.ReactNode; dark?: boolean }) {
   const params = useSearchParams();
@@ -33,11 +33,11 @@ export function FusionLogin({ returnTo, children, dark = false }: { returnTo?: s
               Continua con Google
             </a>
           )}
-          <a href={`/auth/fusion/login?x=1${q}`} className={btn}>Accedi con Fusion ID</a>
-          {config.legacy && (
+          {!config.legacy && <a href={`/auth/fusion/login?x=1${q}`} className={btn}>Accedi con email</a>}
+          {config.legacy && config.google && (
             <div className={`my-3 flex items-center gap-3 text-xs ${dark ? "text-slate-400" : "text-muted-foreground"}`}>
               <span className={`h-px flex-1 ${dark ? "bg-slate-600" : "bg-border"}`} />
-              oppure con la password di prima
+              oppure
               <span className={`h-px flex-1 ${dark ? "bg-slate-600" : "bg-border"}`} />
             </div>
           )}
