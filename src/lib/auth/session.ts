@@ -47,10 +47,10 @@ export async function createSessionToken(payload: SessionPayload): Promise<strin
     .sign(getSecretKey());
 }
 
-export async function verifySessionToken(token: string): Promise<SessionPayload | null> {
+export async function verifySessionToken(token: string): Promise<(SessionPayload & { iat?: number }) | null> {
   try {
     const { payload } = await jwtVerify(token, getSecretKey());
-    return isSessionPayload(payload) ? payload : null;
+    return isSessionPayload(payload) ? (payload as SessionPayload & { iat?: number }) : null;
   } catch {
     return null;
   }

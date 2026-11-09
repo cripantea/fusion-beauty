@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useTransition } from "react";
+import { Suspense, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -19,6 +19,8 @@ import { FusionsoftBadge } from "@/components/fusionsoft-badge";
 import { BeautyLogo } from "@/components/beauty-logo";
 import { AuthShell } from "@/components/fusionsoft-ui";
 import { Input } from "@/components/ui/input";
+
+import { FusionLogin } from "@/components/fusion/fusion-login";
 
 import { login } from "./actions";
 
@@ -57,6 +59,8 @@ export default function LoginPage() {
       subtitle="Inserisci le tue credenziali per accedere al gestionale."
       footer={<FusionsoftBadge />}
     >
+      <Suspense>
+      <FusionLogin>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
@@ -99,6 +103,8 @@ export default function LoginPage() {
               </Button>
             </form>
           </Form>
+      </FusionLogin>
+      </Suspense>
     </AuthShell>
   );
 }

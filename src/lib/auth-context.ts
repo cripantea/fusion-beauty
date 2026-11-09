@@ -38,6 +38,11 @@ export async function getAuthContext(): Promise<{ user: AuthenticatedUser }> {
     redirect("/login");
   }
 
+  // "Esci ovunque" da Fusion Control: le sessioni nate prima non valgono più.
+  if (user.sessionsRevokedAt && user.sessionsRevokedAt.getTime() > (payload.iat ?? 0) * 1000) {
+    redirect("/login");
+  }
+
   if (user.tenant && !user.tenant.isActive) {
     redirect("/login");
   }

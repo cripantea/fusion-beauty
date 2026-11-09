@@ -168,6 +168,10 @@ model User {
   lastName     String
   role         Role     @default(OPERATOR)
   isActive     Boolean  @default(true)
+  /// Identità in Fusion ID (claim sub), collegata al primo accesso con Fusion ID.
+  fusionIdSub       String?   @unique
+  /// Le sessioni emesse prima di questa data non valgono più ("esci ovunque" da Fusion Control).
+  sessionsRevokedAt DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
