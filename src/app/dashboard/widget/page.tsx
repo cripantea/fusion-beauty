@@ -11,5 +11,11 @@ export default async function WidgetPage() {
     select: { slug: true, name: true },
   });
 
-  return <WidgetPreview tenantSlug={tenant.slug} tenantName={tenant.name} />;
+  const services = await prisma.service.findMany({
+    where: { tenantId, isActive: true, isOnlineBookingEnabled: true },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
+
+  return <WidgetPreview tenantSlug={tenant.slug} tenantName={tenant.name} services={services} />;
 }

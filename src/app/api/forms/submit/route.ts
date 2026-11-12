@@ -2,9 +2,9 @@ import { after, NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 
 import { findClientIdByPhone } from "@/lib/client-phone";
-import { parseStoredForm, type FormFieldDef } from "@/lib/forms";
+import { isDisplayField, parseStoredForm, type FormFieldDef } from "@/lib/forms";
 import { prisma } from "@/lib/prisma";
-import { runAutomation } from "@/lib/whatsapp";
+import { triggerAutomations, triggerClientCreated } from "@/lib/automation-engine";
 
 /**
  * Invio di un form incorporato in un sito esterno (CORS aperto). Crea o aggiorna
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
   } = { interests: [], notes: [] };
 
   for (const field of fields as FormFieldDef[]) {
-    if (field.type === "content") continue;
+    if (isDisplayField(field.type)) continue;
     const value = (values[field.key] ?? "").trim();
     if (field.required && !value) return fail(`Compila il campo "${field.label}".`);
     if (!value) continue;
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
         },
       });
 
-  await prisma.formSubmission.create({
+  const submission = await prisma.formSubmission.create({
     data: {
       tenantId,
       formId: form.id,
@@ -192,10 +192,14 @@ export async function POST(request: NextRequest) {
   });
 
   // Non blocca la risposta: il visitatore vede subito il ringraziamento.
-  after(() => runAutomation(tenantId, "FORM_WELCOME", {
-    client: { id: client.id, firstName: client.firstName, lastName: client.lastName, phone: client.phone },
-    dedupeKey: `form_welcome:${client.id}:${form.id}:${dateLabel}`,
-  }));
+  after(async () => {
+    if (!existing) await triggerClientCreated(tenantId, client.id);
+    await triggerAutomations(tenantId, "FORM_SUBMITTED", {
+      clientId: client.id,
+      triggerKey: `form:${submission.id}`,
+      filter: { formId: form.id },
+    });
+  });
 
   return NextResponse.json({ ok: true }, { headers: CORS });
 }

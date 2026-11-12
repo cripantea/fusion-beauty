@@ -1,5 +1,8 @@
 "use server";
 
+import { after } from "next/server";
+
+import { triggerClientCreated } from "@/lib/automation-engine";
 import { prisma } from "@/lib/prisma";
 
 export type RegisterClientResult =
@@ -39,7 +42,7 @@ export async function registerClient(
       },
     });
   } else {
-    await prisma.client.create({
+    const client = await prisma.client.create({
       data: {
         tenantId: tenant.id,
         firstName: data.firstName.trim(),
@@ -49,6 +52,7 @@ export async function registerClient(
         notes: data.notes?.trim() || null,
       },
     });
+    after(() => triggerClientCreated(tenant.id, client.id));
   }
 
   return { success: true };

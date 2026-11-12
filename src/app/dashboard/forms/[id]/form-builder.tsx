@@ -44,6 +44,7 @@ const CLIENT_FIELDS_BY_TYPE: Record<FormFieldType, ClientFieldKey[]> = {
   date: ["dateOfBirth"],
   number: [],
   content: [],
+  image: [],
 };
 
 function makeKey(label: string, existing: string[]) {
@@ -112,6 +113,7 @@ export function FormBuilder({
       clientField: null,
       ...(type === "select" || type === "radio" ? { options: ["Opzione 1", "Opzione 2"] } : {}),
       ...(type === "content" ? { content: "Scrivi qui il testo da mostrare." } : {}),
+      ...(type === "image" ? { imageUrl: "", imageWidth: 40, imageAlign: "center" as const } : {}),
     };
     update({ fields: [...form.fields, field] });
   }
@@ -244,11 +246,51 @@ export function FormBuilder({
                   </div>
 
                   {field.type === "content" ? (
-                    <Textarea
-                      value={field.content ?? ""}
-                      onChange={(e) => updateField(index, { content: e.target.value })}
-                      rows={3}
-                    />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="sm:col-span-2">
+                        <Textarea value={field.content ?? ""} onChange={(e) => updateField(index, { content: e.target.value })} rows={3} />
+                      </div>
+                      <Field label="Dimensione (px)">
+                        <OptionalNumber value={field.textSize} min={8} max={96} placeholder="14" onChange={(textSize) => updateField(index, { textSize })} />
+                      </Field>
+                      <Field label="Colore">
+                        <OptionalColor value={field.textColor} onChange={(textColor) => updateField(index, { textColor })} />
+                      </Field>
+                      <Field label="Allineamento">
+                        <AlignSelect value={field.textAlign} onChange={(textAlign) => updateField(index, { textAlign })} />
+                      </Field>
+                      <Field label="Link (facoltativo)">
+                        <Input value={field.linkUrl ?? ""} onChange={(e) => updateField(index, { linkUrl: e.target.value })} placeholder="https://…" />
+                      </Field>
+                      <label className="flex items-center gap-2 text-sm">
+                        <Switch checked={field.textBold ?? false} onCheckedChange={(textBold) => updateField(index, { textBold })} />
+                        Grassetto
+                      </label>
+                    </div>
+                  ) : field.type === "image" ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="sm:col-span-2">
+                        <Field label="Indirizzo dell'immagine" hint="Es. il logo caricato sul tuo sito (https://…).">
+                          <Input value={field.imageUrl ?? ""} onChange={(e) => updateField(index, { imageUrl: e.target.value })} placeholder="https://iltuosito.it/logo.png" />
+                        </Field>
+                      </div>
+                      <Field label="Descrizione (per chi non vede)">
+                        <Input value={field.imageAlt ?? ""} onChange={(e) => updateField(index, { imageAlt: e.target.value })} />
+                      </Field>
+                      <Field label={`Larghezza (${field.imageWidth ?? 60}%)`}>
+                        <input
+                          type="range"
+                          min={5}
+                          max={100}
+                          value={field.imageWidth ?? 60}
+                          onChange={(e) => updateField(index, { imageWidth: Number(e.target.value) })}
+                          className="h-8 w-full accent-[var(--color-mint-ink)]"
+                        />
+                      </Field>
+                      <Field label="Allineamento">
+                        <AlignSelect value={field.imageAlign} onChange={(imageAlign) => updateField(index, { imageAlign })} />
+                      </Field>
+                    </div>
                   ) : (
                     <div className="grid gap-3 sm:grid-cols-2">
                       <Field label="Etichetta">
@@ -277,6 +319,9 @@ export function FormBuilder({
                           />
                         </Field>
                       ) : null}
+                      <Field label="Aiuto sotto il campo">
+                        <Input value={field.helpText ?? ""} onChange={(e) => updateField(index, { helpText: e.target.value })} placeholder="Facoltativo" />
+                      </Field>
                       {field.type === "select" || field.type === "radio" ? (
                         <div className="sm:col-span-2">
                           <Field label="Opzioni (una per riga)">
@@ -333,7 +378,108 @@ export function FormBuilder({
               <Field label="Testo del pulsante">
                 <Input value={form.settings.submitButtonText} onChange={(e) => updateSettings({ submitButtonText: e.target.value })} />
               </Field>
+              <Field label="Carattere (Google Font)" hint="Es. Inter, Montserrat, Roboto. Vuoto = quello di sistema.">
+                <Input
+                  value={form.settings.fontFamily ?? ""}
+                  onChange={(e) => updateSettings({ fontFamily: e.target.value })}
+                  placeholder="Automatico"
+                />
+              </Field>
             </div>
+            <details className="group border-t border-mint-border/70">
+              <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-mint-ink">
+                Aspetto avanzato: card, campi, titolo, pulsante e CSS
+              </summary>
+              <div className="space-y-5 px-5 pb-5">
+                <Section title="Card">
+                  <Field label="Colore del bordo">
+                    <OptionalColor value={form.settings.formBorderColor} onChange={(formBorderColor) => updateSettings({ formBorderColor })} />
+                  </Field>
+                  <Field label="Spessore del bordo (px)">
+                    <OptionalNumber value={form.settings.formBorderWidth} max={20} placeholder="0" onChange={(formBorderWidth) => updateSettings({ formBorderWidth })} />
+                  </Field>
+                  <Field label="Arrotondamento card (px)">
+                    <OptionalNumber value={form.settings.formBorderRadius} max={60} placeholder="16" onChange={(formBorderRadius) => updateSettings({ formBorderRadius })} />
+                  </Field>
+                  <Field label="Ombra">
+                    <select
+                      className={nativeSelectClass}
+                      value={form.settings.formShadow ?? "none"}
+                      onChange={(e) => updateSettings({ formShadow: e.target.value as "none" | "soft" | "strong" })}
+                    >
+                      <option value="none">Nessuna</option>
+                      <option value="soft">Leggera</option>
+                      <option value="strong">Marcata</option>
+                    </select>
+                  </Field>
+                  <Field label="Spazio interno (px)">
+                    <OptionalNumber value={form.settings.formPadding} max={120} placeholder="24" onChange={(formPadding) => updateSettings({ formPadding })} />
+                  </Field>
+                  <Field label="Larghezza massima (px)">
+                    <OptionalNumber value={form.settings.formMaxWidth} min={200} max={2000} placeholder="520" onChange={(formMaxWidth) => updateSettings({ formMaxWidth })} />
+                  </Field>
+                </Section>
+                <Section title="Campi">
+                  <Field label="Sfondo dei campi">
+                    <OptionalColor value={form.settings.fieldBg} onChange={(fieldBg) => updateSettings({ fieldBg })} />
+                  </Field>
+                  <Field label="Testo dei campi">
+                    <OptionalColor value={form.settings.fieldTextColor} onChange={(fieldTextColor) => updateSettings({ fieldTextColor })} />
+                  </Field>
+                  <Field label="Bordo dei campi">
+                    <OptionalColor value={form.settings.fieldBorderColor} onChange={(fieldBorderColor) => updateSettings({ fieldBorderColor })} />
+                  </Field>
+                  <Field label="Spessore bordo campi (px)">
+                    <OptionalNumber value={form.settings.fieldBorderWidth} max={10} placeholder="1" onChange={(fieldBorderWidth) => updateSettings({ fieldBorderWidth })} />
+                  </Field>
+                  <Field label="Testo di esempio">
+                    <OptionalColor value={form.settings.placeholderColor} onChange={(placeholderColor) => updateSettings({ placeholderColor })} />
+                  </Field>
+                  <Field label="Etichette">
+                    <OptionalColor value={form.settings.labelColor} onChange={(labelColor) => updateSettings({ labelColor })} />
+                  </Field>
+                  <Field label="Spazio tra i campi (px)">
+                    <OptionalNumber value={form.settings.fieldGap} max={60} placeholder="14" onChange={(fieldGap) => updateSettings({ fieldGap })} />
+                  </Field>
+                  <label className="flex items-center gap-2 self-end pb-1 text-sm">
+                    <Switch checked={form.settings.hideLabels ?? false} onCheckedChange={(hideLabels) => updateSettings({ hideLabels })} />
+                    Nascondi le etichette (restano i testi di esempio)
+                  </label>
+                </Section>
+                <Section title="Titolo, testi piccoli e pulsante">
+                  <Field label="Colore del titolo">
+                    <OptionalColor value={form.settings.titleColor} onChange={(titleColor) => updateSettings({ titleColor })} />
+                  </Field>
+                  <Field label="Dimensione del titolo (px)">
+                    <OptionalNumber value={form.settings.titleSize} min={10} max={72} placeholder="20" onChange={(titleSize) => updateSettings({ titleSize })} />
+                  </Field>
+                  <Field label="Allineamento del titolo">
+                    <AlignSelect value={form.settings.titleAlign} onChange={(titleAlign) => updateSettings({ titleAlign })} />
+                  </Field>
+                  <Field label="Testi piccoli (consenso, link)">
+                    <OptionalColor value={form.settings.smallTextColor} onChange={(smallTextColor) => updateSettings({ smallTextColor })} />
+                  </Field>
+                  <Field label="Testo del pulsante (colore)">
+                    <OptionalColor value={form.settings.buttonTextColor} onChange={(buttonTextColor) => updateSettings({ buttonTextColor })} />
+                  </Field>
+                  <Field label="Arrotondamento pulsante (px)">
+                    <OptionalNumber value={form.settings.buttonRadius} max={60} placeholder={String(form.settings.radius)} onChange={(buttonRadius) => updateSettings({ buttonRadius })} />
+                  </Field>
+                </Section>
+                <Field
+                  label="CSS personalizzato"
+                  hint="Vale solo dentro il form. Classi: .fc-card, .fc-title, .fc-field, .fc-text, .fc-image, .fc-privacy, .fc-submit, .fc-links (le stesse dei form del CRM)."
+                >
+                  <Textarea
+                    rows={5}
+                    className="font-mono text-xs"
+                    value={form.settings.customCss ?? ""}
+                    onChange={(e) => updateSettings({ customCss: e.target.value })}
+                    placeholder=".fc-submit { text-transform: uppercase; }"
+                  />
+                </Field>
+              </div>
+            </details>
           </Panel>
 
           <Panel title="Privacy e invio">
@@ -354,17 +500,41 @@ export function FormBuilder({
                       <Textarea rows={2} value={form.settings.privacyText} onChange={(e) => updateSettings({ privacyText: e.target.value })} />
                     </Field>
                   </div>
-                  <div className="sm:col-span-2">
-                    <Field label="Link all'informativa privacy">
-                      <Input
-                        value={form.settings.privacyPolicyUrl}
-                        onChange={(e) => updateSettings({ privacyPolicyUrl: e.target.value })}
-                        placeholder="https://iltuosito.it/privacy"
-                      />
-                    </Field>
-                  </div>
                 </>
               ) : null}
+              <Field label="Link all'informativa privacy" hint="Compare sotto il pulsante.">
+                <Input
+                  value={form.settings.privacyPolicyUrl}
+                  onChange={(e) => updateSettings({ privacyPolicyUrl: e.target.value })}
+                  placeholder="https://iltuosito.it/privacy"
+                />
+              </Field>
+              <Field label="Testo del link privacy">
+                <Input
+                  value={form.settings.privacyLinkText ?? ""}
+                  onChange={(e) => updateSettings({ privacyLinkText: e.target.value })}
+                  placeholder="Informativa privacy"
+                />
+              </Field>
+              <Field label="Link ai termini e condizioni">
+                <Input
+                  value={form.settings.termsUrl ?? ""}
+                  onChange={(e) => updateSettings({ termsUrl: e.target.value })}
+                  placeholder="https://iltuosito.it/termini"
+                />
+              </Field>
+              <Field label="Testo del link termini">
+                <Input
+                  value={form.settings.termsLinkText ?? ""}
+                  onChange={(e) => updateSettings({ termsLinkText: e.target.value })}
+                  placeholder="Termini e condizioni"
+                />
+              </Field>
+              <div className="sm:col-span-2">
+                <Field label="Nota in fondo al form" hint="Facoltativa, es. “Rispondiamo entro 24 ore”.">
+                  <Input value={form.settings.footerText ?? ""} onChange={(e) => updateSettings({ footerText: e.target.value })} />
+                </Field>
+              </div>
               <div className="sm:col-span-2">
                 <Field label="Messaggio dopo l'invio">
                   <Textarea rows={2} value={form.settings.successMessage} onChange={(e) => updateSettings({ successMessage: e.target.value })} />
@@ -383,10 +553,10 @@ export function FormBuilder({
                 <MessageCircle className="mt-0.5 size-4 shrink-0 text-mint-ink" />
                 <p>
                   {whatsappWelcome
-                    ? "Chi compila il form riceve subito il tuo messaggio WhatsApp di benvenuto."
+                    ? "Chi compila il form riceve subito il tuo messaggio WhatsApp automatico."
                     : "Puoi far arrivare un messaggio WhatsApp automatico a chi compila il form."}{" "}
-                  <Link href="/dashboard/whatsapp" className="font-medium underline">
-                    Impostazioni WhatsApp
+                  <Link href="/dashboard/automations" className="font-medium underline">
+                    Automazioni
                   </Link>
                 </p>
               </div>
@@ -446,5 +616,73 @@ function ColorInput({ value, onChange }: { value: string; onChange: (value: stri
       />
       <Input value={value} onChange={(e) => onChange(e.target.value)} className="font-mono" />
     </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+      <div className="grid gap-4 sm:grid-cols-2">{children}</div>
+    </div>
+  );
+}
+
+/** Colore facoltativo: vuoto = automatico. */
+function OptionalColor({ value, onChange }: { value: string | undefined; onChange: (value: string | undefined) => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="color"
+        value={value && /^#[0-9a-f]{6}$/i.test(value) ? value : "#ffffff"}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-8 w-10 cursor-pointer rounded-md border border-input bg-background p-0.5"
+      />
+      <Input value={value ?? ""} onChange={(e) => onChange(e.target.value || undefined)} placeholder="Automatico" className="font-mono" />
+    </div>
+  );
+}
+
+/** Numero facoltativo: vuoto = valore standard (il segnaposto). */
+function OptionalNumber({
+  value,
+  onChange,
+  min = 0,
+  max,
+  placeholder,
+}: {
+  value: number | undefined;
+  onChange: (value: number | undefined) => void;
+  min?: number;
+  max: number;
+  placeholder?: string;
+}) {
+  return (
+    <Input
+      type="number"
+      min={min}
+      max={max}
+      value={value ?? ""}
+      placeholder={placeholder}
+      onChange={(e) => {
+        const raw = e.target.value;
+        if (raw === "") return onChange(undefined);
+        const n = Math.round(Number(raw));
+        if (Number.isFinite(n)) onChange(Math.min(max, Math.max(min, n)));
+      }}
+    />
+  );
+}
+
+type Align = "left" | "center" | "right";
+
+function AlignSelect({ value, onChange }: { value: Align | undefined; onChange: (value: Align | undefined) => void }) {
+  return (
+    <select className={nativeSelectClass} value={value ?? ""} onChange={(e) => onChange((e.target.value || undefined) as Align | undefined)}>
+      <option value="">Automatico</option>
+      <option value="left">A sinistra</option>
+      <option value="center">Al centro</option>
+      <option value="right">A destra</option>
+    </select>
   );
 }

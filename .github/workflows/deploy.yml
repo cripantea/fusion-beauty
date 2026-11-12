@@ -3,6 +3,8 @@ name: Deploy
 on:
   push:
     branches: [main]
+  # Per rifare il deploy a mano (es. dopo aver caricato nuovi secrets)
+  workflow_dispatch:
 
 concurrency:
   group: deploy-production
@@ -55,12 +57,15 @@ jobs:
         uses: appleboy/ssh-action@v1
         env:
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          FUSION_WA_API_KEY: ${{ secrets.FUSION_WA_API_KEY }}
+          FUSION_WA_API_SECRET: ${{ secrets.FUSION_WA_API_SECRET }}
+          FUSION_WA_WEBHOOK_TOKEN: ${{ secrets.FUSION_WA_WEBHOOK_TOKEN }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SERVER_PORT }}
-          envs: DEPLOY_PATH
+          envs: DEPLOY_PATH,FUSION_WA_API_KEY,FUSION_WA_API_SECRET,FUSION_WA_WEBHOOK_TOKEN
           timeout: 60s
           command_timeout: 25m
           script: |
@@ -74,6 +79,23 @@ jobs:
             git checkout main
             git pull --ff-only origin main
 
+            echo "==> Chiavi Fusion WA nel .env (dai secrets del repository, solo se impostati)"
+            # tocca solo queste righe; i valori non vengono mai stampati
+            set_env() {
+              [ -n "$2" ] || return 0
+              grep -qxF "$1=$2" .env && return 0
+              tmp="$(mktemp)"
+              grep -v "^$1=" .env > "$tmp" || true
+              printf '%s=%s\n' "$1" "$2" >> "$tmp"
+              cat "$tmp" > .env
+              rm -f "$tmp"
+              echo "    $1 aggiornata"
+            }
+            set_env FUSION_WA_BASE_URL "https://fusionwa.com"
+            set_env FUSION_WA_API_KEY "${FUSION_WA_API_KEY:-}"
+            set_env FUSION_WA_API_SECRET "${FUSION_WA_API_SECRET:-}"
+            set_env FUSION_WA_WEBHOOK_TOKEN "${FUSION_WA_WEBHOOK_TOKEN:-}"
+
             echo "==> Build immagini Docker"
             docker compose -f docker-compose.prod.yml build
 
@@ -82,6 +104,9 @@ jobs:
 
             echo "==> Migrazioni database"
             docker compose -f docker-compose.prod.yml run --rm worker npx prisma migrate deploy
+
+            echo "==> Form del sito de La Boutique del Benessere (solo se manca)"
+            docker compose -f docker-compose.prod.yml run --rm worker npx tsx prisma/setup.boutique-forms.ts
 
             echo "==> Riavvio servizi in background"
             docker compose -f docker-compose.prod.yml up -d --build

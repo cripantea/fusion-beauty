@@ -1,11 +1,13 @@
 "use server";
 
+import { after } from "next/server";
+
 import { getBaseUrl } from "@/lib/app-url";
 import { getTenantContext } from "@/lib/auth-context";
 import { whatsappUrl } from "@/lib/format";
 import { emptyStats, getClientStatsMap, INACTIVE_MONTHS, monthsAgoDate } from "@/lib/insights";
 import { prisma } from "@/lib/prisma";
-import { runAutomation } from "@/lib/whatsapp";
+import { triggerAutomations, triggerClientCreated } from "@/lib/automation-engine";
 import { randomBytes } from "node:crypto";
 
 import {
@@ -193,6 +195,7 @@ export async function createClient(
       healthNotes: normalizeOptional(parsed.data.healthNotes),
     },
   });
+  after(() => triggerClientCreated(tenantId, client.id));
 
   return { success: true, client: toClientDTO(client) };
 }
@@ -223,6 +226,7 @@ export async function updateClient(
       healthNotes: normalizeOptional(parsed.data.healthNotes),
     },
   });
+  after(() => triggerClientCreated(tenantId, client.id));
 
   if (result.count === 0) {
     return { success: false, error: "Cliente non trovato." };
@@ -284,12 +288,13 @@ export async function createQuickClient(values: QuickClientValues): Promise<Quic
   });
 
   const questionnaire = await buildQuestionnaireLink(tenantId, client);
-  const sent = await runAutomation(tenantId, "QUESTIONNAIRE", {
-    client,
-    vars: { link: questionnaire.url },
-    dedupeKey: `questionnaire:${client.id}`,
+  const sent = await triggerAutomations(tenantId, "QUESTIONNAIRE", {
+    clientId: client.id,
+    triggerKey: "questionnaire",
+    context: { vars: { link: questionnaire.url } },
   });
-  return { success: true, client: toClientDTO(client), questionnaire: { ...questionnaire, sentAutomatically: sent?.ok === true } };
+  after(() => triggerClientCreated(tenantId, client.id));
+  return { success: true, client: toClientDTO(client), questionnaire: { ...questionnaire, sentAutomatically: sent.sent } };
 }
 
 export async function createQuestionnaireLink(

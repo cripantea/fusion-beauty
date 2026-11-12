@@ -4,6 +4,7 @@ import { getBaseUrl } from "@/lib/app-url";
 import { requireTenantAdmin } from "@/lib/auth-context";
 import { formEmbedCode } from "@/lib/embed-code";
 import { parseStoredForm } from "@/lib/forms";
+import { parseStoredTriggerConfig } from "@/lib/automations";
 import { prisma } from "@/lib/prisma";
 
 import { FormBuilder } from "./form-builder";
@@ -17,9 +18,13 @@ export default async function FormBuilderPage({ params }: PageProps<"/dashboard/
     prisma.whatsappConnection.count({ where: { tenantId } }),
   ]);
   if (!form) notFound();
-  const welcome = await prisma.whatsappAutomation.findUnique({
-    where: { tenantId_kind: { tenantId, kind: "FORM_WELCOME" } },
-    select: { enabled: true },
+  const welcomes = await prisma.automation.findMany({
+    where: { tenantId, trigger: "FORM_SUBMITTED", status: "ACTIVE" },
+    select: { triggerConfig: true },
+  });
+  const welcome = welcomes.some((a) => {
+    const formId = parseStoredTriggerConfig(a.triggerConfig).formId;
+    return !formId || formId === form.id;
   });
 
   const { fields, settings } = parseStoredForm(form);
@@ -40,7 +45,7 @@ export default async function FormBuilderPage({ params }: PageProps<"/dashboard/
       version={form.updatedAt.getTime()}
       embedCode={formEmbedCode(baseUrl, form.id)}
       publicUrl={`${baseUrl}/f/${form.id}`}
-      whatsappWelcome={waConnected > 0 && welcome?.enabled === true}
+      whatsappWelcome={waConnected > 0 && welcome}
     />
   );
 }

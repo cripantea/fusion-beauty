@@ -3,6 +3,7 @@
 import { getTenantContext } from "@/lib/auth-context";
 import { normalizePhoneForWhatsapp } from "@/lib/format";
 import { isFusionWaConfigured, listTemplates } from "@/lib/fusion-wa";
+import { parseStoredSteps, walkSteps } from "@/lib/automations";
 import { prisma } from "@/lib/prisma";
 import { sendWhatsappTemplate, sendWhatsappText } from "@/lib/whatsapp";
 import { renderVariables, TEMPLATE_VARIABLES } from "@/lib/whatsapp-shared";
@@ -135,10 +136,17 @@ export async function getApprovedTemplates(clientId?: string): Promise<{ success
   if (!result.ok) return { success: false, error: result.error };
 
   const [automations, tenant, client] = await Promise.all([
-    prisma.whatsappAutomation.findMany({ where: { tenantId }, select: { templateName: true, language: true, params: true } }),
+    prisma.automation.findMany({ where: { tenantId }, select: { steps: true } }),
     prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true, slug: true } }),
     clientId ? prisma.client.findFirst({ where: { id: clientId, tenantId }, select: { firstName: true, lastName: true } }) : null,
   ]);
+  // Variabili già scelte nelle automazioni per lo stesso template.
+  const mappings: { templateName: string; language: string; params: string[] }[] = [];
+  for (const automation of automations) {
+    walkSteps(parseStoredSteps(automation.steps), (step) => {
+      if (step.type === "SEND_TEMPLATE" && step.templateName) mappings.push(step);
+    });
+  }
   const base = (process.env.APP_BASE_URL ?? "https://beauty.fusionsoft.it").replace(/\/$/, "");
   const known = { nome: client?.firstName ?? "", cognome: client?.lastName ?? "", centro: tenant.name, prenota: `${base}/embed/${tenant.slug}` };
 
@@ -147,7 +155,7 @@ export async function getApprovedTemplates(clientId?: string): Promise<{ success
     templates: result.templates
       .filter((t) => t.status === "APPROVED")
       .map((t) => {
-        const mapping = automations.find((a) => a.templateName === t.name && a.language === t.language)?.params ?? [];
+        const mapping = mappings.find((a) => a.templateName === t.name && a.language === t.language)?.params ?? [];
         const defaults = Array.from({ length: t.variableCount }, (_, i) => {
           const param = mapping[i] ?? (i === 0 ? "{{nome}}" : "");
           const filled = renderVariables(param, known);

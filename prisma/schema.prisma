@@ -77,14 +77,48 @@ enum WhatsappMessageStatus {
   FAILED
 }
 
-/// Messaggi automatici WhatsApp (template Meta approvati).
-enum WhatsappAutomationKind {
-  BOOKING_REQUEST
-  BOOKING_CONFIRMED
-  REMINDER
+/// Quando parte un'automazione (come i trigger dei workflow del CRM, per un centro estetico).
+enum AutomationTrigger {
+  CLIENT_CREATED
+  FORM_SUBMITTED
+  BOOKING_REQUESTED
+  APPOINTMENT_CONFIRMED
+  BEFORE_APPOINTMENT
+  AFTER_APPOINTMENT
   BIRTHDAY
-  FORM_WELCOME
+  CLIENT_INACTIVE
   QUESTIONNAIRE
+  WHATSAPP_RECEIVED
+}
+
+enum AutomationStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+}
+
+enum AutomationRunStatus {
+  RUNNING
+  WAITING
+  COMPLETED
+  FAILED
+  STOPPED
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  PAUSED
+  COMPLETED
+  FAILED
+}
+
+enum CampaignRecipientStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
 }
 
 model Tenant {
@@ -116,7 +150,9 @@ model Tenant {
   formSubmissions        FormSubmission[]
   whatsappConnection     WhatsappConnection?
   whatsappMessages       WhatsappMessage[]
-  whatsappAutomations    WhatsappAutomation[]
+  automations            Automation[]
+  automationRuns         AutomationRun[]
+  campaigns              Campaign[]
 
   @@map("tenants")
 }
@@ -160,20 +196,20 @@ model ExternalCalendarEvent {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  tenantId     String?
-  email        String   @unique
-  passwordHash String
-  firstName    String
-  lastName     String
-  role         Role     @default(OPERATOR)
-  isActive     Boolean  @default(true)
+  id                String    @id @default(cuid())
+  tenantId          String?
+  email             String    @unique
+  passwordHash      String
+  firstName         String
+  lastName          String
+  role              Role      @default(OPERATOR)
+  isActive          Boolean   @default(true)
   /// Identità in Fusion ID (claim sub), collegata al primo accesso con Fusion ID.
   fusionIdSub       String?   @unique
   /// Le sessioni emesse prima di questa data non valgono più ("esci ovunque" da Fusion Control).
   sessionsRevokedAt DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   tenant            Tenant?          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   appointments      Appointment[]    @relation("AppointmentOperator")
@@ -215,6 +251,8 @@ model Client {
   plans            ClientPlan[]
   formSubmissions  FormSubmission[]
   whatsappMessages WhatsappMessage[]
+  automationRuns   AutomationRun[]
+  campaignEntries  CampaignRecipient[]
 
   @@index([tenantId, phone])
   @@index([tenantId, lastName])
@@ -526,8 +564,9 @@ model WhatsappMessage {
   readAt       DateTime?
   createdAt    DateTime              @default(now())
 
-  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  client Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client            Client?            @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  campaignRecipient CampaignRecipient?
 
   @@unique([tenantId, dedupeKey])
   @@index([tenantId, phone, createdAt])
@@ -535,22 +574,115 @@ model WhatsappMessage {
   @@map("whatsapp_messages")
 }
 
-model WhatsappAutomation {
-  id           String                 @id @default(cuid())
-  tenantId     String
-  kind         WhatsappAutomationKind
-  enabled      Boolean                @default(false)
-  templateName String
-  language     String
-  /// Testo del template (con {{1}}…), per mostrare nella chat il messaggio inviato.
-  templateBody String                 @default("")
-  /// Valori di {{1}}, {{2}}…: testo con variabili come {{nome}} o {{data}}.
-  params       String[]               @default([])
-  createdAt    DateTime               @default(now())
-  updatedAt    DateTime               @updatedAt
+// ── Automazioni (come i workflow del CRM, semplificate) ──────────────────────
+// Un'automazione è un trigger più una lista di passi (JSON, vedi
+// src/lib/automations.ts): invia template o testo WhatsApp, attendi,
+// condizione sì/no, nota sulla scheda, interesse. Ogni cliente che entra è un
+// AutomationRun, che il worker riprende alla fine delle attese.
+model Automation {
+  id            String            @id @default(cuid())
+  tenantId      String
+  name          String
+  status        AutomationStatus  @default(DRAFT)
+  trigger       AutomationTrigger
+  /// Impostazioni del trigger (es. ore prima dell'appuntamento, form, giorni di inattività).
+  triggerConfig Json              @default("{}")
+  steps         Json              @default("[]")
+  /// Messaggi solo tra le 9 e le 20: fuori orario il passo aspetta l'apertura.
+  quietHours    Boolean           @default(true)
+  /// La stessa cliente può rientrare (es. ogni appuntamento, ogni compleanno).
+  allowReentry  Boolean           @default(true)
+  /// Si ferma se la cliente risponde su WhatsApp.
+  stopOnReply   Boolean           @default(false)
+  /// Modello di partenza (compleanno, promemoria…), solo informativo.
+  presetKey     String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  runs   AutomationRun[]
 
-  @@unique([tenantId, kind])
-  @@map("whatsapp_automations")
+  @@index([tenantId, trigger, status])
+  @@map("automations")
+}
+
+model AutomationRun {
+  id            String              @id @default(cuid())
+  tenantId      String
+  automationId  String
+  clientId      String
+  status        AutomationRunStatus @default(RUNNING)
+  /// Passo da eseguire alla ripresa (null = dall'inizio / finito).
+  currentStepId String?
+  resumeAt      DateTime?
+  /// Una sola corsa per evento (es. "appointment:<id>:<inizio>", "birthday:2026").
+  triggerKey    String
+  /// Dati dell'evento per le variabili ({{trattamento}}, {{data}}, {{link}}…).
+  context       Json                @default("{}")
+  /// Diario dei passi: [{at, step, ok, message}].
+  log           Json                @default("[]")
+  lastError     String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  client     Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([automationId, triggerKey])
+  @@index([status, resumeAt])
+  @@index([automationId, createdAt])
+  @@index([clientId])
+  @@map("automation_runs")
+}
+
+// ── Campagne WhatsApp ────────────────────────────────────────────────────────
+// Un template approvato a un gruppo di clienti (pubblico in JSON, vedi
+// src/lib/campaigns.ts), inviato a scaglioni dal worker. Le statistiche di
+// consegna/lettura arrivano dal messaggio collegato (WhatsappMessage).
+model Campaign {
+  id                   String         @id @default(cuid())
+  tenantId             String
+  name                 String
+  status               CampaignStatus @default(DRAFT)
+  templateName         String
+  language             String
+  templateBody         String         @default("")
+  params               String[]       @default([])
+  audience             Json           @default("{}")
+  scheduledAt          DateTime?
+  batchSize            Int            @default(40)
+  batchIntervalMinutes Int            @default(10)
+  nextBatchAt          DateTime?
+  totalRecipients      Int            @default(0)
+  startedAt            DateTime?
+  completedAt          DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recipients CampaignRecipient[]
+
+  @@index([tenantId, createdAt])
+  @@index([status, nextBatchAt])
+  @@map("campaigns")
+}
+
+model CampaignRecipient {
+  id         String                  @id @default(cuid())
+  campaignId String
+  clientId   String
+  status     CampaignRecipientStatus @default(PENDING)
+  /// WhatsappMessage inviato: da lì consegnato / letto / risposto.
+  messageId  String?                 @unique
+  error      String?
+  sentAt     DateTime?
+
+  campaign Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  client   Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  message  WhatsappMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@unique([campaignId, clientId])
+  @@index([campaignId, status])
+  @@map("campaign_recipients")
 }

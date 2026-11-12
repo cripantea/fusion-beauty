@@ -4,7 +4,7 @@ import { after } from "next/server";
 
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { runAppointmentAutomation } from "@/lib/whatsapp";
+import { triggerAppointmentAutomations, triggerClientCreated } from "@/lib/automation-engine";
 
 import { createBookingSchema, getSlotsSchema } from "./schema";
 
@@ -156,6 +156,7 @@ export async function createPublicBooking(values: unknown): Promise<CreateBookin
   const normalizedNotes = parsed.data.notes?.trim() ? parsed.data.notes.trim() : null;
 
   try {
+    let isNewClient = false;
     const result = await prisma.$transaction(
       async (tx) => {
         const [appointmentConflict, externalConflict] = await Promise.all([
@@ -194,6 +195,7 @@ export async function createPublicBooking(values: unknown): Promise<CreateBookin
             },
           });
         } else {
+          isNewClient = true;
           client = await tx.client.create({
             data: {
               tenantId: tenant.id,
@@ -223,7 +225,10 @@ export async function createPublicBooking(values: unknown): Promise<CreateBookin
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     );
 
-    after(() => runAppointmentAutomation("BOOKING_REQUEST", result.appointment.id));
+    after(async () => {
+      if (isNewClient) await triggerClientCreated(result.client.tenantId, result.client.id);
+      await triggerAppointmentAutomations("BOOKING_REQUESTED", result.appointment.id);
+    });
 
     return {
       success: true,

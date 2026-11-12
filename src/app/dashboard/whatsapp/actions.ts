@@ -3,11 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import type { WhatsappAutomationKind } from "@/generated/prisma/client";
 import { requireTenantAdmin } from "@/lib/auth-context";
-import { createTemplate, deleteTemplate, getConnectionState, listTemplates, resetConnection, type FusionWaTemplate } from "@/lib/fusion-wa";
+import { createTemplate, deleteTemplate, getConnectionState, listTemplates, requestContactsSync, resetConnection, type FusionWaTemplate } from "@/lib/fusion-wa";
+import { parseStoredSteps, walkSteps } from "@/lib/automations";
 import { prisma } from "@/lib/prisma";
-import { AUTOMATION_KINDS } from "@/lib/whatsapp";
 
 type Result = { success: true } | { success: false; error: string };
 
@@ -93,35 +92,26 @@ export async function submitTemplate(values: z.input<typeof templateSchema>): Pr
 
 export async function removeTemplate(name: string, externalId: string | null): Promise<Result> {
   const { tenantId } = await requireTenantAdmin();
-  const inUse = await prisma.whatsappAutomation.findFirst({ where: { tenantId, templateName: name, enabled: true } });
-  if (inUse) return { success: false, error: "Il template è usato da un messaggio automatico attivo: disattivalo prima." };
+  const active = await prisma.automation.findMany({ where: { tenantId, status: "ACTIVE" }, select: { name: true, steps: true } });
+  const inUse = active.find((a) => {
+    let found = false;
+    walkSteps(parseStoredSteps(a.steps), (step) => {
+      if (step.type === "SEND_TEMPLATE" && step.templateName === name) found = true;
+    });
+    return found;
+  });
+  if (inUse) return { success: false, error: `Il template è usato dall'automazione attiva “${inUse.name}”: mettila in pausa prima.` };
+  const sending = await prisma.campaign.findFirst({ where: { tenantId, templateName: name, status: { in: ["SCHEDULED", "SENDING", "PAUSED"] } } });
+  if (sending) return { success: false, error: `Il template è usato dalla campagna “${sending.name}”, non ancora finita.` };
   const result = await deleteTemplate(tenantId, name, externalId);
   if (!result.ok) return { success: false, error: result.error };
   return { success: true };
 }
 
-const automationSchema = z.object({
-  kind: z.enum(AUTOMATION_KINDS as [WhatsappAutomationKind, ...WhatsappAutomationKind[]]),
-  enabled: z.boolean(),
-  templateName: z.string().trim().max(512),
-  language: z.string().trim().max(20),
-  templateBody: z.string().max(2000),
-  params: z.array(z.string().max(500)).max(20),
-});
-
-export async function saveAutomation(values: z.input<typeof automationSchema>): Promise<Result> {
+/** Chiede di nuovo a Meta la rubrica dell'app WhatsApp Business. */
+export async function syncAppContacts(): Promise<Result> {
   const { tenantId } = await requireTenantAdmin();
-  const parsed = automationSchema.safeParse(values);
-  if (!parsed.success) return { success: false, error: "Dati non validi." };
-  const { kind, ...data } = parsed.data;
-  if (data.enabled && !data.templateName) return { success: false, error: "Scegli un template approvato." };
-  if (data.enabled && data.params.some((p) => !p.trim())) return { success: false, error: "Compila tutte le variabili del template." };
-
-  await prisma.whatsappAutomation.upsert({
-    where: { tenantId_kind: { tenantId, kind } },
-    create: { tenantId, kind, ...data },
-    update: data,
-  });
-  revalidatePath("/dashboard/whatsapp");
+  const result = await requestContactsSync(tenantId);
+  if (!result.ok) return { success: false, error: result.error };
   return { success: true };
 }

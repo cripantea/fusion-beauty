@@ -1,7 +1,8 @@
 import { Queue, Worker } from "bullmq";
 
 import { redis } from "@/lib/redis";
-import { runScheduledAutomations } from "@/lib/whatsapp";
+import { processWaitingRuns, runAutomationScans } from "@/lib/automation-engine";
+import { runDueCampaigns } from "@/lib/campaign-runner";
 import { EXAMPLE_QUEUE_NAME, type ExampleJobData } from "@/queues/example.queue";
 
 const worker = new Worker<ExampleJobData>(
@@ -22,23 +23,33 @@ worker.on("failed", (job, err) => {
 
 console.log(`[worker] listening on queue "${EXAMPLE_QUEUE_NAME}"`);
 
-// Messaggi WhatsApp programmati (promemoria del giorno prima, compleanni):
-// un giro ogni 15 minuti; i doppi invii sono esclusi dalla dedupeKey.
+// Automazioni e campagne: un giro al minuto riprende le attese scadute e invia
+// lo scaglione dovuto delle campagne; ogni 15 minuti si cercano i trigger a
+// tempo (prima/dopo l'appuntamento, compleanni, clienti inattive). I doppi
+// invii sono esclusi dalle chiavi univoche (triggerKey, dedupeKey).
 const WHATSAPP_SCHEDULE_QUEUE = "whatsapp-schedule";
 const scheduleQueue = new Queue(WHATSAPP_SCHEDULE_QUEUE, { connection: redis });
 const scheduleWorker = new Worker(
   WHATSAPP_SCHEDULE_QUEUE,
-  async () => {
-    await runScheduledAutomations();
+  async (job) => {
+    if (job.name === "scan") {
+      await runAutomationScans();
+      return;
+    }
+    await processWaitingRuns();
+    await runDueCampaigns();
   },
   { connection: redis }
 );
 
 scheduleWorker.on("failed", (job, err) => {
-  console.error(`[worker] giro WhatsApp programmato non riuscito:`, err);
+  console.error(`[worker] giro programmato "${job?.name}" non riuscito:`, err);
 });
 
-void scheduleQueue.upsertJobScheduler("whatsapp-every-15-min", { every: 15 * 60 * 1000 }, { name: "run" });
+// Il vecchio giro unico ogni 15 minuti non serve più.
+void scheduleQueue.removeJobScheduler("whatsapp-every-15-min");
+void scheduleQueue.upsertJobScheduler("automations-every-minute", { every: 60 * 1000 }, { name: "tick" });
+void scheduleQueue.upsertJobScheduler("automations-scan-15-min", { every: 15 * 60 * 1000 }, { name: "scan" });
 
 async function shutdown() {
   console.log("[worker] shutting down...");

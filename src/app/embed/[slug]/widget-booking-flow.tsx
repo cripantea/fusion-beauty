@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { format, isBefore, startOfDay } from "date-fns";
 import { it } from "date-fns/locale";
 import { Check } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -59,6 +59,9 @@ type Step = "service" | "datetime" | "contact" | "success";
 type WidgetBookingFlowProps = {
   slug: string;
   services: PublicServiceDTO[];
+  /** Trattamento già scelto (agenda di un solo trattamento): si parte da data e ora. */
+  initialServiceId?: string;
+  prefill?: Partial<Pick<ContactFormValues, "firstName" | "lastName" | "phone" | "email">>;
 };
 
 const STEPS: Step[] = ["service", "datetime", "contact"];
@@ -106,13 +109,14 @@ function StepBar({ step }: { step: Step }) {
   );
 }
 
-export function WidgetBookingFlow({ slug, services }: WidgetBookingFlowProps) {
-  const [step, setStep] = useState<Step>("service");
-  const [selectedService, setSelectedService] = useState<PublicServiceDTO | null>(null);
+export function WidgetBookingFlow({ slug, services, initialServiceId, prefill }: WidgetBookingFlowProps) {
+  const initialService = services.find((service) => service.id === initialServiceId) ?? null;
+  const [step, setStep] = useState<Step>(initialService ? "datetime" : "service");
+  const [selectedService, setSelectedService] = useState<PublicServiceDTO | null>(initialService);
   const [selectedDate, setSelectedDate] = useState<Date>(() => startOfDay(new Date()));
   const [slots, setSlots] = useState<string[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
-  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsLoading, setSlotsLoading] = useState(initialService !== null);
   const [isPending, startTransition] = useTransition();
   const [confirmation, setConfirmation] = useState<BookingConfirmation | null>(null);
   const [privacyConsent, setPrivacyConsent] = useState(false);
@@ -120,12 +124,16 @@ export function WidgetBookingFlow({ slug, services }: WidgetBookingFlowProps) {
 
   const form = useForm<ContactFormValues>({
     resolver: zodResolver(contactFormSchema),
-    defaultValues: contactFormDefaultValues,
+    defaultValues: { ...contactFormDefaultValues, ...prefill },
   });
 
   function fetchSlots(service: PublicServiceDTO, date: Date) {
     setSlotsLoading(true);
     setSelectedSlot(null);
+    loadSlots(service, date);
+  }
+
+  function loadSlots(service: PublicServiceDTO, date: Date) {
     startTransition(async () => {
       const result = await getAvailableSlots({
         slug,
@@ -143,6 +151,12 @@ export function WidgetBookingFlow({ slug, services }: WidgetBookingFlowProps) {
       setSlots(result.slots);
     });
   }
+
+  // Trattamento già scelto: gli orari di oggi si caricano subito.
+  useEffect(() => {
+    if (initialService) loadSlots(initialService, selectedDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo all'apertura
+  }, []);
 
   function handleSelectService(service: PublicServiceDTO) {
     setSelectedService(service);
@@ -187,6 +201,13 @@ export function WidgetBookingFlow({ slug, services }: WidgetBookingFlowProps) {
 
       setConfirmation(result.booking);
       setStep("success");
+      // Il sito che ospita l'agenda può contare la prenotazione (Analytics, pixel…).
+      if (window.parent !== window) {
+        window.parent.postMessage(
+          { type: "fusion-beauty:booked", service: result.booking.serviceName, startTime: result.booking.startTime },
+          "*"
+        );
+      }
     });
   }
 

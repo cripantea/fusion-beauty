@@ -17,6 +17,7 @@ import { BookingEmbedCard } from "./booking-embed-card";
 
 type WidgetPreviewProps = {
   tenantSlug: string;
+  services: { id: string; name: string }[];
   tenantName: string;
 };
 
@@ -32,7 +33,7 @@ function getOriginServerSnapshot() {
   return "https://beauty.fusionsoft.it";
 }
 
-export function WidgetPreview({ tenantSlug, tenantName }: WidgetPreviewProps) {
+export function WidgetPreview({ tenantSlug, tenantName, services }: WidgetPreviewProps) {
   const origin = useSyncExternalStore(
     subscribeNoop,
     getOriginSnapshot,
@@ -147,7 +148,7 @@ export function WidgetPreview({ tenantSlug, tenantName }: WidgetPreviewProps) {
         </CardContent>
       </Card>
 
-      <BookingEmbedCard origin={origin} slug={tenantSlug} />
+      <BookingEmbedCard origin={origin} slug={tenantSlug} services={services} />
 
       {/* Live preview */}
       <Card>

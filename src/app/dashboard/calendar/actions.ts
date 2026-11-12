@@ -4,7 +4,7 @@ import { after } from "next/server";
 
 import { getTenantContext } from "@/lib/auth-context";
 import { prisma } from "@/lib/prisma";
-import { runAppointmentAutomation } from "@/lib/whatsapp";
+import { triggerAppointmentAutomations } from "@/lib/automation-engine";
 
 import { appointmentInclude, toAppointmentDTO, type AppointmentDTO } from "./dto";
 
@@ -144,7 +144,7 @@ export async function createAppointment(
   });
 
   if (appointment.startTime > new Date()) {
-    after(() => runAppointmentAutomation("BOOKING_CONFIRMED", appointment.id));
+    after(() => triggerAppointmentAutomations("APPOINTMENT_CONFIRMED", appointment.id));
   }
 
   return { success: true, appointment: toAppointmentDTO(appointment) };
@@ -236,7 +236,7 @@ export async function updateAppointmentStatus(
 
   // Conferma di una richiesta online: la cliente riceve la conferma su WhatsApp.
   if (status === "CONFIRMED" && previous?.status !== "CONFIRMED" && appointment.startTime > new Date()) {
-    after(() => runAppointmentAutomation("BOOKING_CONFIRMED", appointment.id));
+    after(() => triggerAppointmentAutomations("APPOINTMENT_CONFIRMED", appointment.id));
   }
 
   return { success: true, appointment: toAppointmentDTO(appointment) };

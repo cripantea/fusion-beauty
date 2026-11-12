@@ -6,7 +6,7 @@ import { z } from "zod";
  * nella risposta. Condiviso da costruttore (client), script embed e route di invio.
  */
 
-export const FIELD_TYPES = ["text", "email", "tel", "textarea", "select", "radio", "checkbox", "date", "number", "content"] as const;
+export const FIELD_TYPES = ["text", "email", "tel", "textarea", "select", "radio", "checkbox", "date", "number", "content", "image"] as const;
 export type FormFieldType = (typeof FIELD_TYPES)[number];
 
 export const FIELD_TYPE_LABELS: Record<FormFieldType, string> = {
@@ -20,7 +20,13 @@ export const FIELD_TYPE_LABELS: Record<FormFieldType, string> = {
   date: "Data",
   number: "Numero",
   content: "Testo informativo",
+  image: "Immagine",
 };
+
+/** Elementi che si mostrano soltanto: non hanno una risposta da inviare. */
+export function isDisplayField(type: FormFieldType) {
+  return type === "content" || type === "image";
+}
 
 /** Dato della scheda cliente su cui scrive il campo. */
 export const CLIENT_FIELDS = ["firstName", "lastName", "fullName", "phone", "email", "dateOfBirth", "city", "interests", "notes"] as const;
@@ -39,6 +45,15 @@ export const CLIENT_FIELD_LABELS: Record<ClientFieldKey, string> = {
 };
 
 const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+const optionalColor = z
+  .string()
+  .trim()
+  .optional()
+  .refine((v) => !v || HEX_COLOR.test(v), "Colore non valido (es. #1f3d36)");
+const optionalPx = (max: number) => z.number().int().min(0).max(max).optional();
+const align = z.enum(["left", "center", "right"]).optional();
+/** Nome di un Google Font: finisce in un URL e nel CSS. */
+export const FONT_NAME = /^[A-Za-z0-9 ]{1,60}$/;
 
 /** Gli URL finiscono in window.location / href sulla pagina che ospita il form. */
 const safeUrl = z
@@ -64,6 +79,34 @@ export const formFieldSchema = z.object({
   options: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
   content: z.string().max(3000).optional(),
   half: z.boolean().optional(),
+  helpText: z.string().max(300).optional(),
+  // Testo informativo: aspetto e link facoltativo
+  textSize: z.number().int().min(8).max(96).optional(),
+  textColor: optionalColor,
+  textAlign: align,
+  textBold: z.boolean().optional(),
+  linkUrl: z
+    .string()
+    .trim()
+    .optional()
+    .refine((value) => {
+      if (!value) return true;
+      try {
+        return ["http:", "https:", "mailto:", "tel:"].includes(new URL(value).protocol);
+      } catch {
+        return false;
+      }
+    }, "Il link deve iniziare con https://, mailto: o tel:"),
+  // Immagine (logo, banner…)
+  imageUrl: z
+    .string()
+    .trim()
+    .max(1000)
+    .optional()
+    .refine((value) => !value || /^https?:\/\//i.test(value), "L'indirizzo dell'immagine deve iniziare con https://"),
+  imageAlt: z.string().trim().max(200).optional(),
+  imageWidth: z.number().int().min(5).max(100).optional(),
+  imageAlign: align,
 });
 export type FormFieldDef = z.infer<typeof formFieldSchema>;
 
@@ -77,6 +120,38 @@ export const formSettingsSchema = z.object({
   formBg: z.string().trim().refine((v) => HEX_COLOR.test(v), "Colore non valido"),
   textColor: z.string().trim().refine((v) => HEX_COLOR.test(v), "Colore non valido"),
   radius: z.number().int().min(0).max(30),
+  // Aspetto avanzato, come nel costruttore del CRM: tutto facoltativo, senza
+  // valore resta l'aspetto standard.
+  termsUrl: safeUrl.optional(),
+  privacyLinkText: z.string().trim().max(60).optional(),
+  termsLinkText: z.string().trim().max(60).optional(),
+  footerText: z.string().trim().max(500).optional(),
+  fieldBg: optionalColor,
+  fieldTextColor: optionalColor,
+  fieldBorderColor: optionalColor,
+  fieldBorderWidth: optionalPx(10),
+  placeholderColor: optionalColor,
+  labelColor: optionalColor,
+  hideLabels: z.boolean().optional(),
+  titleColor: optionalColor,
+  titleSize: z.number().int().min(10).max(72).optional(),
+  titleAlign: align,
+  smallTextColor: optionalColor,
+  formBorderColor: optionalColor,
+  formBorderWidth: optionalPx(20),
+  formBorderRadius: optionalPx(60),
+  formShadow: z.enum(["none", "soft", "strong"]).optional(),
+  formPadding: optionalPx(120),
+  formMaxWidth: z.number().int().min(200).max(2000).optional(),
+  fieldGap: optionalPx(60),
+  buttonTextColor: optionalColor,
+  buttonRadius: optionalPx(60),
+  fontFamily: z
+    .string()
+    .trim()
+    .optional()
+    .refine((v) => !v || FONT_NAME.test(v), "Il carattere deve essere il nome di un Google Font (es. Montserrat)"),
+  customCss: z.string().max(20000).optional(),
 });
 export type FormSettings = z.infer<typeof formSettingsSchema>;
 
@@ -102,6 +177,7 @@ export function formProblem(input: FormInput): string | null {
       return `Il campo "${field.label}" non ha opzioni.`;
     }
     if (field.type === "content" && !field.content?.trim()) return `Il testo informativo "${field.label}" è vuoto.`;
+    if (field.type === "image" && !field.imageUrl?.trim()) return `L'immagine "${field.label}" non ha un indirizzo.`;
   }
   const mapped = new Set(input.fields.map((f) => f.clientField).filter(Boolean));
   if (!mapped.has("phone")) {
@@ -196,4 +272,41 @@ export function parseStoredForm(form: { fields: unknown; settings: unknown }): {
   const fields = z.array(formFieldSchema).safeParse(form.fields);
   const settings = formSettingsSchema.safeParse({ ...DEFAULT_SETTINGS, ...(form.settings as object) });
   return { fields: fields.success ? fields.data : DEFAULT_FIELDS, settings: settings.success ? settings.data : DEFAULT_SETTINGS };
+}
+
+export const FORM_SHADOWS = {
+  none: "none",
+  soft: "0 4px 14px rgba(0,0,0,0.08)",
+  strong: "0 10px 30px rgba(0,0,0,0.18)",
+} as const;
+
+/**
+ * Aspetto risolto del form (valori scelti, altrimenti quelli standard): lo usa
+ * lo script embed. Stessa logica del CRM, così un form rifatto qui è identico.
+ */
+export function formLook(s: FormSettings) {
+  const fieldBorderWidth = s.fieldBorderWidth ?? 1;
+  const cardBorderWidth = s.formBorderWidth ?? (s.formBorderColor ? 1 : 0);
+  return {
+    text: s.textColor,
+    title: s.titleColor || s.textColor,
+    titleSize: s.titleSize ?? 20,
+    titleAlign: s.titleAlign ?? "center",
+    label: s.labelColor || s.textColor,
+    muted: s.smallTextColor || s.textColor,
+    placeholder: s.placeholderColor || "#9ca3af",
+    fieldBg: s.fieldBg || "#ffffff",
+    fieldText: s.fieldTextColor || "#111827",
+    fieldBorder: fieldBorderWidth > 0 ? `${fieldBorderWidth}px solid ${s.fieldBorderColor || "#d1d5db"}` : "none",
+    fieldRadius: s.radius,
+    cardBorder: cardBorderWidth > 0 ? `${cardBorderWidth}px solid ${s.formBorderColor || "#e5e7eb"}` : "none",
+    cardRadius: s.formBorderRadius ?? 16,
+    cardShadow: FORM_SHADOWS[s.formShadow ?? "none"],
+    cardPadding: s.formPadding,
+    cardMaxWidth: s.formMaxWidth ?? 520,
+    gap: s.fieldGap ?? 14,
+    buttonText: s.buttonTextColor || "#ffffff",
+    buttonRadius: s.buttonRadius ?? s.radius,
+    font: s.fontFamily && FONT_NAME.test(s.fontFamily) ? s.fontFamily : "",
+  };
 }

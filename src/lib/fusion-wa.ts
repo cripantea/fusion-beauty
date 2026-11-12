@@ -10,7 +10,7 @@
  * (legge il secret dalle variabili d'ambiente).
  */
 
-const FUSION_WA_BASE_URL = (process.env.FUSION_WA_BASE_URL ?? "https://wa.fusionsoft.it").replace(/\/$/, "");
+const FUSION_WA_BASE_URL = (process.env.FUSION_WA_BASE_URL ?? "https://fusionwa.com").replace(/\/$/, "");
 
 export function fusionWaBaseUrl() {
   return FUSION_WA_BASE_URL;
@@ -172,4 +172,43 @@ export async function getWidgetToken(tenantId: string): Promise<{ ok: true; toke
   if (!res.ok) return res;
   if (res.status >= 400 || typeof res.data?.token !== "string") return { ok: false, error: errorOf(res.data, res.status) };
   return { ok: true, token: res.data.token };
+}
+
+export type FusionWaNumberStatus = { status: string | null; isOnBizApp: boolean; codeVerificationStatus: string | null };
+
+/**
+ * Rubrica e storico dell'app WhatsApp Business (Coexistence): Fusion WA li
+ * chiede a Meta al collegamento, una sola volta, entro 24 ore; i contatti
+ * arrivano poi come webhook smb_app_state_sync.
+ */
+export type FusionWaSyncState = {
+  isOnBizApp: boolean;
+  onboardedAt: string | null;
+  windowClosesAt: string | null;
+  contacts: { requestedAt: string | null; requestId: string | null; error: string | null };
+  history: { requestedAt: string | null; requestId: string | null; error: string | null };
+};
+
+/** Stato del numero su Meta (registrato, sull'app Business, verifica) e della sincronizzazione. */
+export async function getNumberStatus(
+  tenantId: string
+): Promise<{ ok: true; number: FusionWaNumberStatus; sync: FusionWaSyncState | null } | { ok: false; error: string }> {
+  const res = await request(`/api/v1/connections/register?${new URLSearchParams({ externalCustomerId: tenantId })}`, { timeoutMs: 10_000 });
+  if (!res.ok) return res;
+  if (res.status >= 400 || res.data?.status !== "success") return { ok: false, error: errorOf(res.data, res.status) };
+  return { ok: true, number: res.data.number as FusionWaNumberStatus, sync: (res.data.sync as FusionWaSyncState | undefined) ?? null };
+}
+
+/** Richiede di nuovo a Meta la rubrica dell'app Business (possibile solo entro 24 ore dal collegamento). */
+export async function requestContactsSync(tenantId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await request("/api/v1/connections/request-history-sync", {
+    body: { externalCustomerId: tenantId, syncType: "smb_app_state_sync" },
+  });
+  if (!res.ok) return res;
+  if (res.status >= 400) return { ok: false, error: errorOf(res.data, res.status) };
+  if (res.data?.status === "rejected") {
+    const error = res.data.error as { message?: string } | undefined;
+    return { ok: false, error: error?.message ?? "Meta non ha accettato la richiesta." };
+  }
+  return { ok: true };
 }

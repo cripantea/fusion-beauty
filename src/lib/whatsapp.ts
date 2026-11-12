@@ -1,11 +1,10 @@
-import type { WhatsappAutomationKind } from "@/generated/prisma/client";
 import { findClientIdByPhone } from "@/lib/client-phone";
 import { normalizePhoneForWhatsapp } from "@/lib/format";
 import { isFusionWaConfigured, sendTemplate, sendText } from "@/lib/fusion-wa";
 import { prisma } from "@/lib/prisma";
-import { fillTemplateBody, renderVariables, type TemplateVars } from "@/lib/whatsapp-shared";
+import { fillTemplateBody, type TemplateVars } from "@/lib/whatsapp-shared";
 
-export { AUTOMATION_INFO, AUTOMATION_KINDS, TEMPLATE_VARIABLES } from "@/lib/whatsapp-shared";
+export { TEMPLATE_VARIABLES } from "@/lib/whatsapp-shared";
 
 /**
  * Logica WhatsApp di Fusion Beauty sopra il client Fusion WA: ogni invio e ogni
@@ -24,18 +23,13 @@ export function appointmentVars(appointment: { startTime: Date; service: { name:
   };
 }
 
-function bookingUrl(slug: string) {
-  const base = (process.env.APP_BASE_URL ?? "https://beauty.fusionsoft.it").replace(/\/$/, "");
-  return `${base}/embed/${slug}`;
-}
-
 export async function hasActiveWhatsapp(tenantId: string) {
   if (!isFusionWaConfigured()) return false;
   const connection = await prisma.whatsappConnection.findUnique({ where: { tenantId }, select: { id: true } });
   return Boolean(connection);
 }
 
-export type SendOutcome = { ok: true; messageId: string } | { ok: false; error: string };
+export type SendOutcome = { ok: true; messageId: string } | { ok: false; error: string; messageId?: string };
 
 /** Testo libero: Meta lo consegna solo se la cliente ha scritto nelle ultime 24 ore. */
 export async function sendWhatsappText(tenantId: string, input: { phone: string; body: string; clientId?: string | null }): Promise<SendOutcome> {
@@ -100,68 +94,18 @@ export async function sendWhatsappTemplate(
     where: { id: messageId },
     data: result.ok ? { wamid: result.wamid } : { status: "FAILED", error: result.error },
   });
-  return result.ok ? { ok: true, messageId } : { ok: false, error: result.error };
-}
-
-/**
- * Invia il messaggio automatico `kind` se il centro l'ha attivato. Non lancia mai:
- * un problema con WhatsApp non deve far fallire la prenotazione o il form.
- */
-export async function runAutomation(
-  tenantId: string,
-  kind: WhatsappAutomationKind,
-  ctx: { client: { id: string; firstName: string; lastName: string; phone: string }; vars?: TemplateVars; dedupeKey?: string }
-): Promise<SendOutcome | null> {
-  try {
-    const automation = await prisma.whatsappAutomation.findUnique({ where: { tenantId_kind: { tenantId, kind } } });
-    if (!automation?.enabled || !automation.templateName) return null;
-    if (!(await hasActiveWhatsapp(tenantId))) return null;
-
-    const tenant = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true, slug: true } });
-    const vars: TemplateVars = {
-      nome: ctx.client.firstName,
-      cognome: ctx.client.lastName,
-      centro: tenant.name,
-      prenota: bookingUrl(tenant.slug),
-      ...ctx.vars,
-    };
-    // Meta rifiuta i parametri vuoti: al loro posto un trattino.
-    const params = automation.params.map((p) => renderVariables(p, vars).trim() || "-");
-
-    return await sendWhatsappTemplate(tenantId, {
-      phone: ctx.client.phone,
-      clientId: ctx.client.id,
-      templateName: automation.templateName,
-      language: automation.language,
-      templateBody: automation.templateBody,
-      params,
-      dedupeKey: ctx.dedupeKey ?? `${kind.toLowerCase()}:${ctx.client.id}:${Date.now()}`,
-    });
-  } catch (err) {
-    console.error(`[whatsapp] automazione ${kind} non inviata:`, err);
-    return { ok: false, error: "Invio non riuscito." };
-  }
-}
-
-/** Automazioni legate a un appuntamento (richiesta online, conferma). */
-export async function runAppointmentAutomation(kind: "BOOKING_REQUEST" | "BOOKING_CONFIRMED", appointmentId: string) {
-  const appointment = await prisma.appointment.findUnique({
-    where: { id: appointmentId },
-    include: { client: true, service: true, operator: { select: { firstName: true } } },
-  });
-  if (!appointment) return null;
-  return runAutomation(appointment.tenantId, kind, {
-    client: appointment.client,
-    vars: appointmentVars(appointment),
-    // Una conferma per appuntamento e orario: se lo sposti, parte la nuova conferma.
-    dedupeKey: `${kind.toLowerCase()}:${appointment.id}:${appointment.startTime.toISOString()}`,
-  });
+  return result.ok ? { ok: true, messageId } : { ok: false, error: result.error, messageId };
 }
 
 // ── Messaggi in arrivo (webhook Meta inoltrato da Fusion WA) ─────────────────
 
 type MetaValue = {
   metadata?: { phone_number_id?: string };
+  state_sync?: {
+    type?: string;
+    action?: string;
+    contact?: { phone_number?: string; full_name?: string; first_name?: string };
+  }[];
   contacts?: { wa_id?: string; profile?: { name?: string } }[];
   messages?: { from?: string; id?: string; timestamp?: string; type?: string; [key: string]: unknown }[];
   statuses?: { id?: string; status?: string; errors?: { title?: string; message?: string }[] }[];
@@ -207,20 +151,35 @@ export async function ingestWebhookPayload(payload: { entry?: { changes?: { valu
         if (!message.from || !message.id || message.type === "reaction") continue;
         const phone = normalizePhoneForWhatsapp(message.from);
         const createdAt = message.timestamp ? new Date(Number(message.timestamp) * 1000) : new Date();
-        await prisma.whatsappMessage.upsert({
-          where: { wamid: message.id },
-          update: {},
-          create: {
+        const clientId = await findClientIdByPhone(tenantId, phone);
+        const known = await prisma.whatsappMessage.findUnique({ where: { wamid: message.id }, select: { id: true } });
+        if (known) continue; // consegna doppia del webhook
+        const body = inboundMessageText(message);
+        await prisma.whatsappMessage.create({
+          data: {
             tenantId,
-            clientId: await findClientIdByPhone(tenantId, phone),
+            clientId,
             phone,
             direction: "INBOUND",
             status: "RECEIVED",
-            body: inboundMessageText(message),
+            body,
             wamid: message.id,
             createdAt,
           },
         });
+        if (clientId) {
+          // Import dinamico: il motore delle automazioni importa a sua volta questo file.
+          const { stopRunsOnReply, triggerAutomations } = await import("@/lib/automation-engine");
+          await stopRunsOnReply(tenantId, clientId);
+          await triggerAutomations(tenantId, "WHATSAPP_RECEIVED", { clientId, triggerKey: `message:${message.id}`, filter: { message: body } });
+        }
+      }
+
+      // Rubrica dell'app WhatsApp Business: le persone salvate nel telefono
+      // diventano clienti (solo aggiunte, senza far partire automazioni).
+      for (const item of value.state_sync ?? []) {
+        if (item.type !== "contact" || item.action !== "add" || !item.contact?.phone_number) continue;
+        await importAppContact(tenantId, item.contact);
       }
 
       for (const status of value.statuses ?? []) {
@@ -240,60 +199,40 @@ export async function ingestWebhookPayload(payload: { entry?: { changes?: { valu
   }
 }
 
-// ── Promemoria e compleanni (worker, ogni 15 minuti) ─────────────────────────
+export const APP_CONTACT_SOURCE = "WhatsApp Business App";
 
-function romeParts(date: Date) {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(date);
-  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
-  return { year: get("year"), month: get("month"), day: get("day"), hour: get("hour") };
+/** Nome e cognome dalla rubrica: first_name è il nome, il resto di full_name il cognome. */
+function splitAppName(fullName?: string, firstName?: string) {
+  const full = fullName?.trim();
+  const first = firstName?.trim();
+  if (first && full && full.startsWith(first) && full.length > first.length) return { firstName: first, lastName: full.slice(first.length).trim() };
+  return { firstName: first || full || "", lastName: "" };
 }
 
-/** Inizio del giorno (ora di Roma) `offsetDays` giorni dopo oggi, come istante UTC. */
-function romeDayStart(now: Date, offsetDays: number): Date {
-  const { year, month, day } = romeParts(now);
-  const guess = new Date(Date.UTC(year, month - 1, day + offsetDays, 0, 0));
-  // Correzione del fuso (CET/CEST): mezzanotte di Roma = 22:00 o 23:00 UTC del giorno prima.
-  const offsetHours = romeParts(guess).hour;
-  return new Date(guess.getTime() - (offsetHours >= 12 ? offsetHours - 24 : offsetHours) * 3600_000);
-}
-
-export async function runScheduledAutomations(now = new Date()) {
-  const automations = await prisma.whatsappAutomation.findMany({
-    where: { enabled: true, kind: { in: ["REMINDER", "BIRTHDAY"] }, tenant: { isActive: true, whatsappConnection: { isNot: null } } },
-    select: { tenantId: true, kind: true },
-  });
-  if (!isFusionWaConfigured() || automations.length === 0) return;
-  const { hour, month, day, year } = romeParts(now);
-
-  for (const automation of automations) {
-    if (automation.kind === "REMINDER" && hour >= 10 && hour < 21) {
-      const appointments = await prisma.appointment.findMany({
-        where: {
-          tenantId: automation.tenantId,
-          status: { in: ["BOOKED", "CONFIRMED"] },
-          startTime: { gte: romeDayStart(now, 1), lt: romeDayStart(now, 2) },
-        },
-        include: { client: true, service: true, operator: { select: { firstName: true } } },
+async function importAppContact(tenantId: string, contact: { phone_number?: string; full_name?: string; first_name?: string }) {
+  const digits = (contact.phone_number ?? "").replace(/\D/g, "");
+  // Identificativi che non sono numeri veri (es. utenti con solo username): si ignorano.
+  if (digits.length < 8 || digits.length > 15) return;
+  const phone = normalizePhoneForWhatsapp(digits);
+  const existing = await findClientIdByPhone(tenantId, phone);
+  const names = splitAppName(contact.full_name, contact.first_name);
+  if (existing) {
+    // Nome segnaposto messo da un import precedente: si aggiorna con quello della rubrica.
+    if (names.firstName) {
+      await prisma.client.updateMany({
+        where: { id: existing, acquisitionSource: APP_CONTACT_SOURCE, firstName: `+${phone}` },
+        data: { firstName: names.firstName, lastName: names.lastName },
       });
-      for (const appointment of appointments) {
-        await runAutomation(automation.tenantId, "REMINDER", {
-          client: appointment.client,
-          vars: appointmentVars(appointment),
-          dedupeKey: `reminder:${appointment.id}:${appointment.startTime.toISOString()}`,
-        });
-      }
     }
-
-    if (automation.kind === "BIRTHDAY" && hour >= 9 && hour < 20) {
-      const clients = await prisma.$queryRaw<{ id: string; firstName: string; lastName: string; phone: string }[]>`
-        SELECT id, "firstName", "lastName", phone FROM clients
-        WHERE "tenantId" = ${automation.tenantId}
-          AND "dateOfBirth" IS NOT NULL
-          AND EXTRACT(MONTH FROM "dateOfBirth") = ${month}
-          AND EXTRACT(DAY FROM "dateOfBirth") = ${day}`;
-      for (const client of clients) {
-        await runAutomation(automation.tenantId, "BIRTHDAY", { client, dedupeKey: `birthday:${client.id}:${year}` });
-      }
-    }
+    return;
   }
+  await prisma.client.create({
+    data: {
+      tenantId,
+      firstName: names.firstName || `+${phone}`,
+      lastName: names.lastName,
+      phone: `+${phone}`,
+      acquisitionSource: APP_CONTACT_SOURCE,
+    },
+  });
 }

@@ -11,6 +11,7 @@ import {
   Inbox,
   LayoutDashboard,
   Link2,
+  Megaphone,
   MessageCircle,
   Scissors,
   Settings,
@@ -18,6 +19,7 @@ import {
   UserRoundCheck,
   Users,
   Wand2,
+  Zap,
 } from "lucide-react";
 import Link from "next/link";
 import { FusionsoftBadge } from "@/components/fusionsoft-badge";
@@ -74,6 +76,15 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+// Messaggi automatici e campagne WhatsApp: solo per l'amministratrice.
+const MARKETING_GROUP: NavGroup = {
+  label: "Marketing",
+  items: [
+    { href: "/dashboard/automations", label: "Automazioni", icon: Zap },
+    { href: "/dashboard/campaigns", label: "Campagne", icon: Megaphone },
+  ],
+};
+
 const SETTINGS_ITEMS: NavItem[] = [
   { href: "/dashboard/widget", label: "Widget prenotazione", icon: Wand2 },
   { href: "/dashboard/integrations/calendar", label: "Integrazioni", icon: Link2 },
@@ -113,7 +124,9 @@ export function DashboardSidebar({
   }
 
   const groups: NavGroup[] = hasTenant
-    ? NAV_GROUPS
+    ? isAdmin
+      ? [...NAV_GROUPS.slice(0, 2), MARKETING_GROUP, ...NAV_GROUPS.slice(2)]
+      : NAV_GROUPS
     : [
         {
           label: "Ogni giorno",

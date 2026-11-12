@@ -56,14 +56,28 @@ sincronizzazione calendari.
   dentro uno shadow DOM) e link diretto `/f/<id>`. Ogni invio (`/api/forms/submit`,
   CORS aperto, honeypot, tempo minimo e limite per IP su Redis) crea o aggiorna la
   scheda cliente confrontando le sole cifre del telefono.
-- **Agenda incorporabile**: `/api/embed/booking/<slug>?mode=inline|button|popup`
-  mette il widget in un iframe che si adatta all'altezza (postMessage).
+- **Agenda incorporabile**: `/api/embed/booking/<slug>?mode=inline|button|popup|link`
+  mette il widget in un iframe che si adatta all'altezza (postMessage). Agende
+  personalizzate con `servizi=<id>,…`, `tinta=1`, `intestazione=0`; con `mode=link`
+  la aprono i pulsanti del sito con `data-fusion-beauty-booking`.
 - **WhatsApp con Fusion WA** (come nel CRM): Fusion Beauty è un'"App" di Fusion WA
-  (`FUSION_WA_API_KEY`/`SECRET`, externalCustomerId = tenant.id). Collegamento del
-  numero con l'Embedded Signup/Coexistence (`/dashboard/whatsapp`), template Meta,
-  chat in `/dashboard/messages` (webhook `/api/webhooks/whatsapp?token=…`) e
-  messaggi automatici: richiesta online ricevuta, conferma, promemoria del giorno
-  prima e compleanni (worker, ogni 15 minuti), risposta ai form, questionario.
+  (`FUSION_WA_API_KEY`/`SECRET`, externalCustomerId = tenant.id; si inseriscono nel
+  `.env` con `bash scripts/fusion-wa-env.sh [percorso/.env]`, che genera anche il token
+  del webhook). `/dashboard/whatsapp` ha le schede Numero (collegamento Embedded
+  Signup/Coexistence e stato su Meta), Template e Rubrica (contatti dell'app
+  WhatsApp Business → clienti). Chat in `/dashboard/messages`, webhook
+  `/api/webhooks/whatsapp?token=…`.
+- **Automazioni** (`/dashboard/automations`, come i workflow del CRM): trigger da
+  centro estetico (richiesta online, conferma, N ore prima/dopo un appuntamento,
+  nuova cliente, form, compleanno, cliente che non torna, questionario, messaggio
+  ricevuto) e passi in JSON (template, testo, attesa, se/allora, nota, interesse),
+  con modelli pronti. Motore in `src/lib/automation-engine.ts`: il worker riprende
+  le attese ogni minuto e cerca i trigger a tempo ogni 15 minuti; invii solo
+  9–20 se richiesto.
+- **Campagne WhatsApp** (`/dashboard/campaigns`): template a un segmento di
+  clienti (tutte, inattive, nuove, compleanno nel mese, trattamento fatto,
+  interesse; di default solo con consenso marketing), a scaglioni, con consegnati,
+  letti e risposte.
 - **Nuova cliente in 10 secondi**: bastano nome, cognome e telefono; poi un link
   WhatsApp (`wa.me`, precompilato) invia il questionario pubblico `/q/[token]` le
   cui risposte (data di nascita, città, allergie, pelle/salute, interessi,

@@ -8,7 +8,15 @@ import { useEffect, useRef } from "react";
  * Si misura il contenitore e non il documento: il body è alto almeno quanto
  * l'iframe e l'altezza non scenderebbe mai.
  */
-export function EmbedAutoHeight({ className, children }: { className?: string; children: React.ReactNode }) {
+export function EmbedAutoHeight({
+  className,
+  style,
+  children,
+}: {
+  className?: string;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+}) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -22,7 +30,7 @@ export function EmbedAutoHeight({ className, children }: { className?: string; c
   }, []);
 
   return (
-    <div ref={ref} className={className}>
+    <div ref={ref} className={className} style={style}>
       {children}
     </div>
   );
