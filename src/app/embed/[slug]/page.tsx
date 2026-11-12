@@ -14,6 +14,25 @@ type EmbedPageProps = {
 
 const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
+/**
+ * Stile "elegante" per i siti dei centri: font e colori del marchio, meno
+ * contorni, titoli maiuscoli spaziati, card bianche leggere. Solo CSS sopra i
+ * componenti dell'agenda (data-slot), così il flusso resta quello di sempre.
+ */
+const ELEGANT_CSS = `
+.bk-elegant{font-family:var(--bk-font,inherit);background:var(--bk-bg,transparent);color:#111;padding:8px 4px}
+.bk-elegant *{font-family:inherit}
+.bk-elegant [data-slot=card]{background:#fff;border:1px solid rgba(17,17,17,.08);border-radius:16px;box-shadow:0 1px 2px rgba(17,17,17,.04);transition:border-color .2s,box-shadow .2s,transform .2s}
+.bk-elegant [data-slot=card][role=button]:hover{border-color:var(--primary);box-shadow:0 8px 24px rgba(17,17,17,.08);transform:translateY(-1px)}
+.bk-elegant [data-slot=card-title]{font-weight:700;letter-spacing:.01em}
+.bk-elegant [data-slot=card-description]{color:#5f6b66}
+.bk-elegant h3{color:var(--bk-accent,#8a7350);letter-spacing:.18em;font-weight:700}
+.bk-elegant [data-slot=button]{border-radius:999px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.bk-elegant input{border-radius:999px;background:#fff;border-color:rgba(17,17,17,.12);padding-left:18px}
+.bk-elegant textarea{border-radius:16px;background:#fff}
+.bk-elegant .text-primary{color:var(--bk-accent,var(--primary))}
+`;
+
 function param(query: Record<string, string | string[] | undefined>, key: string, max = 100): string {
   const value = query[key];
   return (Array.isArray(value) ? value[0] : value ?? "").trim().slice(0, max);
@@ -55,6 +74,17 @@ export default async function EmbedPage({ params, searchParams }: EmbedPageProps
   const services = filtered.length ? filtered : data.services;
   const color = param(query, "colore") || param(query, "color");
   const showHeader = param(query, "intestazione") !== "0";
+  // Stile del sito che ospita l'agenda: ?stile=elegante&font=Montserrat&accento=#hex&sfondo=#hex
+  const elegant = param(query, "stile") === "elegante";
+  const fontParam = param(query, "font", 60);
+  const font = /^[A-Za-z0-9 ]{1,60}$/.test(fontParam) ? fontParam : "";
+  const accent = param(query, "accento");
+  const background = param(query, "sfondo");
+  const themeVars: Record<string, string> = {};
+  if (HEX_COLOR.test(color)) Object.assign(themeVars, { "--primary": color, "--ring": color });
+  if (HEX_COLOR.test(accent)) themeVars["--bk-accent"] = accent;
+  if (HEX_COLOR.test(background)) Object.assign(themeVars, { "--background": background, "--bk-bg": background });
+  if (font) themeVars["--bk-font"] = `'${font}', system-ui, sans-serif`;
   // Dati già noti alla pagina che ospita l'agenda (es. dopo un form): precompilati.
   const prefill = {
     firstName: param(query, "nome"),
@@ -65,9 +95,18 @@ export default async function EmbedPage({ params, searchParams }: EmbedPageProps
 
   return (
     <EmbedAutoHeight
-      className={cn("mx-auto w-full max-w-md space-y-4 bg-background p-4", !inFrame && "min-h-screen")}
-      style={HEX_COLOR.test(color) ? ({ "--primary": color, "--ring": color } as React.CSSProperties) : undefined}
+      className={cn(
+        "mx-auto w-full space-y-4 bg-background p-4",
+        elegant ? "bk-elegant max-w-xl" : "max-w-md",
+        !inFrame && "min-h-screen"
+      )}
+      style={Object.keys(themeVars).length ? (themeVars as React.CSSProperties) : undefined}
     >
+      {font ? (
+         
+        <link rel="stylesheet" href={`https://fonts.googleapis.com/css2?family=${font.replace(/ /g, "+")}:wght@400;500;600;700;800;900&display=swap`} />
+      ) : null}
+      {elegant ? <style>{ELEGANT_CSS}</style> : null}
       {showHeader ? (
       <div className="flex flex-col items-center gap-2 pt-6 pb-4 text-center">
         {tenant.logoUrl ? (

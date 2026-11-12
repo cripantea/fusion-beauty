@@ -67,7 +67,7 @@ const template = (templateName: string, templateBody: string, params: string[]) 
 const AUTOMATIONS: {
   key: string;
   name: string;
-  trigger: "FORM_SUBMITTED" | "WHATSAPP_RECEIVED" | "BIRTHDAY";
+  trigger: "FORM_SUBMITTED" | "WHATSAPP_RECEIVED" | "BIRTHDAY" | "BEFORE_APPOINTMENT";
   triggerConfig: Record<string, unknown>;
   steps: unknown[];
   quietHours: boolean;
@@ -132,6 +132,21 @@ const AUTOMATIONS: {
         "auguri_compleanno",
         "Buon compleanno {{1}}! 🎉 Per festeggiarti ti regaliamo un buono da 10€ su un trattamento a tua scelta, valido fino al {{2}}. Mostra questo messaggio in cassa e prenota scrivendoci al 351 857 1506 o chiamandoci. Un abbraccio da La Boutique del Benessere 🩵",
         ["{{nome}}", "{{scadenza}}"]
+      ),
+    ],
+    quietHours: true,
+    allowReentry: true,
+  },
+  {
+    key: "boutique:promemoria-24h",
+    name: "Promemoria appuntamento 24 ore prima",
+    trigger: "BEFORE_APPOINTMENT",
+    triggerConfig: { hours: 24 },
+    steps: [
+      template(
+        "promemoria_appuntamento",
+        "Ciao {{1}}, ti ricordiamo il tuo appuntamento di {{2}} alle {{3}} per {{4}} da La Boutique del Benessere. Se hai un imprevisto scrivici qui per spostarlo. A presto!",
+        ["{{nome}}", "{{data}}", "{{ora}}", "{{trattamento}}"]
       ),
     ],
     quietHours: true,

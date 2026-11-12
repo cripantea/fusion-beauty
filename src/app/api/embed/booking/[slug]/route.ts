@@ -9,6 +9,7 @@ const JS_HEADERS = { "Content-Type": "application/javascript; charset=utf-8", "A
  * Script dell'agenda di prenotazione da incollare in qualsiasi sito:
  * <script src=".../api/embed/booking/<slug>?mode=popup&text=Prenota&color=%23..." async></script>
  * &cerca=laser,pedicure: solo i trattamenti con queste parole nel nome.
+ * &stile=elegante&font=Montserrat&accento=%23hex&sfondo=%23hex: agenda nello stile del sito.
  * mode=link: nessun elemento, l'agenda si apre dai pulsanti del sito con l'attributo data-fusion-beauty-booking.
  * Agenda personalizzata: &servizi=<id>,<id> (solo quei trattamenti), &tinta=1 (colore
  * anche dentro l'agenda), &intestazione=0 (senza logo e nome del centro).
@@ -42,6 +43,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     color,
     services,
     search: (query.get("cerca") ?? "").replace(/[^\p{L}\p{N} ,'-]/gu, "").trim().slice(0, 300),
+    theme: Object.fromEntries(
+      [
+        ["stile", query.get("stile") === "elegante" ? "elegante" : ""],
+        ["font", /^[A-Za-z0-9 ]{1,60}$/.test(query.get("font") ?? "") ? (query.get("font") as string) : ""],
+        ["accento", /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(query.get("accento") ?? "") ? (query.get("accento") as string) : ""],
+        ["sfondo", /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(query.get("sfondo") ?? "") ? (query.get("sfondo") as string) : ""],
+      ].filter(([, value]) => value)
+    ),
     tint: query.get("tinta") === "1",
     header: query.get("intestazione") !== "0",
   });
