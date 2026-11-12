@@ -74,6 +74,16 @@ sincronizzazione calendari.
   con modelli pronti. Motore in `src/lib/automation-engine.ts`: il worker riprende
   le attese ogni minuto e cerca i trigger a tempo ogni 15 minuti; invii solo
   9–20 se richiesto.
+- **Incassi in cassa spenti di default** (`Tenant.paymentsEnabled`, interruttore "Cassa"
+  in `/admin/tenants`): senza, niente Pagamenti/Incassa/POS; incasso **stimato** dai
+  prezzi di listino dei trattamenti svolti (non verificato: niente sconti, assenti e
+  annullati esclusi) e appuntamenti passati completati dal worker.
+- **Link di pagamento con Stripe** (`/dashboard/integrations/stripe`): ogni centro
+  collega il proprio Stripe con una chiave ristretta (Checkout Sessions e Webhook
+  Endpoints in scrittura; salvata cifrata con AUTH_SECRET); il webhook
+  `/api/webhooks/stripe/<tenantId>` lo crea Beauty via API. Dall'appuntamento
+  "Link di pagamento" → `/paga/<token>` (carta, Apple/Google Pay, Klarna in 3 rate),
+  segnato pagato dal webhook; elenco in `/dashboard/payment-links`.
 - **Campagne WhatsApp** (`/dashboard/campaigns`): template a un segmento di
   clienti (tutte, inattive, nuove, compleanno nel mese, trattamento fatto,
   interesse; di default solo con consenso marketing), a scaglioni, con consegnati,

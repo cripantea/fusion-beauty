@@ -27,6 +27,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { getAppointments, type OperatorDTO } from "./actions";
 import type { AppointmentDTO } from "./dto";
 import { OperatorsGrid } from "./operators-grid";
+import { PaymentLinkDialog, type PaymentLinkTarget } from "@/app/dashboard/payment-links/payment-link-dialog";
+
 import { AppointmentDetailDialog } from "./appointment-detail-dialog";
 import { AppointmentFormDialog } from "./appointment-form-dialog";
 import { CalendarGrid } from "./calendar-grid";
@@ -40,6 +42,8 @@ type CalendarManagerProps = {
   services: ServiceDTO[];
   operators: OperatorDTO[];
   isAdmin: boolean;
+  paymentsEnabled: boolean;
+  onlinePayments: boolean;
 };
 
 export function CalendarManager({
@@ -49,7 +53,10 @@ export function CalendarManager({
   services,
   operators,
   isAdmin,
+  paymentsEnabled,
+  onlinePayments,
 }: CalendarManagerProps) {
+  const [linkTarget, setLinkTarget] = useState<PaymentLinkTarget | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("operators");
   const [currentDate, setCurrentDate] = useState(() => new Date(`${initialDate}T00:00:00`));
   const [appointments, setAppointments] = useState(initialAppointments);
@@ -197,6 +204,7 @@ export function CalendarManager({
                 setDefaultOperatorId(operatorId ?? undefined);
                 setFormDialogOpen(true);
               }}
+              paymentsEnabled={paymentsEnabled}
             />
           ) : (
             <CalendarGrid
@@ -237,6 +245,31 @@ export function CalendarManager({
           setSelectedAppointment(null);
           setPayingAppointment(appointment);
         }}
+        paymentsEnabled={paymentsEnabled}
+        onlinePayments={onlinePayments}
+        onPaymentLink={(appointment) => {
+          setSelectedAppointment(null);
+          setLinkTarget({
+            clientId: appointment.client.id,
+            clientFirstName: appointment.client.firstName,
+            clientPhone: appointment.client.phone,
+            appointmentId: appointment.id,
+            amount: appointment.service.price,
+            description: `${appointment.service.name} del ${new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "long" }).format(appointment.startTime)}`,
+          });
+        }}
+      />
+
+      <PaymentLinkDialog
+        target={linkTarget}
+        onClose={() => setLinkTarget(null)}
+        onCreated={(link) =>
+          setAppointments((current) =>
+            current.map((a) =>
+              a.id === link.appointmentId ? { ...a, paymentLink: { status: "PENDING", amountCents: link.amountCents, token: link.token, paidWith: null } } : a
+            )
+          )
+        }
       />
 
       <PaymentDialog

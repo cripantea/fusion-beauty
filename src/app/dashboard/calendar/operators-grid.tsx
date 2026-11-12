@@ -114,6 +114,7 @@ type OperatorsGridProps = {
   date: Date;
   onAppointmentClick: (appointment: AppointmentDTO) => void;
   onCreate: (operatorId: string | null) => void;
+  paymentsEnabled: boolean;
 };
 
 export function OperatorsGrid({
@@ -122,6 +123,7 @@ export function OperatorsGrid({
   date,
   onAppointmentClick,
   onCreate,
+  paymentsEnabled,
 }: OperatorsGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -237,11 +239,13 @@ export function OperatorsGrid({
                         {appointment.client.firstName} {appointment.client.lastName}
                       </div>
                       <div className="truncate opacity-75">{appointment.service.name}</div>
-                      {appointment.payment ? (
+                      {paymentsEnabled && appointment.payment ? (
                         <div className="mt-0.5 truncate font-semibold">
                           ✓ {formatEuro(appointment.payment.amount)}
                         </div>
-                      ) : appointment.status === "COMPLETED" ? (
+                      ) : appointment.paymentLink?.status === "PAID" ? (
+                        <div className="mt-0.5 truncate font-semibold">✓ Pagato online</div>
+                      ) : paymentsEnabled && appointment.status === "COMPLETED" ? (
                         <div className="mt-0.5 text-amber-700">Da incassare</div>
                       ) : null}
                     </button>

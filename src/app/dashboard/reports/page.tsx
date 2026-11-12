@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/boutique";
 import { Button } from "@/components/ui/button";
 import { getTenantContext } from "@/lib/auth-context";
 import { formatEuro } from "@/lib/format";
+import { isPaymentsEnabled } from "@/lib/payments-mode";
 import { prisma } from "@/lib/prisma";
 import { getMonthlyReport, parseMonth } from "@/lib/reports";
 
@@ -25,16 +26,17 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   const { tenantId } = await getTenantContext();
   const { month: monthParam } = await searchParams;
 
-  const [report, tenant] = await Promise.all([
+  const [report, tenant, paymentsEnabled] = await Promise.all([
     getMonthlyReport(tenantId, monthParam),
     prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true } }),
+    isPaymentsEnabled(tenantId),
   ]);
   const { metrics } = report;
   const isCurrentMonth = report.key === parseMonth(undefined).key;
   const monthLabel = monthFormatter.format(report.start);
 
   const summary = [
-    { label: "Fatturato totale", value: formatEuro(metrics.revenue) },
+    { label: paymentsEnabled ? "Fatturato totale" : "Incasso stimato (non verificato)", value: formatEuro(metrics.revenue) },
     { label: "Appuntamenti eseguiti", value: `${metrics.completedAppointments} sedute` },
     { label: "Nuove clienti acquisite", value: `${metrics.newClients} nuove clienti` },
     {
@@ -123,7 +125,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
                 <tr className="border-b text-left text-xs text-muted-foreground">
                   <th className="py-2 font-medium">Operatrice</th>
                   <th className="py-2 text-right font-medium">Trattamenti</th>
-                  <th className="py-2 text-right font-medium">Incassato</th>
+                  <th className="py-2 text-right font-medium">{paymentsEnabled ? "Incassato" : "Stimato"}</th>
                 </tr>
               </thead>
               <tbody>

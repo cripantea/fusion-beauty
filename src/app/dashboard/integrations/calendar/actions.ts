@@ -51,19 +51,20 @@ export async function getIntegrationSettings(): Promise<IntegrationSettings> {
       select: { slug: true, icsFeedToken: true },
     }),
     prisma.tenantIntegration.findMany({
-      where: { tenantId },
+      where: { tenantId, type: { in: ["GOOGLE_CALENDAR", "ICAL_URL"] } },
       include: { _count: { select: { events: true } } },
     }),
   ]);
 
   const googleIntegration = integrations.find((item) => item.type === "GOOGLE_CALENDAR");
   const icalIntegration = integrations.find((item) => item.type === "ICAL_URL");
+  type CalendarType = "GOOGLE_CALENDAR" | "ICAL_URL";
 
   return {
     tenantSlug: tenant.slug,
     icsFeedToken: tenant.icsFeedToken,
-    googleIntegration: googleIntegration ? toIntegrationDTO(googleIntegration) : null,
-    icalIntegration: icalIntegration ? toIntegrationDTO(icalIntegration) : null,
+    googleIntegration: googleIntegration ? toIntegrationDTO({ ...googleIntegration, type: googleIntegration.type as CalendarType }) : null,
+    icalIntegration: icalIntegration ? toIntegrationDTO({ ...icalIntegration, type: icalIntegration.type as CalendarType }) : null,
   };
 }
 

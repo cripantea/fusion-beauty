@@ -9,9 +9,9 @@ import { DashboardTopbar } from "./dashboard-topbar";
 export default async function DashboardLayout({ children }: LayoutProps<"/dashboard">) {
   const { user } = await getAuthContext();
 
-  const [tenant, pendingRequests, unreadMessages] = user.tenantId
+  const [tenant, pendingRequests, unreadMessages, stripe] = user.tenantId
     ? await Promise.all([
-        prisma.tenant.findUnique({ where: { id: user.tenantId }, select: { name: true } }),
+        prisma.tenant.findUnique({ where: { id: user.tenantId }, select: { name: true, paymentsEnabled: true } }),
         prisma.appointment.count({
           where: {
             tenantId: user.tenantId,
@@ -23,8 +23,9 @@ export default async function DashboardLayout({ children }: LayoutProps<"/dashbo
         prisma.whatsappMessage.count({
           where: { tenantId: user.tenantId, direction: "INBOUND", readAt: null },
         }),
+        prisma.tenantIntegration.count({ where: { tenantId: user.tenantId, type: "STRIPE", isEnabled: true } }),
       ])
-    : [null, 0, 0];
+    : [null, 0, 0, 0];
 
   const isAdmin = user.role === "ADMIN";
 
@@ -36,6 +37,8 @@ export default async function DashboardLayout({ children }: LayoutProps<"/dashbo
         tenantName={tenant?.name ?? null}
         pendingRequests={pendingRequests}
         unreadMessages={unreadMessages}
+        paymentsEnabled={tenant?.paymentsEnabled ?? false}
+        onlinePayments={stripe > 0}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <DashboardTopbar

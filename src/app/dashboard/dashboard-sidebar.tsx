@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   Link2,
   Megaphone,
+  Receipt,
   MessageCircle,
   Scissors,
   Settings,
@@ -94,6 +95,7 @@ const SETTINGS_ITEMS: NavItem[] = [
 const ADMIN_SETUP_ITEMS: NavItem[] = [
   { href: "/dashboard/forms", label: "Form del sito", icon: FileInput },
   { href: "/dashboard/whatsapp", label: "WhatsApp", icon: MessageCircle },
+  { href: "/dashboard/integrations/stripe", label: "Pagamenti online", icon: CreditCard },
 ];
 
 const ADMIN_ITEMS: NavItem[] = [
@@ -107,6 +109,10 @@ type DashboardSidebarProps = {
   tenantName: string | null;
   pendingRequests: number;
   unreadMessages: number;
+  /** Incassi in cassa (Pagamenti) attivi per il centro. */
+  paymentsEnabled: boolean;
+  /** Stripe collegato: "Link di pagamento" nel menu. */
+  onlinePayments: boolean;
 };
 
 export function DashboardSidebar({
@@ -115,6 +121,8 @@ export function DashboardSidebar({
   tenantName,
   pendingRequests,
   unreadMessages,
+  paymentsEnabled,
+  onlinePayments,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -123,10 +131,22 @@ export function DashboardSidebar({
     return exact ? pathname === href : pathname.startsWith(href);
   }
 
+  // Senza incassi in cassa la voce Pagamenti sparisce; con Stripe c'è "Link di pagamento".
+  const baseGroups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.flatMap((item) =>
+      item.href !== "/dashboard/payments"
+        ? [item]
+        : [
+            ...(paymentsEnabled ? [item] : []),
+            ...(onlinePayments ? [{ href: "/dashboard/payment-links", label: "Link di pagamento", icon: Receipt }] : []),
+          ]
+    ),
+  }));
   const groups: NavGroup[] = hasTenant
     ? isAdmin
-      ? [...NAV_GROUPS.slice(0, 2), MARKETING_GROUP, ...NAV_GROUPS.slice(2)]
-      : NAV_GROUPS
+      ? [...baseGroups.slice(0, 2), MARKETING_GROUP, ...baseGroups.slice(2)]
+      : baseGroups
     : [
         {
           label: "Ogni giorno",

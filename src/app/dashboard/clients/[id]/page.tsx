@@ -5,6 +5,7 @@ import { EmptyState, Panel, Pill } from "@/components/boutique";
 import { getTenantContext } from "@/lib/auth-context";
 import { formatEuro } from "@/lib/format";
 import { getClientStatsMap } from "@/lib/insights";
+import { isPaymentsEnabled } from "@/lib/payments-mode";
 import { prisma } from "@/lib/prisma";
 import { hasActiveWhatsapp } from "@/lib/whatsapp";
 
@@ -130,6 +131,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
         client={client}
         visits={stats.visits}
         totalSpent={stats.totalSpent}
+        estimated={!(await isPaymentsEnabled(tenantId))}
         whatsappConnected={await hasActiveWhatsapp(tenantId)}
       />
 

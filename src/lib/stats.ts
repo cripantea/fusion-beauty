@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isPaymentsEnabled } from "@/lib/payments-mode";
 import { prisma } from "@/lib/prisma";
 
 export type StatsPeriod = "day" | "week" | "month" | "year";
@@ -62,8 +63,18 @@ export type RangeMetrics = {
   servedClients: number;
 };
 
+/** Trattamenti svolti nel periodo con il prezzo di listino (incasso stimato, senza incassi in cassa). */
+async function estimatedRevenue(tenantId: string, range: DateRange) {
+  const rows = await prisma.appointment.findMany({
+    where: { tenantId, status: "COMPLETED", startTime: { gte: range.start, lt: range.end } },
+    select: { startTime: true, service: { select: { price: true } } },
+  });
+  return rows.map((row) => ({ at: row.startTime, amount: row.service.price.toNumber() }));
+}
+
 export async function getRangeMetrics(tenantId: string, range: DateRange): Promise<RangeMetrics> {
-  const [payments, completed, newClients] = await Promise.all([
+  const paymentsEnabled = await isPaymentsEnabled(tenantId);
+  const [payments, completed, newClients, estimate] = await Promise.all([
     prisma.payment.aggregate({
       where: { tenantId, paidAt: { gte: range.start, lt: range.end } },
       _sum: { amount: true },
@@ -74,6 +85,7 @@ export async function getRangeMetrics(tenantId: string, range: DateRange): Promi
       select: { clientId: true },
     }),
     prisma.client.count({ where: { tenantId, createdAt: { gte: range.start, lt: range.end } } }),
+    paymentsEnabled ? null : estimatedRevenue(tenantId, range),
   ]);
 
   const servedIds = [...new Set(completed.map((appointment) => appointment.clientId))];
@@ -93,8 +105,8 @@ export async function getRangeMetrics(tenantId: string, range: DateRange): Promi
   }
 
   return {
-    revenue: payments._sum.amount?.toNumber() ?? 0,
-    paymentsCount: payments._count._all,
+    revenue: estimate ? Math.round(estimate.reduce((sum, row) => sum + row.amount, 0) * 100) / 100 : (payments._sum.amount?.toNumber() ?? 0),
+    paymentsCount: estimate ? estimate.length : payments._count._all,
     completedAppointments: completed.length,
     newClients,
     returningRate,
@@ -112,10 +124,14 @@ export async function getRevenueBars(
   period: StatsPeriod,
   range: DateRange
 ): Promise<RevenueBar[]> {
-  const payments = await prisma.payment.findMany({
-    where: { tenantId, paidAt: { gte: range.start, lt: range.end } },
-    select: { paidAt: true, amount: true },
-  });
+  const payments = (await isPaymentsEnabled(tenantId))
+    ? (
+        await prisma.payment.findMany({
+          where: { tenantId, paidAt: { gte: range.start, lt: range.end } },
+          select: { paidAt: true, amount: true },
+        })
+      ).map((p) => ({ at: p.paidAt, amount: p.amount.toNumber() }))
+    : await estimatedRevenue(tenantId, range);
 
   let bars: RevenueBar[];
   let indexOf: (date: Date) => number;
@@ -136,7 +152,7 @@ export async function getRevenueBars(
   }
 
   for (const payment of payments) {
-    bars[indexOf(payment.paidAt)].value += payment.amount.toNumber();
+    bars[indexOf(payment.at)].value += payment.amount;
   }
   return bars.map((bar) => ({ ...bar, value: Math.round(bar.value * 100) / 100 }));
 }

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { Prisma } from "@/generated/prisma/client";
+import { isPaymentsEnabled } from "@/lib/payments-mode";
 import { prisma } from "@/lib/prisma";
 
 export const LOYAL_MIN_VISITS = 5;
@@ -16,10 +18,23 @@ export function isLoyal(visits: number) {
   return visits >= LOYAL_MIN_VISITS;
 }
 
+/** Spesa stimata per cliente: prezzi di listino dei trattamenti svolti. */
+async function estimatedSpend(tenantId: string, clientIds?: string[]) {
+  if (clientIds && clientIds.length === 0) return [];
+  const rows = await prisma.$queryRaw<{ clientId: string; total: Prisma.Decimal | null }[]>`
+    SELECT a."clientId", SUM(s.price) AS total
+    FROM appointments a JOIN services s ON s.id = a."serviceId"
+    WHERE a."tenantId" = ${tenantId} AND a.status = 'COMPLETED'
+      ${clientIds ? Prisma.sql`AND a."clientId" IN (${Prisma.join(clientIds)})` : Prisma.empty}
+    GROUP BY a."clientId"`;
+  return rows.map((r) => ({ clientId: r.clientId, total: r.total ? Number(r.total) : 0 }));
+}
+
 /** Statistiche per cliente (trattamenti completati + totale incassato) in due query aggregate. */
 export async function getClientStatsMap(tenantId: string, clientIds?: string[]) {
   const clientFilter = clientIds ? { clientId: { in: clientIds } } : {};
 
+  const paymentsEnabled = await isPaymentsEnabled(tenantId);
   const [visitGroups, spendGroups] = await Promise.all([
     prisma.appointment.groupBy({
       by: ["clientId"],
@@ -27,11 +42,11 @@ export async function getClientStatsMap(tenantId: string, clientIds?: string[]) 
       _count: { _all: true },
       _max: { startTime: true },
     }),
-    prisma.payment.groupBy({
-      by: ["clientId"],
-      where: { tenantId, ...clientFilter },
-      _sum: { amount: true },
-    }),
+    paymentsEnabled
+      ? prisma.payment
+          .groupBy({ by: ["clientId"], where: { tenantId, ...clientFilter }, _sum: { amount: true } })
+          .then((groups) => groups.map((g) => ({ clientId: g.clientId, total: g._sum.amount?.toNumber() ?? 0 })))
+      : estimatedSpend(tenantId, clientIds),
   ]);
 
   const map = new Map<string, ClientStats>();
@@ -44,7 +59,7 @@ export async function getClientStatsMap(tenantId: string, clientIds?: string[]) 
   }
   for (const group of spendGroups) {
     const current = map.get(group.clientId) ?? { visits: 0, totalSpent: 0, lastVisit: null };
-    current.totalSpent = group._sum.amount?.toNumber() ?? 0;
+    current.totalSpent = group.total;
     map.set(group.clientId, current);
   }
   return map;

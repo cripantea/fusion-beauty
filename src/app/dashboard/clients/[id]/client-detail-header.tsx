@@ -15,13 +15,15 @@ type ClientDetailHeaderProps = {
   client: ClientDTO;
   visits: number;
   totalSpent: number;
+  /** Senza incassi in cassa: spesa stimata dai prezzi di listino. */
+  estimated?: boolean;
   /** WhatsApp del centro collegato: il pulsante apre la chat interna invece di wa.me. */
   whatsappConnected?: boolean;
 };
 
 const birthdayFormatter = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "long" });
 
-export function ClientDetailHeader({ client, visits, totalSpent, whatsappConnected = false }: ClientDetailHeaderProps) {
+export function ClientDetailHeader({ client, visits, totalSpent, estimated = false, whatsappConnected = false }: ClientDetailHeaderProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const router = useRouter();
 
@@ -97,11 +99,12 @@ export function ClientDetailHeader({ client, visits, totalSpent, whatsappConnect
 
       <div className="mx-5 mb-5 rounded-xl border border-white/10 bg-black/15 p-4 text-right sm:mx-6 sm:mb-6">
         <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-forest-foreground/60">
-          Totale speso nel centro
+          {estimated ? "Spesa stimata nel centro" : "Totale speso nel centro"}
         </div>
         <div className="font-heading text-4xl font-bold">{formatEuro(totalSpent)}</div>
         <div className="text-xs text-forest-foreground/60">
           {visits} {visits === 1 ? "trattamento completato" : "trattamenti completati"}
+          {estimated ? " · prezzi di listino, non verificata" : ""}
         </div>
       </div>
 

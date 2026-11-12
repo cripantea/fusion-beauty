@@ -14,6 +14,7 @@ export type TenantDTO = {
   email: string | null;
   phone: string | null;
   isActive: boolean;
+  paymentsEnabled: boolean;
   createdAt: Date;
   userCount: number;
   clientCount: number;
@@ -26,6 +27,7 @@ function toTenantDTO(tenant: {
   email: string | null;
   phone: string | null;
   isActive: boolean;
+  paymentsEnabled: boolean;
   createdAt: Date;
   _count: { users: number; clients: number };
 }): TenantDTO {
@@ -36,6 +38,7 @@ function toTenantDTO(tenant: {
     email: tenant.email,
     phone: tenant.phone,
     isActive: tenant.isActive,
+    paymentsEnabled: tenant.paymentsEnabled,
     createdAt: tenant.createdAt,
     userCount: tenant._count.users,
     clientCount: tenant._count.clients,
@@ -134,5 +137,16 @@ export async function toggleTenantStatus(
     return { success: true, tenant: toTenantDTO(tenant) };
   } catch {
     return { success: false, error: "Centro non trovato." };
+  }
+}
+
+/** Incassi in cassa (Pagamenti, Incassa, POS) per un centro: spenti di default. */
+export async function setTenantPayments(id: string, paymentsEnabled: boolean): Promise<TenantActionResult> {
+  await requireSuperAdmin();
+  try {
+    const tenant = await prisma.tenant.update({ where: { id }, data: { paymentsEnabled }, include: tenantCountInclude });
+    return { success: true, tenant: toTenantDTO(tenant) };
+  } catch {
+    return { success: false, error: "Impossibile aggiornare il centro." };
   }
 }

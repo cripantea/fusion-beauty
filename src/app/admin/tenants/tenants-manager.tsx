@@ -15,7 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { toggleTenantStatus, type TenantDTO } from "./actions";
+import { setTenantPayments, toggleTenantStatus, type TenantDTO } from "./actions";
 import { TenantFormDialog } from "./tenant-form-dialog";
 
 const dateFormatter = new Intl.DateTimeFormat("it-IT", {
@@ -107,7 +107,26 @@ export function TenantsManager({ initialTenants }: TenantsManagerProps) {
                     <TableCell>{dateFormatter.format(tenant.createdAt)}</TableCell>
                     <TableCell>{tenant.userCount}</TableCell>
                     <TableCell>{tenant.clientCount}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="space-x-2 text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={isPending}
+                        title="Incassi in cassa (Pagamenti, Incassa, POS)"
+                        onClick={() =>
+                          startTransition(async () => {
+                            const result = await setTenantPayments(tenant.id, !tenant.paymentsEnabled);
+                            if (!result.success) {
+                              toast.error(result.error);
+                              return;
+                            }
+                            toast.success(result.tenant.paymentsEnabled ? "Incassi in cassa attivi." : "Incassi in cassa nascosti.");
+                            setTenants((current) => current.map((item) => (item.id === tenant.id ? result.tenant : item)));
+                          })
+                        }
+                      >
+                        Cassa: {tenant.paymentsEnabled ? "sì" : "no"}
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"

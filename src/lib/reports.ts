@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getRangeMetrics, type RangeMetrics } from "@/lib/stats";
+import { isPaymentsEnabled } from "@/lib/payments-mode";
 import { prisma } from "@/lib/prisma";
 
 export function parseMonth(value: string | undefined, now = new Date()) {
@@ -26,23 +27,25 @@ export async function getMonthlyReport(tenantId: string, monthParam?: string): P
   const month = parseMonth(monthParam);
   const range = { start: month.start, end: month.end };
 
-  const [metrics, appointments] = await Promise.all([
+  const [metrics, appointments, paymentsEnabled] = await Promise.all([
     getRangeMetrics(tenantId, range),
     prisma.appointment.findMany({
       where: { tenantId, status: "COMPLETED", startTime: { gte: range.start, lt: range.end } },
       select: {
-        service: { select: { id: true, name: true } },
+        service: { select: { id: true, name: true, price: true } },
         operator: { select: { id: true, firstName: true, lastName: true } },
         payment: { select: { amount: true } },
+        // Prezzo di listino per l'incasso stimato (senza incassi in cassa)
       },
     }),
+    isPaymentsEnabled(tenantId),
   ]);
 
   const services = new Map<string, { name: string; count: number; revenue: number }>();
   const operators = new Map<string, { name: string; appointments: number; revenue: number }>();
 
   for (const appointment of appointments) {
-    const revenue = appointment.payment?.amount.toNumber() ?? 0;
+    const revenue = paymentsEnabled ? (appointment.payment?.amount.toNumber() ?? 0) : appointment.service.price.toNumber();
 
     const service = services.get(appointment.service.id) ?? {
       name: appointment.service.name,

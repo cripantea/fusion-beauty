@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { PageHeader, Panel } from "@/components/boutique";
 import { getTenantContext } from "@/lib/auth-context";
+import { ESTIMATE_NOTE, isPaymentsEnabled } from "@/lib/payments-mode";
 import { formatEuro, formatEuroRound } from "@/lib/format";
 import {
   getPeriodRanges,
@@ -25,10 +26,11 @@ export default async function StatsPage({ searchParams }: StatsPageProps) {
   const period = parsePeriod((await searchParams).period);
   const { current, previous } = getPeriodRanges(period);
 
-  const [metrics, previousMetrics, bars] = await Promise.all([
+  const [metrics, previousMetrics, bars, paymentsEnabled] = await Promise.all([
     getRangeMetrics(tenantId, current),
     getRangeMetrics(tenantId, previous),
     getRevenueBars(tenantId, period, current),
+    isPaymentsEnabled(tenantId),
   ]);
 
   const delta = percentDelta(metrics.revenue, previousMetrics.revenue);
@@ -47,7 +49,7 @@ export default async function StatsPage({ searchParams }: StatsPageProps) {
 
   const tiles = [
     {
-      label: "Fatturato",
+      label: paymentsEnabled ? "Fatturato" : "Incasso stimato",
       value: formatEuro(metrics.revenue),
       sub:
         delta === null
@@ -59,7 +61,7 @@ export default async function StatsPage({ searchParams }: StatsPageProps) {
     {
       label: "Ticket medio",
       value: formatEuroRound(average),
-      sub: "Media spesa per pagamento",
+      sub: paymentsEnabled ? "Media spesa per pagamento" : "Media per trattamento (stima)",
       subTone: "text-mint-ink",
     },
     { label: "Nuove clienti", value: String(metrics.newClients), sub: "Acquisite", subTone: "text-mint-ink" },
@@ -70,7 +72,7 @@ export default async function StatsPage({ searchParams }: StatsPageProps) {
       <PageHeader
         eyebrow="Analisi andamento"
         title="Capire come sta andando il centro."
-        description="Senza fare conti a mano."
+        description={paymentsEnabled ? "Senza fare conti a mano." : `Senza fare conti a mano. ${ESTIMATE_NOTE}`}
       />
 
       <section className="overflow-hidden rounded-2xl border border-mint-border bg-card shadow-sm">
@@ -126,7 +128,7 @@ export default async function StatsPage({ searchParams }: StatsPageProps) {
             </div>
           </div>
 
-          <Panel title="Andamento fatturato">
+          <Panel title={paymentsEnabled ? "Andamento fatturato" : "Andamento incasso stimato"}>
             <div className="p-5">
               <div className="flex h-44 items-end gap-2 sm:gap-3">
                 {bars.map((bar, index) => (

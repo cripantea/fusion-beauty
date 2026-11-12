@@ -1,4 +1,5 @@
 import { getTenantContext } from "@/lib/auth-context";
+import { isPaymentsEnabled } from "@/lib/payments-mode";
 import { parseMonth } from "@/lib/reports";
 import { prisma } from "@/lib/prisma";
 
@@ -24,6 +25,8 @@ function csvAmount(value: number) {
 export async function GET(request: Request) {
   const { tenantId } = await getTenantContext();
   const month = parseMonth(new URL(request.url).searchParams.get("month") ?? undefined);
+
+  if (!(await isPaymentsEnabled(tenantId))) return estimateCsv(tenantId, month);
 
   const payments = await prisma.payment.findMany({
     where: { tenantId, paidAt: { gte: month.start, lt: month.end } },
@@ -63,6 +66,41 @@ export async function GET(request: Request) {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="report-${month.key}.csv"`,
+      "Cache-Control": "private, no-store",
+    },
+  });
+}
+
+/** Senza incassi in cassa: trattamenti svolti nel mese con il prezzo di listino (stima). */
+async function estimateCsv(tenantId: string, month: ReturnType<typeof parseMonth>) {
+  const appointments = await prisma.appointment.findMany({
+    where: { tenantId, status: "COMPLETED", startTime: { gte: month.start, lt: month.end } },
+    orderBy: { startTime: "asc" },
+    include: {
+      client: { select: { firstName: true, lastName: true } },
+      service: { select: { name: true, price: true } },
+      operator: { select: { firstName: true, lastName: true } },
+    },
+  });
+  const rows = [["Data", "Cliente", "Trattamento", "Operatrice", "Prezzo di listino (EUR)"]];
+  let total = 0;
+  for (const appointment of appointments) {
+    const price = appointment.service.price.toNumber();
+    total += price;
+    rows.push([
+      dateTimeFormatter.format(appointment.startTime),
+      `${appointment.client.firstName} ${appointment.client.lastName}`,
+      appointment.service.name,
+      appointment.operator ? `${appointment.operator.firstName} ${appointment.operator.lastName}` : "",
+      csvAmount(price),
+    ]);
+  }
+  rows.push(["", "", "", "Totale stimato (non verificato)", csvAmount(total)]);
+  const body = "\uFEFF" + rows.map((row) => row.map(csvCell).join(";")).join("\r\n");
+  return new Response(body, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="report-stimato-${month.key}.csv"`,
       "Cache-Control": "private, no-store",
     },
   });

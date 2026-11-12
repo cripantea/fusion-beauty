@@ -11,6 +11,7 @@ import type { AppointmentDTO } from "@/app/dashboard/calendar/dto";
 import type { ClientListItemDTO } from "@/app/dashboard/clients/actions";
 import { toNewClientListItem } from "@/app/dashboard/clients/list-item";
 import { QuickClientDialog } from "@/app/dashboard/clients/quick-client-dialog";
+import { PaymentLinkDialog, type PaymentLinkTarget } from "@/app/dashboard/payment-links/payment-link-dialog";
 import { PaymentDialog } from "@/app/dashboard/payments/payment-dialog";
 import type { ServiceDTO } from "@/app/dashboard/services/actions";
 import { EmptyState, PageHeader, Panel, Pill, StatCard } from "@/components/boutique";
@@ -39,6 +40,8 @@ type DashboardManagerProps = {
   clients: ClientListItemDTO[];
   services: ServiceDTO[];
   operators: OperatorDTO[];
+  paymentsEnabled: boolean;
+  onlinePayments: boolean;
 };
 
 export function DashboardManager({
@@ -47,7 +50,10 @@ export function DashboardManager({
   clients,
   services,
   operators,
+  paymentsEnabled,
+  onlinePayments,
 }: DashboardManagerProps) {
+  const [linkTarget, setLinkTarget] = useState<PaymentLinkTarget | null>(null);
   const [data, setData] = useState(initialData);
   const [clientOptions, setClientOptions] = useState(clients);
   const [, startTransition] = useTransition();
@@ -124,7 +130,7 @@ export function DashboardManager({
         <StatCard
           label="Incasso stimato oggi"
           value={formatEuro(data.estimatedRevenueToday)}
-          sub={`${formatEuro(data.collectedToday)} già saldati`}
+          sub={paymentsEnabled ? `${formatEuro(data.collectedToday)} già saldati` : "Prezzi di listino · non verificato"}
           subClassName="text-amber-ink"
           icon={CreditCard}
           accent="amber"
@@ -171,14 +177,16 @@ export function DashboardManager({
             >
               Apri scheda cliente
             </Button>
-            <Button
-              variant="outline"
-              className="h-10 rounded-xl border-white/25 bg-transparent px-5 text-white hover:bg-white/10 hover:text-white"
-              onClick={() => setPayingAppointment(next)}
-            >
-              <CreditCard className="size-4" />
-              Incassa
-            </Button>
+            {paymentsEnabled ? (
+              <Button
+                variant="outline"
+                className="h-10 rounded-xl border-white/25 bg-transparent px-5 text-white hover:bg-white/10 hover:text-white"
+                onClick={() => setPayingAppointment(next)}
+              >
+                <CreditCard className="size-4" />
+                Incassa
+              </Button>
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -198,7 +206,7 @@ export function DashboardManager({
           <ul className="space-y-2 p-3">
             {data.appointments.map((appointment) => {
               const paid = Boolean(appointment.payment);
-              const canCollect = !paid && appointment.status !== "CANCELLED" && appointment.status !== "NO_SHOW";
+              const canCollect = paymentsEnabled && !paid && appointment.status !== "CANCELLED" && appointment.status !== "NO_SHOW";
               return (
                 <li
                   key={appointment.id}
@@ -223,10 +231,12 @@ export function DashboardManager({
                     </span>
                   </button>
                   <span className="text-sm font-semibold">
-                    {formatEuro(appointment.payment?.amount ?? appointment.service.price)}
+                    {formatEuro((paymentsEnabled ? appointment.payment?.amount : undefined) ?? appointment.service.price)}
                   </span>
-                  {paid ? (
+                  {paymentsEnabled && paid ? (
                     <Pill>Pagato</Pill>
+                  ) : appointment.paymentLink?.status === "PAID" ? (
+                    <Pill>Pagato online</Pill>
                   ) : appointment.status === "CANCELLED" || appointment.status === "NO_SHOW" ? (
                     <Pill tone="slate">{appointment.status === "CANCELLED" ? "Annullato" : "Assente"}</Pill>
                   ) : null}
@@ -245,7 +255,7 @@ export function DashboardManager({
             })}
           </ul>
         )}
-        {later.length > 0 && remainingToCollect > 0 ? (
+        {paymentsEnabled && later.length > 0 && remainingToCollect > 0 ? (
           <div className="border-t border-mint-border/70 px-5 py-2.5 text-xs text-muted-foreground">
             Ancora da incassare oggi: <strong className="text-foreground">{formatEuro(remainingToCollect)}</strong>
           </div>
@@ -334,7 +344,22 @@ export function DashboardManager({
           setSelectedAppointment(null);
           setPayingAppointment(appointment);
         }}
+        paymentsEnabled={paymentsEnabled}
+        onlinePayments={onlinePayments}
+        onPaymentLink={(appointment) => {
+          setSelectedAppointment(null);
+          setLinkTarget({
+            clientId: appointment.client.id,
+            clientFirstName: appointment.client.firstName,
+            clientPhone: appointment.client.phone,
+            appointmentId: appointment.id,
+            amount: appointment.service.price,
+            description: `${appointment.service.name} del ${new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "long" }).format(appointment.startTime)}`,
+          });
+        }}
       />
+
+      <PaymentLinkDialog target={linkTarget} onClose={() => setLinkTarget(null)} onCreated={refresh} />
 
       <PaymentDialog
         open={Boolean(payingAppointment)}

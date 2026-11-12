@@ -1,6 +1,6 @@
 "use client";
 
-import { CreditCard, MessageCircle, Phone } from "lucide-react";
+import { CreditCard, Link2, MessageCircle, Phone } from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -59,7 +59,14 @@ type AppointmentDetailDialogProps = {
   onEdit: (appointment: AppointmentDTO) => void;
   onStatusChanged: (appointment: AppointmentDTO) => void;
   onCollect: (appointment: AppointmentDTO) => void;
+  /** Incassi in cassa attivi (Incassa, POS): spenti si mostra solo il prezzo di listino. */
+  paymentsEnabled: boolean;
+  /** Stripe collegato: link di pagamento online (anche in 3 rate con Klarna). */
+  onlinePayments: boolean;
+  onPaymentLink: (appointment: AppointmentDTO) => void;
 };
+
+const PAID_WITH: Record<string, string> = { card: "carta", klarna: "Klarna", satispay: "Satispay", link: "Link", paypal: "PayPal" };
 
 export function AppointmentDetailDialog({
   open,
@@ -68,6 +75,9 @@ export function AppointmentDetailDialog({
   onEdit,
   onStatusChanged,
   onCollect,
+  paymentsEnabled,
+  onlinePayments,
+  onPaymentLink,
 }: AppointmentDetailDialogProps) {
   const [isPending, startTransition] = useTransition();
   const [consentOpen, setConsentOpen] = useState(false);
@@ -97,7 +107,9 @@ export function AppointmentDetailDialog({
     });
   }
 
-  const canCollect = !appointment.payment && !["CANCELLED", "NO_SHOW"].includes(appointment.status);
+  const canCollect = paymentsEnabled && !appointment.payment && !["CANCELLED", "NO_SHOW"].includes(appointment.status);
+  const link = appointment.paymentLink;
+  const canSendLink = onlinePayments && link?.status !== "PAID" && !["CANCELLED", "NO_SHOW"].includes(appointment.status);
   const secondaryStatuses = (["CONFIRMED", "CANCELLED", "NO_SHOW"] as const).filter(
     (status) => status !== appointment.status
   );
@@ -141,13 +153,26 @@ export function AppointmentDetailDialog({
             </span>
           </div>
           <div className="flex justify-between gap-3">
-            <span className="text-muted-foreground">Importo</span>
+            <span className="text-muted-foreground">{paymentsEnabled ? "Importo" : "Prezzo di listino"}</span>
             <span className="font-semibold">
-              {appointment.payment
+              {paymentsEnabled && appointment.payment
                 ? `${formatEuro(appointment.payment.amount)} · ${appointment.payment.method === "CARD" ? "Carta" : appointment.payment.method === "CASH" ? "Contanti" : "Altro"}`
                 : formatEuro(appointment.service.price)}
             </span>
           </div>
+          {link ? (
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">Pagamento online</span>
+              {link.status === "PAID" ? (
+                <Pill tone="forest">
+                  Pagato {formatEuro(link.amountCents / 100)}
+                  {link.paidWith ? ` · ${PAID_WITH[link.paidWith] ?? link.paidWith}` : ""}
+                </Pill>
+              ) : (
+                <Pill tone="amber">Link inviato · {formatEuro(link.amountCents / 100)}</Pill>
+              )}
+            </div>
+          ) : null}
           {appointment.notes ? (
             <div className="border-t pt-2">
               <span className="text-muted-foreground">Note: </span>
@@ -163,6 +188,17 @@ export function AppointmentDetailDialog({
           >
             <CreditCard className="size-5" />
             Incassa {formatEuro(appointment.service.price)}
+          </Button>
+        ) : null}
+
+        {canSendLink ? (
+          <Button
+            variant={canCollect ? "outline" : "default"}
+            className="h-11 w-full rounded-xl text-base"
+            onClick={() => onPaymentLink(appointment)}
+          >
+            <Link2 className="size-5" />
+            {link?.status === "PENDING" ? "Nuovo link di pagamento" : "Link di pagamento (anche in 3 rate)"}
           </Button>
         ) : null}
 

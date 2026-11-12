@@ -57,6 +57,13 @@ enum PlanStatus {
 enum IntegrationType {
   GOOGLE_CALENDAR
   ICAL_URL
+  STRIPE
+}
+
+enum PaymentLinkStatus {
+  PENDING
+  PAID
+  CANCELLED
 }
 
 enum FormDisplayMode {
@@ -122,16 +129,19 @@ enum CampaignRecipientStatus {
 }
 
 model Tenant {
-  id           String   @id @default(cuid())
-  name         String
-  slug         String   @unique
-  phone        String?
-  email        String?
-  logoUrl      String?
-  isActive     Boolean  @default(true)
-  icsFeedToken String?  @unique
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String   @id @default(cuid())
+  name            String
+  slug            String   @unique
+  phone           String?
+  email           String?
+  logoUrl         String?
+  isActive        Boolean  @default(true)
+  /// Incassi in cassa (Incassa, POS, contanti). Spento: niente sezione Pagamenti,
+  /// incasso stimato dai trattamenti e appuntamenti passati completati da soli.
+  paymentsEnabled Boolean  @default(false)
+  icsFeedToken    String?  @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   users                  User[]
   clients                Client[]
@@ -153,6 +163,7 @@ model Tenant {
   automations            Automation[]
   automationRuns         AutomationRun[]
   campaigns              Campaign[]
+  paymentLinks           PaymentLink[]
 
   @@map("tenants")
 }
@@ -253,6 +264,7 @@ model Client {
   whatsappMessages WhatsappMessage[]
   automationRuns   AutomationRun[]
   campaignEntries  CampaignRecipient[]
+  paymentLinks     PaymentLink[]
 
   @@index([tenantId, phone])
   @@index([tenantId, lastName])
@@ -294,12 +306,13 @@ model Appointment {
   createdAt  DateTime          @default(now())
   updatedAt  DateTime          @updatedAt
 
-  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  client   Client          @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  service  Service         @relation(fields: [serviceId], references: [id], onDelete: Restrict)
-  operator User?           @relation("AppointmentOperator", fields: [operatorId], references: [id], onDelete: SetNull)
-  consents ConsentRecord[]
-  payment  Payment?
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client       Client          @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  service      Service         @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  operator     User?           @relation("AppointmentOperator", fields: [operatorId], references: [id], onDelete: SetNull)
+  consents     ConsentRecord[]
+  payment      Payment?
+  paymentLinks PaymentLink[]
 
   @@index([tenantId, startTime])
   @@index([tenantId, status])
@@ -685,4 +698,36 @@ model CampaignRecipient {
   @@unique([campaignId, clientId])
   @@index([campaignId, status])
   @@map("campaign_recipients")
+}
+
+// ── Link di pagamento (Stripe del centro) ────────────────────────────────────
+// Un link /paga/<token> per un trattamento: a ogni apertura crea una Checkout
+// Session sullo Stripe del centro (carta, Klarna in 3 rate, Satispay… secondo i
+// metodi attivi), così il link non scade. Il webhook lo segna pagato.
+model PaymentLink {
+  id              String            @id @default(cuid())
+  tenantId        String
+  clientId        String
+  appointmentId   String?
+  /// Importo in centesimi.
+  amountCents     Int
+  description     String
+  token           String            @unique
+  status          PaymentLinkStatus @default(PENDING)
+  stripeSessionId String?
+  stripePaymentId String?
+  /// Metodo usato (card, klarna, satispay…), quando Stripe lo comunica.
+  paidWith        String?
+  paidAt          DateTime?
+  createdById     String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client      Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([appointmentId])
+  @@map("payment_links")
 }

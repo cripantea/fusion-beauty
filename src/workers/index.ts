@@ -2,6 +2,7 @@ import { Queue, Worker } from "bullmq";
 
 import { redis } from "@/lib/redis";
 import { processWaitingRuns, runAutomationScans } from "@/lib/automation-engine";
+import { autoCompletePastAppointments } from "@/lib/payments-mode";
 import { runDueCampaigns } from "@/lib/campaign-runner";
 import { EXAMPLE_QUEUE_NAME, type ExampleJobData } from "@/queues/example.queue";
 
@@ -33,6 +34,9 @@ const scheduleWorker = new Worker(
   WHATSAPP_SCHEDULE_QUEUE,
   async (job) => {
     if (job.name === "scan") {
+      // Prima si chiudono gli appuntamenti passati (centri senza incassi in cassa),
+      // così "dopo il trattamento" e "cliente che non torna" li vedono.
+      await autoCompletePastAppointments();
       await runAutomationScans();
       return;
     }

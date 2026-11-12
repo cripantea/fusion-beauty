@@ -15,6 +15,8 @@ export type AppointmentDTO = {
   service: { id: string; name: string; durationMinutes: number; price: number };
   operator: { id: string; firstName: string; lastName: string } | null;
   payment: { amount: number; method: PaymentMethodValue; notes: string | null } | null;
+  /** Ultimo link di pagamento online (Stripe) non annullato. */
+  paymentLink: { status: "PENDING" | "PAID" | "CANCELLED"; amountCents: number; token: string; paidWith: string | null } | null;
 };
 
 export const appointmentInclude = {
@@ -22,6 +24,12 @@ export const appointmentInclude = {
   service: { select: { id: true, name: true, durationMinutes: true, price: true } },
   operator: { select: { id: true, firstName: true, lastName: true } },
   payment: { select: { amount: true, method: true, notes: true } },
+  paymentLinks: {
+    where: { status: { not: "CANCELLED" } },
+    orderBy: { createdAt: "desc" },
+    take: 1,
+    select: { status: true, amountCents: true, token: true, paidWith: true },
+  },
 } satisfies Prisma.AppointmentInclude;
 
 export type AppointmentRow = Prisma.AppointmentGetPayload<{ include: typeof appointmentInclude }>;
@@ -40,5 +48,6 @@ export function toAppointmentDTO(appointment: AppointmentRow): AppointmentDTO {
     payment: appointment.payment
       ? { amount: appointment.payment.amount.toNumber(), method: appointment.payment.method, notes: appointment.payment.notes }
       : null,
+    paymentLink: appointment.paymentLinks[0] ?? null,
   };
 }
