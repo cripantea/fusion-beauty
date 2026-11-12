@@ -122,53 +122,93 @@ function categoryOf(name: string) {
 
 function ServicePicker({ services, onSelect }: { services: PublicServiceDTO[]; onSelect: (service: PublicServiceDTO) => void }) {
   const [query, setQuery] = useState("");
+  const [category, setCategory] = useState<string | null>(null);
   const many = services.length > 8;
   const needle = query.trim().toLowerCase();
-  const visible = needle ? services.filter((s) => s.name.toLowerCase().includes(needle) || (s.description ?? "").toLowerCase().includes(needle)) : services;
 
   const counts = new Map<string, number>();
   for (const s of services) counts.set(categoryOf(s.name), (counts.get(categoryOf(s.name)) ?? 0) + 1);
-  const groups = new Map<string, PublicServiceDTO[]>();
-  for (const s of visible) {
-    const cat = !many ? "" : (counts.get(categoryOf(s.name)) ?? 0) > 1 ? categoryOf(s.name) : "Altri trattamenti";
-    groups.set(cat, [...(groups.get(cat) ?? []), s]);
-  }
-  const ordered = [...groups.entries()].sort(([a], [b]) => (a === "Altri trattamenti" ? 1 : b === "Altri trattamenti" ? -1 : a.localeCompare(b, "it")));
+  const categoryFor = (s: PublicServiceDTO) => ((counts.get(categoryOf(s.name)) ?? 0) > 1 ? categoryOf(s.name) : "Altri trattamenti");
+  const categories = [...new Set(services.map(categoryFor))].sort((a, b) =>
+    a === "Altri trattamenti" ? 1 : b === "Altri trattamenti" ? -1 : a.localeCompare(b, "it")
+  );
+  // Con molti trattamenti si sceglie prima la categoria (più semplice da guardare).
+  const showCategories = many && categories.length > 1 && !needle && category === null;
+  const visible = needle
+    ? services.filter((s) => s.name.toLowerCase().includes(needle) || (s.description ?? "").toLowerCase().includes(needle))
+    : category
+      ? services.filter((s) => categoryFor(s) === category)
+      : services;
 
   return (
     <div className="space-y-3">
       {many ? (
         <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cerca un trattamento (es. laser, manicure)…" className="h-10" />
       ) : null}
-      {visible.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">Nessun trattamento trovato.</p> : null}
-      {ordered.map(([category, items]) => (
-        <div key={category || "tutti"} className="space-y-2">
-          {category ? <h3 className="pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{category}</h3> : null}
-          {items.map((service) => (
-            <Card
-              key={service.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => onSelect(service)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") onSelect(service);
-              }}
-              className="cursor-pointer transition-all hover:border-primary hover:shadow-sm active:scale-[0.99]"
-            >
-              <CardHeader className="pb-1">
-                <CardTitle className="text-base">{service.name}</CardTitle>
-                {service.description && service.description.toLowerCase() !== service.name.toLowerCase() ? (
-                  <CardDescription>{service.description}</CardDescription>
-                ) : null}
-              </CardHeader>
-              <CardContent className="flex items-center justify-between pt-0 text-sm">
-                <span className="text-muted-foreground">{service.durationMinutes} min</span>
-                <span className="font-semibold text-primary">{currencyFormatter.format(service.price)}</span>
-              </CardContent>
-            </Card>
-          ))}
+
+      {showCategories ? (
+        <div className="grid grid-cols-2 gap-2.5">
+          {categories.map((name) => {
+            const items = services.filter((s) => categoryFor(s) === name);
+            const from = Math.min(...items.map((s) => s.price));
+            return (
+              <Card
+                key={name}
+                role="button"
+                tabIndex={0}
+                onClick={() => setCategory(name)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") setCategory(name);
+                }}
+                className="cursor-pointer gap-1 py-4 transition-all hover:border-primary hover:shadow-sm active:scale-[0.99]"
+              >
+                <CardHeader className="pb-0">
+                  <CardTitle className="text-[15px]">{name}</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0 text-xs text-muted-foreground">
+                  {items.length} {items.length === 1 ? "trattamento" : "trattamenti"} · da{" "}
+                  <span className="font-semibold text-primary">{currencyFormatter.format(from)}</span>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
-      ))}
+      ) : (
+        <>
+          {category && !needle ? (
+            <button type="button" onClick={() => setCategory(null)} className="text-sm text-muted-foreground hover:text-foreground">
+              ← Tutte le categorie
+            </button>
+          ) : null}
+          {category && !needle ? <h3 className="pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{category}</h3> : null}
+          {visible.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">Nessun trattamento trovato.</p> : null}
+          <div className="space-y-2">
+            {visible.map((service) => (
+              <Card
+                key={service.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => onSelect(service)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") onSelect(service);
+                }}
+                className="cursor-pointer transition-all hover:border-primary hover:shadow-sm active:scale-[0.99]"
+              >
+                <CardHeader className="pb-1">
+                  <CardTitle className="text-base">{service.name}</CardTitle>
+                  {service.description && service.description.toLowerCase() !== service.name.toLowerCase() ? (
+                    <CardDescription>{service.description}</CardDescription>
+                  ) : null}
+                </CardHeader>
+                <CardContent className="flex items-center justify-between pt-0 text-sm">
+                  <span className="text-muted-foreground">{service.durationMinutes} min</span>
+                  <span className="font-semibold text-primary">{currencyFormatter.format(service.price)}</span>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

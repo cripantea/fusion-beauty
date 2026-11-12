@@ -107,6 +107,7 @@ export default async function EmbedPage({ params, searchParams }: EmbedPageProps
         <link rel="stylesheet" href={`https://fonts.googleapis.com/css2?family=${font.replace(/ /g, "+")}:wght@400;500;600;700;800;900&display=swap`} />
       ) : null}
       {elegant ? <style>{ELEGANT_CSS}</style> : null}
+      {HEX_COLOR.test(background) ? <style>{`html,body{background:${background}}`}</style> : null}
       {showHeader ? (
       <div className="flex flex-col items-center gap-2 pt-6 pb-4 text-center">
         {tenant.logoUrl ? (
