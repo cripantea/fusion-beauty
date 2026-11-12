@@ -164,6 +164,7 @@ model Tenant {
   automationRuns         AutomationRun[]
   campaigns              Campaign[]
   paymentLinks           PaymentLink[]
+  whatsappHistoryChunks  WhatsappHistoryChunk[]
 
   @@map("tenants")
 }
@@ -585,6 +586,21 @@ model WhatsappMessage {
   @@index([tenantId, phone, createdAt])
   @@index([tenantId, createdAt])
   @@map("whatsapp_messages")
+}
+
+/// Blocchi grezzi dello storico chat dell'app WhatsApp Business (Coexistence):
+/// Meta li manda una volta sola, si tengono per poterli rielaborare.
+model WhatsappHistoryChunk {
+  id          String   @id @default(cuid())
+  tenantId    String
+  contentHash String   @unique
+  payload     Json
+  createdAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("whatsapp_history_chunks")
 }
 
 // ── Automazioni (come i workflow del CRM, semplificate) ──────────────────────

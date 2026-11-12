@@ -317,6 +317,22 @@ export function WhatsappSettings({
                 Importa di nuovo la rubrica
               </Button>
             ) : null}
+            {connection && meta?.windowOpen ? (
+              <Button
+                variant="outline"
+                disabled={isPending}
+                onClick={() =>
+                  startTransition(async () => {
+                    const result = await syncAppContacts("history");
+                    if (!result.success) toast.error(result.error);
+                    else toast.success("Richiesta inviata a Meta: le vecchie chat arrivano in Messaggi nei prossimi minuti.");
+                  })
+                }
+              >
+                <RefreshCw className="size-3.5" />
+                Importa lo storico delle chat
+              </Button>
+            ) : null}
           </div>
         </Panel>
       ) : null}

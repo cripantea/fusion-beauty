@@ -200,9 +200,9 @@ export async function getNumberStatus(
 }
 
 /** Richiede di nuovo a Meta la rubrica dell'app Business (possibile solo entro 24 ore dal collegamento). */
-export async function requestContactsSync(tenantId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function requestContactsSync(tenantId: string, syncType: "smb_app_state_sync" | "history" = "smb_app_state_sync"): Promise<{ ok: true } | { ok: false; error: string }> {
   const res = await request("/api/v1/connections/request-history-sync", {
-    body: { externalCustomerId: tenantId, syncType: "smb_app_state_sync" },
+    body: { externalCustomerId: tenantId, syncType },
   });
   if (!res.ok) return res;
   if (res.status >= 400) return { ok: false, error: errorOf(res.data, res.status) };

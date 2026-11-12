@@ -101,6 +101,11 @@ export async function sendWhatsappTemplate(
 
 type MetaValue = {
   metadata?: { phone_number_id?: string };
+  /** Storico chat dell'app WhatsApp Business (Coexistence), inviato una volta dopo il collegamento. */
+  history?: {
+    metadata?: { phase?: number | string; chunk_order?: number | string; progress?: number | string };
+    threads?: { id?: string; messages?: { from?: string; id?: string; timestamp?: string; type?: string; history_context?: { status?: string }; [key: string]: unknown }[] }[];
+  }[];
   state_sync?: {
     type?: string;
     action?: string;
@@ -175,6 +180,10 @@ export async function ingestWebhookPayload(payload: { entry?: { changes?: { valu
         }
       }
 
+      if (value.history?.length) {
+        await importHistory(tenantId, value);
+      }
+
       // Rubrica dell'app WhatsApp Business: le persone salvate nel telefono
       // diventano clienti (solo aggiunte, senza far partire automazioni).
       for (const item of value.state_sync ?? []) {
@@ -235,4 +244,58 @@ async function importAppContact(tenantId: string, contact: { phone_number?: stri
       acquisitionSource: APP_CONTACT_SOURCE,
     },
   });
+}
+
+/**
+ * Storico delle chat dell'app WhatsApp Business: Meta lo manda una sola volta
+ * (entro 24 ore dal collegamento) a blocchi. Si salva grezzo, così si può
+ * rielaborare, e diventa subito conversazione in Messaggi: i messaggi della
+ * cliente hanno "from" uguale al thread, gli altri li ha mandati il centro.
+ * Già letti, niente automazioni.
+ */
+async function importHistory(tenantId: string, value: MetaValue) {
+  const { createHash } = await import("node:crypto");
+  const contentHash = createHash("sha256").update(JSON.stringify(value.history)).digest("hex");
+  try {
+    await prisma.whatsappHistoryChunk.create({ data: { tenantId, contentHash, payload: JSON.parse(JSON.stringify(value.history)) } });
+  } catch (err) {
+    if ((err as { code?: string }).code === "P2002") return; // blocco già ricevuto
+    throw err;
+  }
+
+  const statusMap: Record<string, "SENT" | "DELIVERED" | "READ" | "FAILED"> = {
+    sent: "SENT",
+    delivered: "DELIVERED",
+    read: "READ",
+    played: "READ",
+    error: "FAILED",
+    failed: "FAILED",
+  };
+  for (const chunk of value.history ?? []) {
+    for (const thread of chunk.threads ?? []) {
+      if (!thread.id) continue;
+      const customer = normalizePhoneForWhatsapp(thread.id);
+      const clientId = await findClientIdByPhone(tenantId, customer);
+      for (const message of thread.messages ?? []) {
+        if (!message.id || message.type === "reaction") continue;
+        const inbound = message.from ? normalizePhoneForWhatsapp(message.from) === customer : true;
+        const createdAt = message.timestamp ? new Date(Number(message.timestamp) * 1000) : new Date();
+        const known = await prisma.whatsappMessage.findUnique({ where: { wamid: message.id }, select: { id: true } });
+        if (known) continue;
+        await prisma.whatsappMessage.create({
+          data: {
+            tenantId,
+            clientId,
+            phone: customer,
+            direction: inbound ? "INBOUND" : "OUTBOUND",
+            status: inbound ? "RECEIVED" : (statusMap[(message.history_context?.status ?? "").toLowerCase()] ?? "SENT"),
+            body: inboundMessageText(message),
+            wamid: message.id,
+            readAt: inbound ? new Date() : null,
+            createdAt,
+          },
+        });
+      }
+    }
+  }
 }

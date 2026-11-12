@@ -109,9 +109,9 @@ export async function removeTemplate(name: string, externalId: string | null): P
 }
 
 /** Chiede di nuovo a Meta la rubrica dell'app WhatsApp Business. */
-export async function syncAppContacts(): Promise<Result> {
+export async function syncAppContacts(kind: "contacts" | "history" = "contacts"): Promise<Result> {
   const { tenantId } = await requireTenantAdmin();
-  const result = await requestContactsSync(tenantId);
+  const result = await requestContactsSync(tenantId, kind === "history" ? "history" : "smb_app_state_sync");
   if (!result.ok) return { success: false, error: result.error };
   return { success: true };
 }
