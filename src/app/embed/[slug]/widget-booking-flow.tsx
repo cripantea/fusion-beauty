@@ -109,6 +109,70 @@ function StepBar({ step }: { step: Step }) {
   );
 }
 
+/**
+ * Categoria dal nome del trattamento: "Laser 808 — Ascelle" → "Laser 808",
+ * altrimenti la prima parola ("Epilazione gamba completa" → "Epilazione").
+ * Le categorie con un solo trattamento finiscono in "Altri trattamenti".
+ */
+function categoryOf(name: string) {
+  if (name.includes(" — ")) return name.split(" — ")[0].trim();
+  const first = name.split(/\s+/)[0] ?? name;
+  return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
+function ServicePicker({ services, onSelect }: { services: PublicServiceDTO[]; onSelect: (service: PublicServiceDTO) => void }) {
+  const [query, setQuery] = useState("");
+  const many = services.length > 8;
+  const needle = query.trim().toLowerCase();
+  const visible = needle ? services.filter((s) => s.name.toLowerCase().includes(needle) || (s.description ?? "").toLowerCase().includes(needle)) : services;
+
+  const counts = new Map<string, number>();
+  for (const s of services) counts.set(categoryOf(s.name), (counts.get(categoryOf(s.name)) ?? 0) + 1);
+  const groups = new Map<string, PublicServiceDTO[]>();
+  for (const s of visible) {
+    const cat = !many ? "" : (counts.get(categoryOf(s.name)) ?? 0) > 1 ? categoryOf(s.name) : "Altri trattamenti";
+    groups.set(cat, [...(groups.get(cat) ?? []), s]);
+  }
+  const ordered = [...groups.entries()].sort(([a], [b]) => (a === "Altri trattamenti" ? 1 : b === "Altri trattamenti" ? -1 : a.localeCompare(b, "it")));
+
+  return (
+    <div className="space-y-3">
+      {many ? (
+        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cerca un trattamento (es. laser, manicure)…" className="h-10" />
+      ) : null}
+      {visible.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">Nessun trattamento trovato.</p> : null}
+      {ordered.map(([category, items]) => (
+        <div key={category || "tutti"} className="space-y-2">
+          {category ? <h3 className="pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{category}</h3> : null}
+          {items.map((service) => (
+            <Card
+              key={service.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelect(service)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") onSelect(service);
+              }}
+              className="cursor-pointer transition-all hover:border-primary hover:shadow-sm active:scale-[0.99]"
+            >
+              <CardHeader className="pb-1">
+                <CardTitle className="text-base">{service.name}</CardTitle>
+                {service.description && service.description.toLowerCase() !== service.name.toLowerCase() ? (
+                  <CardDescription>{service.description}</CardDescription>
+                ) : null}
+              </CardHeader>
+              <CardContent className="flex items-center justify-between pt-0 text-sm">
+                <span className="text-muted-foreground">{service.durationMinutes} min</span>
+                <span className="font-semibold text-primary">{currencyFormatter.format(service.price)}</span>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function WidgetBookingFlow({ slug, services, initialServiceId, prefill }: WidgetBookingFlowProps) {
   const initialService = services.find((service) => service.id === initialServiceId) ?? null;
   const [step, setStep] = useState<Step>(initialService ? "datetime" : "service");
@@ -253,31 +317,7 @@ export function WidgetBookingFlow({ slug, services, initialServiceId, prefill }:
               Nessun trattamento disponibile per la prenotazione online al momento.
             </p>
           ) : (
-            services.map((service) => (
-              <Card
-                key={service.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => handleSelectService(service)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") handleSelectService(service);
-                }}
-                className="cursor-pointer transition-all hover:border-primary hover:shadow-sm active:scale-[0.99]"
-              >
-                <CardHeader className="pb-1">
-                  <CardTitle className="text-base">{service.name}</CardTitle>
-                  {service.description ? (
-                    <CardDescription>{service.description}</CardDescription>
-                  ) : null}
-                </CardHeader>
-                <CardContent className="flex items-center justify-between text-sm pt-0">
-                  <span className="text-muted-foreground">{service.durationMinutes} min</span>
-                  <span className="font-semibold text-primary">
-                    {currencyFormatter.format(service.price)}
-                  </span>
-                </CardContent>
-              </Card>
-            ))
+            <ServicePicker services={services} onSelect={handleSelectService} />
           )}
         </div>
       ) : null}

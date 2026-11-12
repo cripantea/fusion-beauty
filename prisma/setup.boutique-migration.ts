@@ -155,10 +155,17 @@ const AUTOMATIONS: {
 ];
 
 async function main() {
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "boutique-del-benessere" }, select: { id: true } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "boutique-del-benessere" }, select: { id: true, logoUrl: true } });
   if (!tenant) {
     console.log("Centro boutique-del-benessere non presente: niente da migrare.");
     return;
+  }
+
+  // Logo nell'agenda di prenotazione (al posto dell'iniziale), se non c'è già.
+  if (!tenant.logoUrl) {
+    const base = (process.env.APP_BASE_URL ?? "https://beauty.fusionsoft.it").replace(/\/$/, "");
+    await prisma.tenant.update({ where: { id: tenant.id }, data: { logoUrl: `${base}/forms/boutique-form-logo.jpg` } });
+    console.log("✅ Logo della Boutique impostato.");
   }
 
   const reviewForm = await prisma.form.findUnique({ where: { id: REVIEW_FORM_ID }, select: { id: true } });

@@ -419,10 +419,12 @@ window.addEventListener("message",function(e){var d=e.data||{};var list=window._
 if(d.type==="fusion-beauty:height"&&typeof d.height==="number")list[i].style.height=Math.max(480,Math.ceil(d.height)+8)+"px";
 if(d.type==="fusion-beauty:booked"){try{window.dispatchEvent(new CustomEvent("fusion-beauty:booked",{detail:{service:d.service,startTime:d.startTime}}));}catch(x){}}}});}
 function frame(){var f=document.createElement("iframe");f.src=src;f.title=C.title;f.style.cssText="display:block;width:100%;border:0;min-height:480px;height:640px;background:transparent";window.__fusionBeautyBooking.push(f);return f;}
-var target=me&&me.previousElementSibling;
+// In modalità "link" lo script non occupa contenitori: restano per le agende in pagina.
+var target=null;
+if(C.mode!=="link"){target=me&&me.previousElementSibling;
 if(!target||target.id!=="fusion-beauty-booking-"+C.slug||target.getAttribute("data-ready")){target=null;var all=document.querySelectorAll('[id="fusion-beauty-booking-'+C.slug+'"]');for(var j=0;j<all.length;j++)if(!all[j].getAttribute("data-ready")){target=all[j];break;}}
 if(!target){target=document.createElement("div");if(me&&me.parentNode)me.parentNode.insertBefore(target,me);else document.body.appendChild(target);}
-target.setAttribute("data-ready","1");
+target.setAttribute("data-ready","1");}
 var overlay=null;
 function close(){if(overlay&&overlay.parentNode)overlay.parentNode.removeChild(overlay);document.documentElement.style.overflow="";}
 function open(){if(!overlay){overlay=document.createElement("div");overlay.style.cssText="position:fixed;inset:0;z-index:2147483001;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(15,15,20,.55)";
