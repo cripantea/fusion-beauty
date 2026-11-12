@@ -44,7 +44,14 @@ export default async function EmbedPage({ params, searchParams }: EmbedPageProps
   // solo = già scelto), ?colore=#hex il colore del centro, ?intestazione=0
   // toglie logo e nome quando la pagina del sito ha già il suo titolo.
   const only = param(query, "servizi", 2000).split(",").map((id) => id.trim()).filter(Boolean);
-  const filtered = only.length ? data.services.filter((service) => only.includes(service.id)) : [];
+  // ?cerca=laser,pedicure: i trattamenti il cui nome contiene una di queste parole
+  // (per le pagine del sito dedicate a un servizio; restano giuste se se ne aggiungono).
+  const words = param(query, "cerca", 300).toLowerCase().split(",").map((w) => w.trim()).filter(Boolean);
+  const filtered = only.length
+    ? data.services.filter((service) => only.includes(service.id))
+    : words.length
+      ? data.services.filter((service) => words.some((w) => service.name.toLowerCase().includes(w)))
+      : [];
   const services = filtered.length ? filtered : data.services;
   const color = param(query, "colore") || param(query, "color");
   const showHeader = param(query, "intestazione") !== "0";

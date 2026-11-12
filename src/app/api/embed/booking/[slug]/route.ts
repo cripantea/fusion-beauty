@@ -8,6 +8,7 @@ const JS_HEADERS = { "Content-Type": "application/javascript; charset=utf-8", "A
 /**
  * Script dell'agenda di prenotazione da incollare in qualsiasi sito:
  * <script src=".../api/embed/booking/<slug>?mode=popup&text=Prenota&color=%23..." async></script>
+ * &cerca=laser,pedicure: solo i trattamenti con queste parole nel nome.
  * mode=link: nessun elemento, l'agenda si apre dai pulsanti del sito con l'attributo data-fusion-beauty-booking.
  * Agenda personalizzata: &servizi=<id>,<id> (solo quei trattamenti), &tinta=1 (colore
  * anche dentro l'agenda), &intestazione=0 (senza logo e nome del centro).
@@ -40,6 +41,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     text,
     color,
     services,
+    search: (query.get("cerca") ?? "").replace(/[^\p{L}\p{N} ,'-]/gu, "").trim().slice(0, 300),
     tint: query.get("tinta") === "1",
     header: query.get("intestazione") !== "0",
   });

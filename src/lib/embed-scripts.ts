@@ -398,11 +398,14 @@ export function buildBookingEmbedScript(p: {
   color: string;
   /** Agenda personalizzata: solo questi trattamenti, colore dentro l'agenda, senza intestazione. */
   services: string[];
+  /** Parole nel nome dei trattamenti (es. "laser,ascelle"). */
+  search?: string;
   tint: boolean;
   header: boolean;
 }): string {
   const query = new URLSearchParams({ embed: "1" });
   if (p.services.length) query.set("servizi", p.services.join(","));
+  if (p.search) query.set("cerca", p.search);
   if (p.tint) query.set("colore", p.color);
   if (!p.header) query.set("intestazione", "0");
   const cfg = { base: p.baseUrl, slug: p.slug, title: p.title, mode: p.mode, text: p.text, color: p.color, query: query.toString() };
