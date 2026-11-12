@@ -165,6 +165,7 @@ model Tenant {
   campaigns              Campaign[]
   paymentLinks           PaymentLink[]
   whatsappHistoryChunks  WhatsappHistoryChunk[]
+  dataImports            DataImport[]
 
   @@map("tenants")
 }
@@ -586,6 +587,23 @@ model WhatsappMessage {
   @@index([tenantId, phone, createdAt])
   @@index([tenantId, createdAt])
   @@map("whatsapp_messages")
+}
+
+/// Import da un altro gestionale (es. GoHighLevel): stato e numeri, per la pagina di import.
+model DataImport {
+  id         String    @id @default(cuid())
+  tenantId   String
+  source     String
+  status     String    @default("RUNNING")
+  stats      Json      @default("{}")
+  error      String?
+  createdAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@map("data_imports")
 }
 
 /// Blocchi grezzi dello storico chat dell'app WhatsApp Business (Coexistence):

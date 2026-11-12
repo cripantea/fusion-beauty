@@ -5,6 +5,7 @@ import {
   Calendar,
   ChevronDown,
   CreditCard,
+  Download,
   FileSignature,
   FileInput,
   FileText,
@@ -96,6 +97,7 @@ const ADMIN_SETUP_ITEMS: NavItem[] = [
   { href: "/dashboard/forms", label: "Form del sito", icon: FileInput },
   { href: "/dashboard/whatsapp", label: "WhatsApp", icon: MessageCircle },
   { href: "/dashboard/integrations/stripe", label: "Pagamenti online", icon: CreditCard },
+  { href: "/dashboard/integrations/ghl", label: "Importa da GHL", icon: Download },
 ];
 
 const ADMIN_ITEMS: NavItem[] = [
