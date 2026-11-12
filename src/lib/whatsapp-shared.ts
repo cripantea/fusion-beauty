@@ -13,6 +13,11 @@ export const TEMPLATE_VARIABLES = [
   { key: "operatrice", label: "Nome dell'operatrice" },
   { key: "prenota", label: "Link per prenotare online" },
   { key: "link", label: "Link del questionario" },
+  { key: "telefono", label: "Telefono della cliente" },
+  { key: "risposte", label: "Cosa ha scritto nel form" },
+  { key: "scadenza", label: "Data fra 14 giorni" },
+  { key: "importo", label: "Importo da pagare" },
+  { key: "pagamento", label: "Link di pagamento" },
 ] as const;
 
 export type TemplateVars = Partial<Record<(typeof TEMPLATE_VARIABLES)[number]["key"], string>>;

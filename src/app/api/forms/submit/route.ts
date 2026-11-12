@@ -197,6 +197,17 @@ export async function POST(request: NextRequest) {
     await triggerAutomations(tenantId, "FORM_SUBMITTED", {
       clientId: client.id,
       triggerKey: `form:${submission.id}`,
+      // {{risposte}}: le risposte scritte, senza nome e telefono (già in {{nome}} e {{telefono}}).
+      context: {
+        vars: {
+          risposte:
+            answers
+              .filter((a) => a.value && !["firstName", "lastName", "fullName", "phone"].includes(fields.find((f) => f.key === a.key)?.clientField ?? ""))
+              .map((a) => a.value)
+              .join(" · ")
+              .slice(0, 900) || "-",
+        },
+      },
       filter: { formId: form.id },
     });
   });

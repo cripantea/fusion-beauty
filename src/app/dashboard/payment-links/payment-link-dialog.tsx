@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatEuro, whatsappUrl } from "@/lib/format";
 
-import { createPaymentLink } from "./actions";
+import { createPaymentLink, sendPaymentLinkWhatsapp } from "./actions";
 
 export type PaymentLinkTarget = {
   clientId: string;
@@ -41,6 +41,8 @@ function Body({ target, onCreated }: { target: PaymentLinkTarget; onCreated?: (l
   const [amount, setAmount] = useState(String(target.amount.toFixed(2)).replace(".", ","));
   const [description, setDescription] = useState(target.description);
   const [url, setUrl] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isPending, startTransition] = useTransition();
   const value = Number(amount.replace(",", "."));
@@ -75,9 +77,27 @@ function Body({ target, onCreated }: { target: PaymentLinkTarget; onCreated?: (l
               {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
             </Button>
           </div>
-          <Button className="w-full" nativeButton={false} render={<a href={whatsappUrl(target.clientPhone, message)} target="_blank" rel="noopener noreferrer" />}>
+          <Button
+            className="w-full"
+            disabled={isPending || sent || !token}
+            onClick={() =>
+              startTransition(async () => {
+                if (!token) return;
+                const result = await sendPaymentLinkWhatsapp(token);
+                if (!result.success) {
+                  toast.error(result.error);
+                  return;
+                }
+                setSent(true);
+                toast.success("Link inviato su WhatsApp dal numero del centro.");
+              })
+            }
+          >
             <MessageCircle className="size-4" />
-            Invia su WhatsApp
+            {sent ? "Inviato su WhatsApp" : "Invia su WhatsApp dal numero del centro"}
+          </Button>
+          <Button variant="outline" className="w-full" nativeButton={false} render={<a href={whatsappUrl(target.clientPhone, message)} target="_blank" rel="noopener noreferrer" />}>
+            Apri WhatsApp sul telefono
           </Button>
           <p className="text-xs text-muted-foreground">
             Il link non scade. Klarna compare tra i metodi quando l&apos;importo e la cliente sono idonei.
@@ -110,6 +130,7 @@ function Body({ target, onCreated }: { target: PaymentLinkTarget; onCreated?: (l
                   return;
                 }
                 setUrl(result.url);
+                setToken(result.token);
                 onCreated?.({ token: result.token, amountCents: Math.round(value * 100), appointmentId: target.appointmentId });
               })
             }

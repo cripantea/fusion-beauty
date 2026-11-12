@@ -8,7 +8,9 @@ import { z } from "zod";
 import { getBaseUrl } from "@/lib/app-url";
 import { getTenantContext } from "@/lib/auth-context";
 import { prisma } from "@/lib/prisma";
+import { listTemplates } from "@/lib/fusion-wa";
 import { getStripeStatus } from "@/lib/stripe-tenant";
+import { hasActiveWhatsapp, sendWhatsappTemplate } from "@/lib/whatsapp";
 
 const createSchema = z.object({
   clientId: z.string().min(1),
@@ -62,5 +64,35 @@ export async function cancelPaymentLink(token: string): Promise<{ success: true 
   if (result.count === 0) return { success: false, error: "Il link non è più da pagare." };
   revalidatePath("/dashboard/payment-links");
   revalidatePath("/dashboard/calendar");
+  return { success: true };
+}
+
+/** Nome del template WhatsApp (servizio) per mandare il link: {{1}} nome, {{2}} per cosa, {{3}} importo, {{4}} link. */
+const PAYMENT_LINK_TEMPLATE = "link_pagamento";
+
+/** Manda il link alla cliente dal numero WhatsApp del centro (template approvato "link_pagamento"). */
+export async function sendPaymentLinkWhatsapp(token: string): Promise<{ success: true } | { success: false; error: string }> {
+  const { tenantId } = await getTenantContext();
+  const link = await prisma.paymentLink.findFirst({ where: { token, tenantId }, include: { client: true } });
+  if (!link) return { success: false, error: "Link non trovato." };
+  if (link.status !== "PENDING") return { success: false, error: "Il link non è più da pagare." };
+  if (!(await hasActiveWhatsapp(tenantId))) return { success: false, error: "WhatsApp del centro non collegato: usa “Apri WhatsApp”." };
+
+  const templates = await listTemplates(tenantId);
+  if (!templates.ok) return { success: false, error: templates.error };
+  const template = templates.templates.find((t) => t.name === PAYMENT_LINK_TEMPLATE && t.status === "APPROVED");
+  if (!template) return { success: false, error: "Il template “link_pagamento” non è ancora approvato da Meta: usa “Apri WhatsApp”." };
+
+  const amount = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(link.amountCents / 100);
+  const result = await sendWhatsappTemplate(tenantId, {
+    phone: link.client.phone,
+    clientId: link.client.id,
+    templateName: template.name,
+    language: template.language,
+    templateBody: template.body,
+    params: [link.client.firstName || "-", link.description, amount, `${await getBaseUrl()}/paga/${link.token}`],
+    dedupeKey: `payment-link:${link.id}`,
+  });
+  if (!result.ok) return { success: false, error: result.error === "Messaggio già inviato." ? "Link già inviato su WhatsApp." : result.error };
   return { success: true };
 }

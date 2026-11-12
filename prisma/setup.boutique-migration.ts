@@ -67,7 +67,7 @@ const template = (templateName: string, templateBody: string, params: string[]) 
 const AUTOMATIONS: {
   key: string;
   name: string;
-  trigger: "FORM_SUBMITTED" | "WHATSAPP_RECEIVED";
+  trigger: "FORM_SUBMITTED" | "WHATSAPP_RECEIVED" | "BIRTHDAY";
   triggerConfig: Record<string, unknown>;
   steps: unknown[];
   quietHours: boolean;
@@ -101,6 +101,40 @@ const AUTOMATIONS: {
       ),
     ],
     quietHours: false,
+    allowReentry: true,
+  },
+  {
+    key: "boutique:avviso-staff",
+    name: "Avviso allo staff: nuova richiesta dal sito",
+    trigger: "FORM_SUBMITTED",
+    triggerConfig: { formId: QUOTE_FORM_ID },
+    steps: [
+      {
+        ...template(
+          "avviso_robi",
+          "Ciao Robi! hai ricevuto una nuova richiesta! Ti ha scritto :{{1}} Numero: {{2}} Richiesta: {{3}} Contattalo al più presto per non farlo andare da un altra parte!",
+          ["{{nome}} {{cognome}}", "{{telefono}}", "{{risposte}}"]
+        ),
+        // Numero dello staff da scrivere in Automazioni prima di attivarla.
+        toPhone: "",
+      },
+    ],
+    quietHours: false,
+    allowReentry: true,
+  },
+  {
+    key: "boutique:compleanno",
+    name: "Auguri di compleanno con buono 10€",
+    trigger: "BIRTHDAY",
+    triggerConfig: {},
+    steps: [
+      template(
+        "auguri_compleanno",
+        "Buon compleanno {{1}}! 🎉 Per festeggiarti ti regaliamo un buono da 10€ su un trattamento a tua scelta, valido fino al {{2}}. Mostra questo messaggio in cassa e prenota scrivendoci al 351 857 1506 o chiamandoci. Un abbraccio da La Boutique del Benessere 🩵",
+        ["{{nome}}", "{{scadenza}}"]
+      ),
+    ],
+    quietHours: true,
     allowReentry: true,
   },
   {

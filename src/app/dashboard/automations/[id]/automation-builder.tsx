@@ -590,6 +590,20 @@ function StepBody({ step, onChange }: { step: AutomationStep; onChange: (step: A
   switch (step.type) {
     case "SEND_TEMPLATE":
       return (
+        <div className="space-y-3">
+          <div className="grid gap-2 sm:grid-cols-[200px_minmax(0,1fr)] sm:items-center">
+            <select
+              className={selectClass}
+              value={step.toPhone !== undefined ? "staff" : "client"}
+              onChange={(e) => onChange({ ...step, toPhone: e.target.value === "staff" ? "" : undefined })}
+            >
+              <option value="client">Alla cliente</option>
+              <option value="staff">A un numero dello staff</option>
+            </select>
+            {step.toPhone !== undefined ? (
+              <Input value={step.toPhone} onChange={(e) => onChange({ ...step, toPhone: e.target.value })} placeholder="Es. 351 857 1506 (avviso a Roberta)" />
+            ) : null}
+          </div>
         <TemplatePicker
           templates={builder.templates}
           loaded={builder.templatesLoaded}
@@ -599,6 +613,7 @@ function StepBody({ step, onChange }: { step: AutomationStep; onChange: (step: A
           suggestedText={suggestedTextFor(builder.presetKey, step.id)}
           onCreateTemplate={() => builder.onCreateTemplate(step.id)}
         />
+        </div>
       );
     case "SEND_TEXT":
       return (

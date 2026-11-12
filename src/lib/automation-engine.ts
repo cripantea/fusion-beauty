@@ -194,6 +194,8 @@ async function advanceRun(runId: string): Promise<{ sent: boolean }> {
     cognome: client.lastName,
     centro: run.tenant.name,
     prenota: `${(process.env.APP_BASE_URL ?? "https://beauty.fusionsoft.it").replace(/\/$/, "")}/embed/${run.tenant.slug}`,
+    telefono: client.phone,
+    scadenza: new Intl.DateTimeFormat("it-IT", { timeZone: TIME_ZONE, day: "numeric", month: "long" }).format(new Date(Date.now() + 14 * 86_400_000)),
     ...context.vars,
   };
   const note = (step: string, ok: boolean, message: string) => log.push({ at: new Date().toISOString(), step, ok, message });
@@ -230,11 +232,14 @@ async function advanceRun(runId: string): Promise<{ sent: boolean }> {
     }
 
     if (step.type === "SEND_TEMPLATE") {
-      // Meta rifiuta i parametri vuoti: al loro posto un trattino.
-      const params = step.params.map((p) => renderVariables(p, vars).replace(/\{\{[a-z]+\}\}/gi, "").trim() || "-");
+      // Meta rifiuta i parametri vuoti (al loro posto un trattino) e quelli con a capo.
+      const params = step.params.map(
+        (p) => renderVariables(p, vars).replace(/\{\{[a-z]+\}\}/gi, "").replace(/\s*\n+\s*/g, " · ").replace(/ {4,}/g, " ").trim() || "-"
+      );
+      const toStaff = Boolean(step.toPhone && step.toPhone.replace(/\D/g, "").length >= 8);
       const outcome = await sendWhatsappTemplate(run.tenantId, {
-        phone: client.phone,
-        clientId: client.id,
+        phone: toStaff ? step.toPhone! : client.phone,
+        clientId: toStaff ? null : client.id,
         templateName: step.templateName,
         language: step.language,
         templateBody: step.templateBody,
@@ -242,7 +247,7 @@ async function advanceRun(runId: string): Promise<{ sent: boolean }> {
         dedupeKey: `auto:${run.id}:${step.id}`,
       });
       if (outcome.ok) sent = true;
-      note(`WhatsApp “${step.templateName}”`, outcome.ok, outcome.ok ? "Inviato." : outcome.error);
+      note(`WhatsApp “${step.templateName}”${toStaff ? " allo staff" : ""}`, outcome.ok, outcome.ok ? "Inviato." : outcome.error);
     } else if (step.type === "SEND_TEXT") {
       const outcome = await sendWhatsappText(run.tenantId, { phone: client.phone, clientId: client.id, body: renderVariables(step.message, vars) });
       if (outcome.ok) sent = true;

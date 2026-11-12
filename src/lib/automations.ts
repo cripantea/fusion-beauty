@@ -22,6 +22,8 @@ const sendTemplateStep = z.object({
   templateBody: z.string().max(2000).default(""),
   /** Valori di {{1}}, {{2}}…: testo con variabili come {{nome}}. */
   params: z.array(z.string().max(500)).max(20).default([]),
+  /** Vuoto = alla cliente; altrimenti a questo numero (es. avviso allo staff). */
+  toPhone: z.string().trim().max(30).optional(),
 });
 
 const sendTextStep = z.object({
@@ -200,8 +202,10 @@ export function variablesFor(trigger: AutomationTrigger) {
   const base = [
     { key: "nome", label: "Nome della cliente" },
     { key: "cognome", label: "Cognome" },
+    { key: "telefono", label: "Telefono della cliente" },
     { key: "centro", label: "Nome del centro" },
     { key: "prenota", label: "Link per prenotare online" },
+    { key: "scadenza", label: "Data fra 14 giorni (es. scadenza di un buono)" },
   ];
   const appointment = [
     { key: "trattamento", label: "Trattamento" },
@@ -211,6 +215,7 @@ export function variablesFor(trigger: AutomationTrigger) {
   ];
   if (TRIGGER_INFO[trigger].appointmentVars) return [...base, ...appointment];
   if (trigger === "QUESTIONNAIRE") return [...base, { key: "link", label: "Link del questionario" }];
+  if (trigger === "FORM_SUBMITTED") return [...base, { key: "risposte", label: "Cosa ha scritto nel form" }];
   return base;
 }
 
@@ -240,6 +245,7 @@ export function automationProblem(input: AutomationInput): string | null {
       sends++;
       if (!step.templateName) problem = "Scegli il template da inviare in ogni passo “Invia WhatsApp”.";
       else if (step.params.some((p) => !p.trim())) problem = "Compila tutte le variabili del template ({{1}}, {{2}}…).";
+      else if (step.toPhone !== undefined && step.toPhone.replace(/\D/g, "").length < 8) problem = "Scrivi il numero dello staff a cui mandare il messaggio.";
     }
     if (step.type === "SEND_TEXT") {
       sends++;
