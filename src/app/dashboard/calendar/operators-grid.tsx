@@ -204,12 +204,6 @@ export function OperatorsGrid({
     absence: dayAbsences.find((a) => a.userId === operator.id),
   }));
 
-  // Prenotazioni online senza operatrice: colonna a parte, solo se ce ne sono.
-  const unassigned = dayAppointments.filter((a) => !a.operator);
-  if (unassigned.length > 0) {
-    columns.push({ id: null, label: "Da assegnare", items: unassigned, blocks: [] });
-  }
-
   const grid = getGrid(operators, dayAbsences, [...dayAppointments, ...dayBlocks], date);
   const hours = Array.from({ length: grid.endHour - grid.startHour }, (_, i) => grid.startHour + i);
   const gridHeight = hours.length * HOUR_HEIGHT;

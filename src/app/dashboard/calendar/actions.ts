@@ -87,8 +87,10 @@ async function resolveOperatorId(
 ): Promise<
   { ok: true; operatorId: string | null } | { ok: false; error: string }
 > {
+  // Ogni appuntamento va nell'agenda di un'operatrice (se il centro ne ha).
   if (!operatorId) {
-    return { ok: true, operatorId: null };
+    const hasOperators = await prisma.user.count({ where: { tenantId, isActive: true, role: { in: ["ADMIN", "OPERATOR"] } } });
+    return hasOperators > 0 ? { ok: false, error: "Scegli l'operatrice." } : { ok: true, operatorId: null };
   }
 
   const operator = await prisma.user.findFirst({

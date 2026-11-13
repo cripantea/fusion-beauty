@@ -40,61 +40,49 @@ type Db = Prisma.TransactionClient;
 type Interval = { start: number; end: number };
 
 /**
- * Agenda del giorno per un trattamento, come su Treatwell/Fresha: ogni
- * operatrice che lo esegue ha le sue fasce di lavoro (le eccezioni del giorno
- * vincono: senza orari = assente) meno i suoi appuntamenti e impegni.
- * Appuntamenti senza operatrice ed eventi del calendario collegato tengono
- * occupata una qualsiasi operatrice libera in quell'orario ("shared").
- * Senza orari di lavoro per nessuno: una sola poltrona negli orari standard.
+ * Agenda del giorno per un trattamento, come su Treatwell/Fresha: si prenota
+ * sempre con un'operatrice. Ognuna che esegue il trattamento ha le sue fasce
+ * di lavoro (le eccezioni del giorno vincono: senza orari = assente; chi non
+ * ha ancora orari impostati lavora negli orari standard) meno i suoi
+ * appuntamenti e impegni. Eventi del calendario collegato e vecchi
+ * appuntamenti senza operatrice tengono occupata un'operatrice libera ("shared").
  */
-type DayPlan =
-  | { mode: "default"; open: Interval[]; busy: Interval[] }
-  | {
-      mode: "staff";
-      operators: { id: string; shifts: Interval[]; busy: Interval[]; booked: number }[];
-      shared: Interval[];
-    };
+type DayPlan = {
+  operators: { id: string; shifts: Interval[]; busy: Interval[]; booked: number }[];
+  shared: Interval[];
+};
 
 const overlaps = (a: Interval, start: number, end: number) => a.start < end && a.end > start;
 const toInterval = (r: { startTime: Date; endTime: Date }): Interval => ({ start: r.startTime.getTime(), end: r.endTime.getTime() });
 
 async function loadDayPlan(db: Db, tenantId: string, day: string, serviceId: string): Promise<DayPlan> {
   const dow = ((new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7) + 1; // 1=lun … 7=dom
-  const anyHours = await db.workingHours.count({ where: { tenantId, isActive: true } });
 
-  if (anyHours === 0) {
-    if (!DEFAULT_HOURS.days.includes(dow)) return { mode: "default", open: [], busy: [] };
-    const open = { start: romeTime(day, DEFAULT_HOURS.start).getTime(), end: romeTime(day, DEFAULT_HOURS.end).getTime() };
-    const window = { startTime: { lt: new Date(open.end) }, endTime: { gt: new Date(open.start) } };
-    const [appointments, external] = await Promise.all([
-      db.appointment.findMany({ where: { tenantId, status: { in: ["BOOKED", "CONFIRMED"] }, ...window }, select: { startTime: true, endTime: true } }),
-      db.externalCalendarEvent.findMany({ where: { tenantId, ...window }, select: { startTime: true, endTime: true } }),
-    ]);
-    return { mode: "default", open: [open], busy: [...appointments, ...external].map(toInterval) };
-  }
-
-  // Operatrici attive che eseguono il trattamento (anche la titolare, se ha orari).
-  const able = { tenantId, isActive: true, excludedServices: { none: { id: serviceId } } };
-  const [hours, exceptions] = await Promise.all([
-    db.workingHours.findMany({
-      where: { tenantId, isActive: true, dayOfWeek: dow, user: able },
-      select: { userId: true, startTime: true, endTime: true },
-    }),
-    db.staffException.findMany({
-      where: { tenantId, date: new Date(`${day}T00:00:00Z`), user: able },
-      select: { userId: true, startTime: true, endTime: true },
-    }),
-  ]);
+  // Le stesse operatrici delle colonne in agenda, se eseguono il trattamento.
+  const operators = await db.user.findMany({
+    where: { tenantId, isActive: true, role: { in: ["ADMIN", "OPERATOR"] }, excludedServices: { none: { id: serviceId } } },
+    select: {
+      id: true,
+      workingHours: { where: { isActive: true }, select: { dayOfWeek: true, startTime: true, endTime: true } },
+      staffExceptions: { where: { date: new Date(`${day}T00:00:00Z`) }, select: { startTime: true, endTime: true } },
+    },
+  });
 
   const shifts = new Map<string, Interval[]>();
   const addShift = (userId: string, from: string, to: string) => {
     const shift = { start: romeTime(day, from).getTime(), end: romeTime(day, to).getTime() };
     if (shift.end > shift.start) shifts.set(userId, [...(shifts.get(userId) ?? []), shift]);
   };
-  const exceptionUsers = new Set(exceptions.map((e) => e.userId));
-  for (const h of hours) if (!exceptionUsers.has(h.userId)) addShift(h.userId, h.startTime, h.endTime);
-  for (const e of exceptions) if (e.startTime && e.endTime) addShift(e.userId, e.startTime, e.endTime);
-  if (shifts.size === 0) return { mode: "staff", operators: [], shared: [] };
+  for (const op of operators) {
+    if (op.staffExceptions.length > 0) {
+      for (const e of op.staffExceptions) if (e.startTime && e.endTime) addShift(op.id, e.startTime, e.endTime);
+    } else if (op.workingHours.length > 0) {
+      for (const h of op.workingHours) if (h.dayOfWeek === dow) addShift(op.id, h.startTime, h.endTime);
+    } else if (DEFAULT_HOURS.days.includes(dow)) {
+      addShift(op.id, DEFAULT_HOURS.start, DEFAULT_HOURS.end);
+    }
+  }
+  if (shifts.size === 0) return { operators: [], shared: [] };
 
   const all = [...shifts.values()].flat();
   const window = {
@@ -112,7 +100,6 @@ async function loadDayPlan(db: Db, tenantId: string, day: string, serviceId: str
   ]);
 
   return {
-    mode: "staff",
     operators: userIds.map((id) => {
       const own = appointments.filter((a) => a.operatorId === id);
       return {
@@ -126,15 +113,8 @@ async function loadDayPlan(db: Db, tenantId: string, day: string, serviceId: str
   };
 }
 
-/**
- * Operatrici libere per tutto [start, end), dalla meno impegnata del giorno.
- * `null` = orario non prenotabile; `[]` (agenda standard) = libero, senza operatrice.
- */
+/** Operatrici libere per tutto [start, end), dalla meno impegnata del giorno; `null` = orario non prenotabile. */
 function freeOperatorsAt(plan: DayPlan, start: number, end: number): string[] | null {
-  if (plan.mode === "default") {
-    const inside = plan.open.some((i) => i.start <= start && i.end >= end);
-    return inside && !plan.busy.some((b) => overlaps(b, start, end)) ? [] : null;
-  }
   const free = plan.operators.filter(
     (op) => op.shifts.some((s) => s.start <= start && s.end >= end) && !op.busy.some((b) => overlaps(b, start, end))
   );
@@ -145,7 +125,7 @@ function freeOperatorsAt(plan: DayPlan, start: number, end: number): string[] | 
 }
 
 function slotsOf(plan: DayPlan, durationMinutes: number): Date[] {
-  const ranges = plan.mode === "default" ? plan.open : plan.operators.flatMap((op) => op.shifts);
+  const ranges = plan.operators.flatMap((op) => op.shifts);
   if (ranges.length === 0) return [];
   const dayStart = Math.min(...ranges.map((r) => r.start));
   const dayEnd = Math.max(...ranges.map((r) => r.end));
@@ -257,11 +237,11 @@ export async function createPublicBooking(values: unknown): Promise<CreateBookin
         const plan = await loadDayPlan(tx, tenant.id, romeDay(startTime), service.id);
         const offered = slotsOf(plan, service.durationMinutes).some((slot) => slot.getTime() === startTime.getTime());
         const free = offered ? freeOperatorsAt(plan, startTime.getTime(), endTime.getTime()) : null;
-        if (!free) {
+        if (!free || free.length === 0) {
           throw new Error("SLOT_TAKEN");
         }
-        // Va all'operatrice libera meno impegnata quel giorno (agenda standard: nessuna).
-        const operatorId = free[0] ?? null;
+        // Va all'operatrice libera meno impegnata quel giorno.
+        const operatorId = free[0];
 
         let client = await tx.client.findFirst({
           where: { tenantId: tenant.id, phone: parsed.data.phone },

@@ -219,6 +219,10 @@ export function AppointmentFormDialog({
         toast.error("Data o ora non valide.");
         return;
       }
+      if (operators.length > 0 && values.operatorId === NO_OPERATOR_VALUE) {
+        form.setError("operatorId", { message: "Scegli l'operatrice." });
+        return;
+      }
 
       const payload = {
         clientId: values.clientId,
@@ -423,12 +427,6 @@ export function AppointmentFormDialog({
                   <FormItem>
                     <FormLabel>Operatrice</FormLabel>
                     <div className="flex flex-wrap gap-2">
-                      <Chip
-                        active={field.value === NO_OPERATOR_VALUE}
-                        onClick={() => field.onChange(NO_OPERATOR_VALUE)}
-                      >
-                        Qualsiasi
-                      </Chip>
                       {availableOperators.map((operator) => (
                         <Chip
                           key={operator.id}

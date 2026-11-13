@@ -231,7 +231,7 @@ function ProposeBody({ request, tenantSlug, operators, onSent }: { request: Requ
   const [slots, setSlots] = useState<string[] | null>(null);
   const [slot, setSlot] = useState<string | null>(null);
   const [manualTime, setManualTime] = useState("");
-  const [operatorId, setOperatorId] = useState<string>(request.operator?.id ?? "");
+  const [operatorId, setOperatorId] = useState<string>(request.operator?.id ?? operators[0]?.id ?? "");
   const [isPending, startTransition] = useTransition();
 
   function loadSlots(day: string) {
@@ -301,7 +301,6 @@ function ProposeBody({ request, tenantSlug, operators, onSent }: { request: Requ
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-muted-foreground">Operatrice</Label>
             <select className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm" value={operatorId} onChange={(e) => setOperatorId(e.target.value)}>
-              <option value="">Qualsiasi</option>
               {operators.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.firstName}
