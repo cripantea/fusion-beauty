@@ -304,6 +304,7 @@ function PlanCard({
   const [expanded, setExpanded] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [linkTarget, setLinkTarget] = useState<PaymentLinkTarget | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const completed = plan.sessions.filter((s) => s.completedAt !== null).length;
@@ -528,15 +529,36 @@ function PlanCard({
                 >
                   Segna completato
                 </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-8 text-xs text-destructive/70 hover:text-destructive"
-                  onClick={() => handleStatusChange("CANCELLED")}
-                  disabled={isPending}
-                >
-                  Annulla percorso
-                </Button>
+                {confirmCancel ? (
+                  <>
+                    <span className="self-center text-xs text-destructive">Annullare il percorso?</span>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-8 text-xs"
+                      onClick={() => {
+                        setConfirmCancel(false);
+                        handleStatusChange("CANCELLED");
+                      }}
+                      disabled={isPending}
+                    >
+                      Sì, annulla
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setConfirmCancel(false)}>
+                      No
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 text-xs text-destructive/70 hover:text-destructive"
+                    onClick={() => setConfirmCancel(true)}
+                    disabled={isPending}
+                  >
+                    Annulla percorso
+                  </Button>
+                )}
               </div>
             </div>
           )}

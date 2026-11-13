@@ -109,7 +109,7 @@ export function ClientConsentsCard({ clientId, clientName, consents }: ClientCon
         />
 
         {consents.items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nessun modello di consenso attivo.</p>
+          <p className="text-sm text-muted-foreground">Per ora questa cliente non ha consensi da firmare.</p>
         ) : (
           <ul className="divide-y">
             {consents.items.map((item) => (
