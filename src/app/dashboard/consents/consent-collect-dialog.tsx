@@ -176,7 +176,9 @@ function ConsentCollectBody({
           <p className="text-sm text-muted-foreground">Caricamento...</p>
         ) : templates.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Nessun modello di consenso attivo. Un amministratore può crearli in &quot;Modelli consenso&quot;.
+            {appointment
+              ? `Per ${appointment.serviceName} non c'è nessun consenso da far firmare.`
+              : "Nessun modello di consenso attivo. Un amministratore può crearli in “Modelli consenso”."}
           </p>
         ) : (
           <div className="min-w-0 space-y-4">
