@@ -408,7 +408,8 @@ function PlanCard({
                   clientPhone: client.phone,
                   planId: plan.id,
                   amount: Math.round(remaining * 100) / 100,
-                  description: `Percorso ${plan.name}`,
+                  // "Percorso laser…" resta com'è, "Laser 6 sedute" diventa "Percorso Laser 6 sedute".
+                  description: /^percorso\b/i.test(plan.name) ? plan.name : `Percorso ${plan.name}`,
                 })
               }
             >
