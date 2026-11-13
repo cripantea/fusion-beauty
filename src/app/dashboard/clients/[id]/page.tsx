@@ -238,7 +238,6 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
         <ClientPlansCard
           client={{ id: client.id, firstName: client.firstName, phone: client.phone }}
           onlinePayments={onlinePayments}
-          paymentsEnabled={paymentsEnabled}
         />
 
         <Panel title="Storico appuntamenti" className="md:col-span-2">

@@ -291,14 +291,11 @@ function PlanCard({
   plan,
   client,
   onlinePayments,
-  paymentsEnabled,
   onUpdated,
 }: {
   plan: ClientPlanDTO;
   client: PlanClient;
   onlinePayments: boolean;
-  /** Cassa attiva: si possono registrare incassi a mano (contanti, POS, bonifico). */
-  paymentsEnabled: boolean;
   onUpdated: (plan: ClientPlanDTO) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -394,14 +391,12 @@ function PlanCard({
       </button>
 
       {/* Pagamento: sempre a portata, senza aprire il percorso */}
-      {canPay && (paymentsEnabled || onlinePayments) && (
+      {canPay && (
         <div className="flex flex-wrap gap-2 px-4 pb-3">
-          {paymentsEnabled && (
-            <Button size="sm" className="h-8 gap-1.5" onClick={() => setPayOpen(true)}>
-              <Wallet className="size-3.5" />
-              Registra pagamento
-            </Button>
-          )}
+          <Button size="sm" className="h-8 gap-1.5" onClick={() => setPayOpen(true)}>
+            <Wallet className="size-3.5" />
+            Registra pagamento
+          </Button>
           {onlinePayments && (
             <Button
               size="sm"
@@ -565,7 +560,7 @@ function PlanCard({
         </div>
       )}
 
-      {canPay && paymentsEnabled && (
+      {canPay && (
         <PlanPaymentDialog key={`${plan.id}-${plan.paidAmount}`} plan={plan} open={payOpen} onOpenChange={setPayOpen} onSaved={onUpdated} />
       )}
       <PaymentLinkDialog target={linkTarget} onClose={() => setLinkTarget(null)} />
@@ -578,11 +573,9 @@ function PlanCard({
 export function ClientPlansCard({
   client,
   onlinePayments,
-  paymentsEnabled,
 }: {
   client: PlanClient;
   onlinePayments: boolean;
-  paymentsEnabled: boolean;
 }) {
   const clientId = client.id;
   const [plans, setPlans] = useState<ClientPlanDTO[]>([]);
@@ -625,7 +618,7 @@ export function ClientPlansCard({
             </p>
           )}
           {active.map((plan) => (
-            <PlanCard key={plan.id} plan={plan} client={client} onlinePayments={onlinePayments} paymentsEnabled={paymentsEnabled} onUpdated={handleUpdated} />
+            <PlanCard key={plan.id} plan={plan} client={client} onlinePayments={onlinePayments} onUpdated={handleUpdated} />
           ))}
           {past.length > 0 && (
             <>
@@ -634,7 +627,7 @@ export function ClientPlansCard({
                 Chiusi
               </p>
               {past.map((plan) => (
-                <PlanCard key={plan.id} plan={plan} client={client} onlinePayments={onlinePayments} paymentsEnabled={paymentsEnabled} onUpdated={handleUpdated} />
+                <PlanCard key={plan.id} plan={plan} client={client} onlinePayments={onlinePayments} onUpdated={handleUpdated} />
               ))}
             </>
           )}
