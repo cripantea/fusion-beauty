@@ -117,7 +117,9 @@ function StepBar({ step }: { step: Step }) {
 function categoryOf(name: string) {
   if (name.includes(" — ")) return name.split(" — ")[0].trim();
   const first = name.split(/\s+/)[0] ?? name;
-  return first.charAt(0).toUpperCase() + first.slice(1);
+  const label = first.charAt(0).toUpperCase() + first.slice(1);
+  // "Trattamento K-Peel", "Trattamento corpo…" → categoria "Trattamenti"
+  return label === "Trattamento" ? "Trattamenti" : label;
 }
 
 function ServicePicker({ services, onSelect }: { services: PublicServiceDTO[]; onSelect: (service: PublicServiceDTO) => void }) {
