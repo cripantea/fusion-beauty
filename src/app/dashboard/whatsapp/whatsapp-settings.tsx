@@ -14,7 +14,15 @@ import type { FusionWaNumberStatus, FusionWaSyncState, FusionWaTemplate } from "
 import { cn } from "@/lib/utils";
 import { TEMPLATE_STATUS } from "@/lib/whatsapp-templates";
 
-import { disconnectWhatsapp, fetchTemplates, reactivateNumber, removeTemplate, syncAppContacts } from "./actions";
+import {
+  confirmVerificationCode,
+  disconnectWhatsapp,
+  fetchTemplates,
+  reactivateNumber,
+  removeTemplate,
+  sendVerificationCode,
+  syncAppContacts,
+} from "./actions";
 import { FusionWaSignupWidget } from "./signup-widget";
 
 export type WhatsappTab = "numero" | "template" | "rubrica";
@@ -65,6 +73,9 @@ export function WhatsappSettings({
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [pin, setPin] = useState("");
   const [askPin, setAskPin] = useState(false);
+  // Meta dà il numero "non verificato": serve un codice via SMS o chiamata.
+  const [verifyStep, setVerifyStep] = useState<"off" | "choose" | "code">("off");
+  const [code, setCode] = useState("");
 
   const loadTemplates = useCallback(() => {
     startTransition(async () => {
@@ -212,6 +223,7 @@ export function WhatsappSettings({
                             if (!result.success) {
                               toast.error(result.error);
                               if (/PIN/i.test(result.error)) setAskPin(true);
+                              if (/non è verificato/i.test(result.error)) setVerifyStep("choose");
                               return;
                             }
                             toast.success("Numero riattivato.");
@@ -228,6 +240,68 @@ export function WhatsappSettings({
                         </Button>
                       ) : null}
                     </div>
+                    {verifyStep !== "off" ? (
+                      <div className="space-y-2 border-t border-amber-200 pt-2">
+                        <p className="text-xs">
+                          Meta chiede di verificare di nuovo il numero: arriva un codice al <b>{connection.phoneNumber}</b>. Serve
+                          chi ha in mano quel telefono (SIM).
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {(["SMS", "VOICE"] as const).map((method) => (
+                            <Button
+                              key={method}
+                              size="sm"
+                              variant="outline"
+                              disabled={isPending}
+                              onClick={() =>
+                                startTransition(async () => {
+                                  const result = await sendVerificationCode(method);
+                                  if (!result.success) {
+                                    toast.error(result.error);
+                                    return;
+                                  }
+                                  toast.success(method === "SMS" ? "Codice inviato via SMS." : "Tra poco arriva la chiamata con il codice.");
+                                  setVerifyStep("code");
+                                })
+                              }
+                            >
+                              {method === "SMS" ? "Codice via SMS" : "Codice con chiamata"}
+                            </Button>
+                          ))}
+                        </div>
+                        {verifyStep === "code" ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <input
+                              inputMode="numeric"
+                              maxLength={8}
+                              value={code}
+                              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                              placeholder="Codice ricevuto"
+                              className="h-9 w-40 rounded-md border bg-white px-3 text-sm"
+                            />
+                            <Button
+                              size="sm"
+                              disabled={isPending || code.length < 4 || (askPin && pin.length !== 6)}
+                              onClick={() =>
+                                startTransition(async () => {
+                                  const result = await confirmVerificationCode(code, askPin ? pin : undefined);
+                                  if (!result.success) {
+                                    toast.error(result.error);
+                                    if (/PIN/i.test(result.error)) setAskPin(true);
+                                    return;
+                                  }
+                                  toast.success("Numero verificato e riattivato.");
+                                  setVerifyStep("off");
+                                  router.refresh();
+                                })
+                              }
+                            >
+                              Conferma codice
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 <p className="text-xs text-muted-foreground sm:col-span-3">Collegato il {formatDate(connection.connectedAt)}.</p>

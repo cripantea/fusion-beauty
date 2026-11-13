@@ -222,6 +222,24 @@ export async function registerNumber(tenantId: string, pin?: string): Promise<{ 
   return { ok: true };
 }
 
+/** Chiede a Meta un codice di verifica per il numero (SMS o chiamata), quando Meta lo dà "non verificato". */
+export async function requestVerificationCode(tenantId: string, method: "SMS" | "VOICE"): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await request("/api/v1/connections/verification", { body: { externalCustomerId: tenantId, action: "request", method } });
+  if (!res.ok) return res;
+  if (res.status >= 400) return { ok: false, error: errorOf(res.data, res.status) };
+  return { ok: true };
+}
+
+/** Conferma il codice ricevuto e registra di nuovo il numero (PIN: quello indicato o il predefinito di Fusion WA). */
+export async function verifyAndRegister(tenantId: string, code: string, pin?: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await request("/api/v1/connections/verification", {
+    body: { externalCustomerId: tenantId, action: "verify", code, ...(pin ? { pin } : {}) },
+  });
+  if (!res.ok) return res;
+  if (res.status >= 400) return { ok: false, error: errorOf(res.data, res.status) };
+  return { ok: true };
+}
+
 /** Richiede di nuovo a Meta la rubrica dell'app Business (possibile solo entro 24 ore dal collegamento). */
 export async function requestContactsSync(tenantId: string, syncType: "smb_app_state_sync" | "history" = "smb_app_state_sync"): Promise<{ ok: true } | { ok: false; error: string }> {
   const res = await request("/api/v1/connections/request-history-sync", {

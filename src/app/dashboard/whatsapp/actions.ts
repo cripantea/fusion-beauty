@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { requireTenantAdmin } from "@/lib/auth-context";
-import { createTemplate, deleteTemplate, getConnectionState, listTemplates, registerNumber, requestContactsSync, resetConnection, type FusionWaTemplate } from "@/lib/fusion-wa";
+import { createTemplate, deleteTemplate, getConnectionState, listTemplates, registerNumber, requestContactsSync, requestVerificationCode, verifyAndRegister, resetConnection, type FusionWaTemplate } from "@/lib/fusion-wa";
 import { parseStoredSteps, walkSteps } from "@/lib/automations";
 import { prisma } from "@/lib/prisma";
 
@@ -123,6 +123,26 @@ export async function reactivateNumber(pin?: string): Promise<Result> {
   const clean = pin?.trim();
   if (clean && !/^\d{6}$/.test(clean)) return { success: false, error: "Il PIN è di 6 cifre." };
   const result = await registerNumber(tenantId, clean || undefined);
+  if (!result.ok) return { success: false, error: result.error };
+  revalidatePath("/dashboard/whatsapp");
+  return { success: true };
+}
+
+/** Numero "non verificato" su Meta: arriva un codice al numero del centro (SMS o chiamata). */
+export async function sendVerificationCode(method: "SMS" | "VOICE"): Promise<Result> {
+  const { tenantId } = await requireTenantAdmin();
+  const result = await requestVerificationCode(tenantId, method === "VOICE" ? "VOICE" : "SMS");
+  return result.ok ? { success: true } : { success: false, error: result.error };
+}
+
+/** Conferma il codice ricevuto e riattiva il numero. */
+export async function confirmVerificationCode(code: string, pin?: string): Promise<Result> {
+  const { tenantId } = await requireTenantAdmin();
+  const clean = code.replace(/\D/g, "");
+  if (clean.length < 4 || clean.length > 8) return { success: false, error: "Scrivi il codice ricevuto (6 cifre)." };
+  const cleanPin = pin?.trim();
+  if (cleanPin && !/^\d{6}$/.test(cleanPin)) return { success: false, error: "Il PIN è di 6 cifre." };
+  const result = await verifyAndRegister(tenantId, clean, cleanPin || undefined);
   if (!result.ok) return { success: false, error: result.error };
   revalidatePath("/dashboard/whatsapp");
   return { success: true };
