@@ -8,6 +8,7 @@ import { AppointmentDetailDialog } from "@/app/dashboard/calendar/appointment-de
 import { AppointmentFormDialog } from "@/app/dashboard/calendar/appointment-form-dialog";
 import type { OperatorDTO } from "@/app/dashboard/calendar/actions";
 import type { AppointmentDTO } from "@/app/dashboard/calendar/dto";
+import { appointmentServiceNames, appointmentTotalPrice } from "@/lib/appointment-services";
 import type { ClientListItemDTO } from "@/app/dashboard/clients/actions";
 import { toNewClientListItem } from "@/app/dashboard/clients/list-item";
 import { QuickClientDialog } from "@/app/dashboard/clients/quick-client-dialog";
@@ -159,7 +160,7 @@ export function DashboardManager({
                 {next.client.firstName} {next.client.lastName}
               </div>
               <div className="mt-1 text-sm text-forest-foreground/80">
-                Trattamento: <strong className="text-white">{next.service.name}</strong>
+                {next.services.length > 1 ? "Trattamenti" : "Trattamento"}: <strong className="text-white">{appointmentServiceNames(next)}</strong>
               </div>
             </div>
           </div>
@@ -225,13 +226,13 @@ export function DashboardManager({
                         {appointment.client.firstName} {appointment.client.lastName}
                       </span>
                       <span className="block truncate text-xs text-muted-foreground">
-                        {appointment.service.name}
+                        {appointmentServiceNames(appointment)}
                         {appointment.operator ? ` · ${appointment.operator.firstName}` : ""}
                       </span>
                     </span>
                   </button>
                   <span className="text-sm font-semibold">
-                    {formatEuro((paymentsEnabled ? appointment.payment?.amount : undefined) ?? appointment.service.price)}
+                    {formatEuro((paymentsEnabled ? appointment.payment?.amount : undefined) ?? appointmentTotalPrice(appointment))}
                   </span>
                   {appointment.consentMissing ? <Pill tone="amber">Consenso</Pill> : null}
                   {paymentsEnabled && paid ? (
@@ -355,8 +356,8 @@ export function DashboardManager({
             clientFirstName: appointment.client.firstName,
             clientPhone: appointment.client.phone,
             appointmentId: appointment.id,
-            amount: appointment.service.price,
-            description: `${appointment.service.name} del ${new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "long" }).format(appointment.startTime)}`,
+            amount: appointmentTotalPrice(appointment),
+            description: `${appointmentServiceNames(appointment)} del ${new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "long" }).format(appointment.startTime)}`,
           });
         }}
       />

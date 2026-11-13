@@ -1,6 +1,7 @@
 "use server";
 
 import { getBaseUrl } from "@/lib/app-url";
+import { appointmentServiceIds } from "@/lib/appointment-services";
 import { getTenantContext } from "@/lib/auth-context";
 import { ensureConsentLink, getServiceConsentStatus } from "@/lib/consents";
 import { whatsappUrl } from "@/lib/format";
@@ -15,27 +16,26 @@ export type ConsentNoticeItem = {
 };
 
 /**
- * Consensi richiesti dai trattamenti: di un appuntamento (`serviceId`) oppure, nella scheda
- * cliente, dei suoi appuntamenti da oggi in poi.
+ * Consensi richiesti dai trattamenti: di un appuntamento (`serviceIds`, tutti i suoi trattamenti)
+ * oppure, nella scheda cliente, dei suoi appuntamenti da oggi in poi.
  */
-export async function getConsentNotices(input: { clientId: string; serviceId?: string }): Promise<ConsentNoticeItem[]> {
+export async function getConsentNotices(input: { clientId: string; serviceIds?: string[] }): Promise<ConsentNoticeItem[]> {
   const { tenantId } = await getTenantContext();
 
   const client = await prisma.client.findFirst({ where: { id: input.clientId, tenantId }, select: { id: true } });
   if (!client) return [];
 
   let serviceIds: string[];
-  if (input.serviceId) {
-    serviceIds = [input.serviceId];
+  if (input.serviceIds?.length) {
+    serviceIds = input.serviceIds;
   } else {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const upcoming = await prisma.appointment.findMany({
       where: { tenantId, clientId: client.id, startTime: { gte: today }, status: { in: ["BOOKED", "CONFIRMED"] } },
-      select: { serviceId: true },
-      distinct: ["serviceId"],
+      select: { serviceId: true, extraServices: { select: { serviceId: true } } },
     });
-    serviceIds = upcoming.map((appointment) => appointment.serviceId);
+    serviceIds = [...new Set(upcoming.flatMap((appointment) => appointmentServiceIds(appointment)))];
   }
 
   const statuses = await getServiceConsentStatus(tenantId, client.id, serviceIds);

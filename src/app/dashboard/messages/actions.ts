@@ -1,5 +1,6 @@
 "use server";
 
+import { extraServicesSelect } from "@/lib/appointment-services";
 import { getTenantContext } from "@/lib/auth-context";
 import { normalizePhoneForWhatsapp } from "@/lib/format";
 import { isFusionWaConfigured, listTemplates } from "@/lib/fusion-wa";
@@ -167,7 +168,12 @@ export async function getApprovedTemplates(clientId?: string): Promise<{ success
       ? prisma.appointment.findFirst({
           where: { tenantId, clientId, status: { in: ["BOOKED", "CONFIRMED"] }, startTime: { gte: new Date() } },
           orderBy: { startTime: "asc" },
-          select: { startTime: true, service: { select: { name: true } }, operator: { select: { firstName: true } } },
+          select: {
+            startTime: true,
+            service: { select: { name: true } },
+            extraServices: extraServicesSelect,
+            operator: { select: { firstName: true } },
+          },
         })
       : null,
   ]);

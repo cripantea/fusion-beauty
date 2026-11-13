@@ -3,6 +3,7 @@
 import { after } from "next/server";
 
 import { getBaseUrl } from "@/lib/app-url";
+import { appointmentServiceNames, extraServicesSelect } from "@/lib/appointment-services";
 import { getTenantContext } from "@/lib/auth-context";
 import { whatsappUrl } from "@/lib/format";
 import { emptyStats, getClientStatsMap, INACTIVE_MONTHS, monthsAgoDate } from "@/lib/insights";
@@ -127,7 +128,7 @@ export async function getClients(input?: {
       appointments: {
         orderBy: { startTime: "desc" },
         take: 1,
-        select: { startTime: true, service: { select: { name: true } } },
+        select: { startTime: true, service: { select: { name: true } }, extraServices: extraServicesSelect },
       },
     },
   });
@@ -154,7 +155,7 @@ export async function getClients(input?: {
       lastAppointment: client.appointments[0]
         ? {
             date: client.appointments[0].startTime,
-            serviceName: client.appointments[0].service.name,
+            serviceName: appointmentServiceNames(client.appointments[0]),
           }
         : null,
       visits: clientStats.visits,

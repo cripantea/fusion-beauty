@@ -1,4 +1,5 @@
 import { findClientIdByPhone } from "@/lib/client-phone";
+import { appointmentServiceNames } from "@/lib/appointment-services";
 import { normalizePhoneForWhatsapp } from "@/lib/format";
 import { isFusionWaConfigured, sendTemplate, sendText } from "@/lib/fusion-wa";
 import { prisma } from "@/lib/prisma";
@@ -14,9 +15,15 @@ export { TEMPLATE_VARIABLES } from "@/lib/whatsapp-shared";
 
 const TIME_ZONE = "Europe/Rome";
 
-export function appointmentVars(appointment: { startTime: Date; service: { name: string }; operator?: { firstName: string } | null }): TemplateVars {
+export function appointmentVars(appointment: {
+  startTime: Date;
+  service: { name: string };
+  /** Altri trattamenti nello stesso appuntamento: {{trattamento}} diventa "Manicure + Pedicure". */
+  extraServices?: { service: { name: string } }[];
+  operator?: { firstName: string } | null;
+}): TemplateVars {
   return {
-    trattamento: appointment.service.name,
+    trattamento: appointmentServiceNames(appointment),
     data: new Intl.DateTimeFormat("it-IT", { timeZone: TIME_ZONE, weekday: "long", day: "numeric", month: "long" }).format(appointment.startTime),
     ora: new Intl.DateTimeFormat("it-IT", { timeZone: TIME_ZONE, hour: "2-digit", minute: "2-digit" }).format(appointment.startTime),
     operatrice: appointment.operator?.firstName ?? "",

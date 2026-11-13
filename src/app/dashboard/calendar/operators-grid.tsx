@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 
 import { formatEuro } from "@/lib/format";
+import { appointmentServiceNames } from "@/lib/appointment-services";
 import { cn } from "@/lib/utils";
 
 import type { OperatorDTO } from "./actions";
@@ -374,14 +375,19 @@ export function OperatorsGrid({
                       )}
                       style={{ top, height }}
                     >
-                      {/* Prima il nome (si legge anche negli appuntamenti brevi), poi ora e trattamento. */}
+                      {/* Prima il nome (si legge anche negli appuntamenti brevi), poi ora, trattamenti e nota. */}
                       <div className="truncate leading-tight">
                         <span className={cn("font-bold", cancelled && "line-through")}>
                           {appointment.client.firstName} {appointment.client.lastName}
                         </span>{" "}
                         <span className="opacity-75">{timeFormatter.format(appointment.startTime)}</span>
                       </div>
-                      <div className="truncate opacity-75 leading-tight">{appointment.service.name}</div>
+                      <div className="truncate opacity-75 leading-tight">{appointmentServiceNames(appointment)}</div>
+                      {appointment.notes ? (
+                        <div className="truncate italic leading-tight opacity-75" title={appointment.notes}>
+                          📝 {appointment.notes}
+                        </div>
+                      ) : null}
                       {appointment.consentMissing ? (
                         <span className="mt-0.5 inline-block rounded border border-amber-300 bg-amber-100 px-1 text-[10px] font-semibold text-amber-900">
                           Consenso

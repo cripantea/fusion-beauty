@@ -41,7 +41,7 @@ type ConsentCollectDialogProps = {
   clientId: string;
   clientName: string;
   /** Presente quando si firma dal dettaglio appuntamento. */
-  appointment?: { id: string; serviceId: string; serviceName: string };
+  appointment?: { id: string; serviceIds: string[]; serviceName: string };
   /** Modello da preselezionare (es. dal pulsante "Firma" su un consenso mancante). */
   initialTemplateId?: string;
   onCollected?: () => void;
@@ -77,12 +77,13 @@ function ConsentCollectBody({
   const [isWhatsAppPending, startWhatsAppTransition] = useTransition();
 
   const appointmentId = appointment?.id;
-  const serviceId = appointment?.serviceId;
+  // Come testo: un nuovo array a ogni render non deve far ricaricare.
+  const serviceKey = appointment?.serviceIds.join(",");
 
   useEffect(() => {
     let cancelled = false;
 
-    getCollectableTemplates({ clientId, serviceId, appointmentId }).then((result) => {
+    getCollectableTemplates({ clientId, serviceIds: serviceKey ? serviceKey.split(",") : undefined, appointmentId }).then((result) => {
       if (cancelled) return;
       setTemplates(result);
       const preferred =
@@ -95,7 +96,7 @@ function ConsentCollectBody({
     return () => {
       cancelled = true;
     };
-  }, [clientId, serviceId, appointmentId, initialTemplateId]);
+  }, [clientId, serviceKey, appointmentId, initialTemplateId]);
 
   const selected = templates?.find((template) => template.id === templateId) ?? null;
   const checklist = selected?.checklist ?? [];

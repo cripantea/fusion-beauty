@@ -8,6 +8,7 @@ import { cleanAnamnesis, formatAnamnesis, isAnamnesisAnswered } from "@/lib/anam
 import { getBaseUrl } from "@/lib/app-url";
 import { getTenantContext } from "@/lib/auth-context";
 import { generateConsentPdf } from "@/lib/consent-pdf";
+import { appointmentServiceIds, extraServicesSelect } from "@/lib/appointment-services";
 import { ensureConsentLink } from "@/lib/consents";
 import { prisma } from "@/lib/prisma";
 import { removeStorageFile, writeStorageFile } from "@/lib/storage";
@@ -52,12 +53,12 @@ const linkedServicesInclude = {
 } as const;
 
 /**
- * Modelli attivi proponibili a una cliente. Con `serviceId` (appuntamento) i modelli
- * di trattamento sono limitati a quelli generici o dello stesso trattamento.
+ * Modelli attivi proponibili a una cliente. Con `serviceIds` (trattamenti dell'appuntamento) i
+ * modelli di trattamento sono limitati a quelli generici o di uno di quei trattamenti.
  */
 export async function getCollectableTemplates(input: {
   clientId: string;
-  serviceId?: string;
+  serviceIds?: string[];
   appointmentId?: string;
 }): Promise<CollectableTemplateDTO[]> {
   const { tenantId } = await getTenantContext();
@@ -74,13 +75,13 @@ export async function getCollectableTemplates(input: {
     where: {
       tenantId,
       isActive: true,
-      ...(input.serviceId
+      ...(input.serviceIds?.length
         ? {
             OR: [
               { type: { not: "TREATMENT" as const } },
               { serviceId: null, services: { none: {} } },
-              { serviceId: input.serviceId },
-              { services: { some: { id: input.serviceId } } },
+              { serviceId: { in: input.serviceIds } },
+              { services: { some: { id: { in: input.serviceIds } } } },
             ],
           }
         : {}),
@@ -162,18 +163,25 @@ export async function collectConsent(values: CollectConsentValues): Promise<Coll
         serviceId: true,
         startTime: true,
         service: { select: { name: true } },
+        extraServices: extraServicesSelect,
       },
     });
     if (!appointment) {
       return { success: false, error: "Appuntamento non trovato." };
     }
+    // Tutti i trattamenti dell'appuntamento (es. Manicure + Laser: vale il consenso del laser).
+    const appointmentServices = [
+      { id: appointment.serviceId, name: appointment.service.name },
+      ...appointment.extraServices.map((extra) => extra.service),
+    ];
     const linkedIds = [template.serviceId, ...template.services.map((service) => service.id)].filter(Boolean);
-    if (linkedIds.length > 0 && !linkedIds.includes(appointment.serviceId)) {
+    const matching = appointmentServices.filter((service) => linkedIds.includes(service.id));
+    if (linkedIds.length > 0 && matching.length === 0) {
       return { success: false, error: "Il modello non corrisponde al trattamento dell'appuntamento." };
     }
     appointmentId = appointment.id;
     appointmentStart = appointment.startTime;
-    appointmentServiceName = appointment.service.name;
+    appointmentServiceName = (matching.length > 0 ? matching : appointmentServices).map((service) => service.name).join(" + ");
   }
 
   const signature = decodeSignature(input.signature);
@@ -376,12 +384,11 @@ export async function getClientConsents(clientId: string): Promise<ClientConsent
     }),
     prisma.appointment.findMany({
       where: { tenantId, clientId, status: { not: "CANCELLED" } },
-      select: { serviceId: true },
-      distinct: ["serviceId"],
+      select: { serviceId: true, extraServices: { select: { serviceId: true } } },
     }),
   ]);
 
-  const clientServiceIds = new Set(appointments.map((appointment) => appointment.serviceId));
+  const clientServiceIds = new Set(appointments.flatMap((appointment) => appointmentServiceIds(appointment)));
 
   const items: ClientConsentItemDTO[] = [];
   for (const template of templates) {

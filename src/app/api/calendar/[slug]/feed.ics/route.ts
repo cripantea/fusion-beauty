@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { appointmentServiceNames, extraServicesSelect } from "@/lib/appointment-services";
 import { buildICSFeed } from "@/lib/ics";
 import { prisma } from "@/lib/prisma";
 
@@ -34,6 +35,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     include: {
       client: { select: { firstName: true, lastName: true } },
       service: { select: { name: true } },
+      extraServices: extraServicesSelect,
     },
     orderBy: { startTime: "asc" },
   });
@@ -44,7 +46,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       uid: `${appointment.id}@fusion-beauty`,
       start: appointment.startTime,
       end: appointment.endTime,
-      summary: `${appointment.service.name} — ${appointment.client.firstName} ${appointment.client.lastName}`,
+      summary: `${appointmentServiceNames(appointment)} — ${appointment.client.firstName} ${appointment.client.lastName}`,
     }))
   );
 

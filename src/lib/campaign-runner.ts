@@ -25,7 +25,15 @@ export async function audienceClients(tenantId: string, audience: Audience, now 
   if (audience.segment === "NEW" && audience.days) and.push({ createdAt: { gte: new Date(now.getTime() - audience.days * day) } });
   if (audience.segment === "INTEREST" && audience.interest) and.push({ interests: { has: audience.interest } });
   if (audience.segment === "SERVICE" && audience.serviceIds?.length) {
-    and.push({ appointments: { some: { status: "COMPLETED", serviceId: { in: audience.serviceIds } } } });
+    // Anche come trattamento in più nello stesso appuntamento (es. Manicure + Pedicure).
+    and.push({
+      appointments: {
+        some: {
+          status: "COMPLETED",
+          OR: [{ serviceId: { in: audience.serviceIds } }, { extraServices: { some: { serviceId: { in: audience.serviceIds } } } }],
+        },
+      },
+    });
   }
   if (audience.segment === "INACTIVE" && audience.days) {
     const limit = new Date(now.getTime() - audience.days * day);

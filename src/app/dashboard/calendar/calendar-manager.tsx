@@ -18,6 +18,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import type { ClientListItemDTO } from "@/app/dashboard/clients/actions";
 import { PaymentDialog } from "@/app/dashboard/payments/payment-dialog";
 import type { ServiceDTO } from "@/app/dashboard/services/actions";
+import { appointmentServiceNames, appointmentTotalPrice } from "@/lib/appointment-services";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { PageHeader } from "@/components/boutique";
@@ -322,8 +323,8 @@ export function CalendarManager({
             clientFirstName: appointment.client.firstName,
             clientPhone: appointment.client.phone,
             appointmentId: appointment.id,
-            amount: appointment.service.price,
-            description: `${appointment.service.name} del ${new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "long" }).format(appointment.startTime)}`,
+            amount: appointmentTotalPrice(appointment),
+            description: `${appointmentServiceNames(appointment)} del ${new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "long" }).format(appointment.startTime)}`,
           });
         }}
       />

@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { appointmentServiceNames } from "@/lib/appointment-services";
 import { formatEuro } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -170,10 +171,15 @@ export function AppointmentFormDialog({
   }
 
   const dateValue = useWatch({ control: form.control, name: "date" });
-  const serviceIdValue = useWatch({ control: form.control, name: "serviceId" });
+  const serviceIdsValue = useWatch({ control: form.control, name: "serviceIds" });
+  // Solo chi esegue tutti i trattamenti scelti.
   const availableOperators = useMemo(
-    () => operators.filter((operator) => !operator.excludedServiceIds.includes(serviceIdValue)),
-    [operators, serviceIdValue]
+    () => operators.filter((operator) => !serviceIdsValue.some((id) => operator.excludedServiceIds.includes(id))),
+    [operators, serviceIdsValue]
+  );
+  const selectedServices = useMemo(
+    () => serviceIdsValue.map((id) => services.find((service) => service.id === id)).filter((service) => service !== undefined),
+    [services, serviceIdsValue]
   );
   const notesValue = useWatch({ control: form.control, name: "notes" });
   const showNotes = notesOpen || Boolean(notesValue);
@@ -193,7 +199,7 @@ export function AppointmentFormDialog({
     if (appointment) {
       form.reset({
         clientId: appointment.client.id,
-        serviceId: appointment.service.id,
+        serviceIds: appointment.services.map((service) => service.id),
         operatorId: appointment.operator?.id ?? NO_OPERATOR_VALUE,
         date: toDateInputValue(appointment.startTime),
         time: toTimeInputValue(appointment.startTime),
@@ -243,7 +249,7 @@ export function AppointmentFormDialog({
 
       const payload = {
         clientId: values.clientId,
-        serviceId: values.serviceId,
+        serviceIds: values.serviceIds,
         operatorId: values.operatorId === NO_OPERATOR_VALUE ? null : values.operatorId,
         startTime,
         durationMinutes: values.durationMinutes,
@@ -288,8 +294,9 @@ export function AppointmentFormDialog({
     const operatorName = (id: string | null) =>
       id === null || id === NO_OPERATOR_VALUE ? "nessuna" : (operators.find((o) => o.id === id)?.firstName ?? "altra operatrice");
     if (values.clientId !== appointment.client.id) lines.push(`Cliente: ${clientName(appointment.client.id)} → ${clientName(values.clientId)}`);
-    if (values.serviceId !== appointment.service.id) {
-      lines.push(`Trattamento: ${appointment.service.name} → ${services.find((s) => s.id === values.serviceId)?.name ?? "altro"}`);
+    if (values.serviceIds.join() !== appointment.services.map((s) => s.id).join()) {
+      const newNames = values.serviceIds.map((id) => services.find((s) => s.id === id)?.name ?? "altro").join(" + ");
+      lines.push(`Trattamenti: ${appointmentServiceNames(appointment)} → ${newNames}`);
     }
     const oldOperator = appointment.operator?.id ?? NO_OPERATOR_VALUE;
     if (values.operatorId !== oldOperator) lines.push(`Operatrice: ${operatorName(oldOperator)} → ${operatorName(values.operatorId)}`);
@@ -330,7 +337,7 @@ export function AppointmentFormDialog({
               ? focusWhen
                 ? "Scegli il nuovo giorno e il nuovo orario."
                 : "Aggiorna i dati dell'appuntamento."
-              : "Scegli la cliente, il trattamento e l'orario: il resto è automatico."}
+              : "Scegli la cliente, i trattamenti e l'orario: il resto è automatico."}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -388,34 +395,50 @@ export function AppointmentFormDialog({
 
             <FormField
               control={form.control}
-              name="serviceId"
+              name="serviceIds"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Trattamento</FormLabel>
+                  <FormLabel>Trattamenti</FormLabel>
+                  <p className="-mt-1 text-xs text-muted-foreground">Tocca per aggiungere o togliere: puoi sceglierne più di uno.</p>
                   <div className="grid max-h-48 gap-2 overflow-y-auto sm:grid-cols-2">
                     {services.map((service) => {
-                      const active = field.value === service.id;
+                      const position = field.value.indexOf(service.id);
+                      const active = position >= 0;
                       return (
                         <button
                           key={service.id}
                           type="button"
                           aria-pressed={active}
                           onClick={() => {
-                            field.onChange(service.id);
-                            form.setValue("durationMinutes", service.durationMinutes);
+                            const next = active
+                              ? field.value.filter((id) => id !== service.id)
+                              : [...field.value, service.id];
+                            field.onChange(next);
+                            // Durata: la somma dei trattamenti scelti (si può sempre cambiare a mano).
+                            const total = next.reduce(
+                              (sum, id) => sum + (services.find((item) => item.id === id)?.durationMinutes ?? 0),
+                              0
+                            );
+                            if (total > 0) form.setValue("durationMinutes", total);
                             const operatorId = form.getValues("operatorId");
-                            const excluded = operators.find((operator) => operator.id === operatorId)
-                              ?.excludedServiceIds.includes(service.id);
+                            const excluded = operators
+                              .find((operator) => operator.id === operatorId)
+                              ?.excludedServiceIds.some((id) => next.includes(id));
                             if (excluded) form.setValue("operatorId", NO_OPERATOR_VALUE);
                           }}
                           className={cn(
-                            "rounded-xl border p-3 text-left transition-colors",
+                            "relative rounded-xl border p-3 text-left transition-colors",
                             active
                               ? "border-forest bg-forest text-forest-foreground"
                               : "border-mint-border bg-card hover:bg-mint-soft"
                           )}
                         >
-                          <div className="text-sm font-semibold leading-tight">{service.name}</div>
+                          {active && field.value.length > 1 ? (
+                            <span className="absolute right-2 top-2 flex size-5 items-center justify-center rounded-full bg-forest-foreground text-xs font-bold text-forest">
+                              {position + 1}
+                            </span>
+                          ) : null}
+                          <div className="pr-6 text-sm font-semibold leading-tight">{service.name}</div>
                           <div
                             className={cn(
                               "mt-0.5 text-xs",
@@ -428,6 +451,13 @@ export function AppointmentFormDialog({
                       );
                     })}
                   </div>
+                  {selectedServices.length > 1 ? (
+                    <p className="text-sm font-medium">
+                      {selectedServices.map((service) => service.name).join(" + ")} ·{" "}
+                      {selectedServices.reduce((sum, service) => sum + service.durationMinutes, 0)} min ·{" "}
+                      {formatEuro(selectedServices.reduce((sum, service) => sum + Number(service.price), 0))}
+                    </p>
+                  ) : null}
                   <FormMessage />
                 </FormItem>
               )}
@@ -526,9 +556,9 @@ export function AppointmentFormDialog({
                 <button
                   type="button"
                   onClick={() => setNotesOpen(true)}
-                  className="pb-2 text-sm font-semibold text-mint-ink hover:underline"
+                  className="h-10 rounded-full border border-dashed border-mint-border px-4 text-sm font-semibold text-mint-ink transition-colors hover:bg-mint-soft"
                 >
-                  + Aggiungi nota
+                  📝 Aggiungi nota
                 </button>
               )}
             </div>

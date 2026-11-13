@@ -1,6 +1,7 @@
 import "server-only";
 
 import { Prisma } from "@/generated/prisma/client";
+import { appointmentServiceNames, extraServicesSelect } from "@/lib/appointment-services";
 import { isPaymentsEnabled } from "@/lib/payments-mode";
 import { romeParts } from "@/lib/rome-time";
 import { prisma } from "@/lib/prisma";
@@ -19,11 +20,12 @@ export function isLoyal(visits: number) {
   return visits >= LOYAL_MIN_VISITS;
 }
 
-/** Spesa stimata per cliente: prezzi di listino dei trattamenti svolti. */
+/** Spesa stimata per cliente: prezzi di listino dei trattamenti svolti (anche quelli in più nello stesso appuntamento). */
 async function estimatedSpend(tenantId: string, clientIds?: string[]) {
   if (clientIds && clientIds.length === 0) return [];
   const rows = await prisma.$queryRaw<{ clientId: string; total: Prisma.Decimal | null }[]>`
-    SELECT a."clientId", SUM(s.price) AS total
+    SELECT a."clientId",
+      SUM(s.price + COALESCE((SELECT SUM(e.price) FROM appointment_extra_services e WHERE e."appointmentId" = a.id), 0)) AS total
     FROM appointments a JOIN services s ON s.id = a."serviceId"
     WHERE a."tenantId" = ${tenantId} AND a.status = 'COMPLETED'
       ${clientIds ? Prisma.sql`AND a."clientId" IN (${Prisma.join(clientIds)})` : Prisma.empty}
@@ -128,9 +130,9 @@ export async function getInactiveClients(
       status: "COMPLETED",
       OR: stale.map((group) => ({ clientId: group.clientId, startTime: group._max.startTime! })),
     },
-    select: { clientId: true, service: { select: { name: true } } },
+    select: { clientId: true, service: { select: { name: true } }, extraServices: extraServicesSelect },
   });
-  const serviceByClient = new Map(lastServices.map((row) => [row.clientId, row.service.name]));
+  const serviceByClient = new Map(lastServices.map((row) => [row.clientId, appointmentServiceNames(row)]));
 
   return stale
     .filter((group) => !withUpcoming.has(group.clientId) && clientById.has(group.clientId))

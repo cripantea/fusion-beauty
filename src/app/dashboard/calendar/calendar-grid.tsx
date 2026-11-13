@@ -3,6 +3,7 @@
 import { differenceInMinutes, format, isSameDay } from "date-fns";
 import { it } from "date-fns/locale";
 
+import { appointmentServiceNames } from "@/lib/appointment-services";
 import { cn } from "@/lib/utils";
 
 import type { AppointmentDTO } from "./dto";
@@ -105,10 +106,19 @@ export function CalendarGrid({ days, appointments, onAppointmentClick }: Calenda
                     )}
                     style={{ top, height }}
                   >
-                    <div className="truncate font-medium">
-                      {appointment.client.firstName} {appointment.client.lastName}
+                    {/* Nome e ora, poi trattamenti e nota (come nella vista per operatrice). */}
+                    <div className="truncate">
+                      <span className="font-bold">
+                        {appointment.client.firstName} {appointment.client.lastName}
+                      </span>{" "}
+                      <span className="opacity-75">{format(appointment.startTime, "HH:mm")}</span>
                     </div>
-                    <div className="truncate">{appointment.service.name}</div>
+                    <div className="truncate">{appointmentServiceNames(appointment)}</div>
+                    {appointment.notes ? (
+                      <div className="truncate italic opacity-75" title={appointment.notes}>
+                        📝 {appointment.notes}
+                      </div>
+                    ) : null}
                     {appointment.consentMissing ? (
                       <span className="mt-0.5 inline-block rounded border border-amber-300 bg-amber-100 px-1 text-[10px] font-semibold text-amber-900">
                         Consenso

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Prisma } from "@/generated/prisma/client";
+import { appointmentServiceIds } from "@/lib/appointment-services";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -116,12 +117,12 @@ export async function ensureConsentLink(
 }
 
 /**
- * Dopo un nuovo appuntamento: per ogni consenso richiesto dal trattamento che la cliente
+ * Dopo un nuovo appuntamento: per ogni consenso richiesto dai suoi trattamenti che la cliente
  * non ha ancora firmato si prepara il link (non si manda nulla). Non blocca mai la prenotazione.
  */
-export async function prepareConsentLinks(tenantId: string, clientId: string, serviceId: string) {
+export async function prepareConsentLinks(tenantId: string, clientId: string, serviceIds: string | string[]) {
   try {
-    const statuses = await getServiceConsentStatus(tenantId, clientId, [serviceId]);
+    const statuses = await getServiceConsentStatus(tenantId, clientId, Array.isArray(serviceIds) ? serviceIds : [serviceIds]);
     for (const status of statuses) {
       if (status.signed || status.pendingToken) continue;
       await ensureConsentLink(tenantId, clientId, status.templateId);
@@ -131,10 +132,19 @@ export async function prepareConsentLinks(tenantId: string, clientId: string, se
   }
 }
 
-/** Appuntamenti (tra quelli dati) per cui manca un consenso richiesto dal trattamento. */
+type AppointmentForConsent = {
+  id: string;
+  clientId: string;
+  serviceId: string;
+  status: string;
+  /** Altri trattamenti dello stesso appuntamento (es. Manicure + Laser: serve il consenso del laser). */
+  extraServices?: { serviceId: string }[];
+};
+
+/** Appuntamenti (tra quelli dati) per cui manca un consenso richiesto da uno dei trattamenti. */
 export async function findAppointmentsMissingConsent(
   tenantId: string,
-  appointments: { id: string; clientId: string; serviceId: string; status: string }[]
+  appointments: AppointmentForConsent[]
 ): Promise<Set<string>> {
   // Solo un avviso: se il controllo non riesce, agenda e "Oggi" si aprono lo stesso.
   return missingConsentFor(tenantId, appointments).catch((error) => {
@@ -145,13 +155,13 @@ export async function findAppointmentsMissingConsent(
 
 async function missingConsentFor(
   tenantId: string,
-  appointments: { id: string; clientId: string; serviceId: string; status: string }[]
+  appointments: AppointmentForConsent[]
 ): Promise<Set<string>> {
   const active = appointments.filter((appointment) => appointment.status !== "CANCELLED" && appointment.status !== "NO_SHOW");
   const missing = new Set<string>();
   if (active.length === 0) return missing;
 
-  const serviceIds = [...new Set(active.map((appointment) => appointment.serviceId))];
+  const serviceIds = [...new Set(active.flatMap((appointment) => appointmentServiceIds(appointment)))];
   const templates = await prisma.consentTemplate.findMany({
     where: treatmentTemplatesWhere(tenantId, serviceIds),
     select: { id: true, version: true, serviceId: true, services: { where: { id: { in: serviceIds } }, select: { id: true } } },
@@ -175,10 +185,11 @@ async function missingConsentFor(
   );
 
   for (const appointment of active) {
+    const ids = appointmentServiceIds(appointment);
     const required = templates.filter(
       (template) =>
-        template.serviceId === appointment.serviceId ||
-        template.services.some((service) => service.id === appointment.serviceId)
+        (template.serviceId !== null && ids.includes(template.serviceId)) ||
+        template.services.some((service) => ids.includes(service.id))
     );
     if (required.some((template) => !valid.has(`${appointment.clientId}:${template.id}`))) {
       missing.add(appointment.id);

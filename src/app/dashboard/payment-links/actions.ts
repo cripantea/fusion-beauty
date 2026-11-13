@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { getBaseUrl } from "@/lib/app-url";
+import { appointmentServiceNames, appointmentTotalPrice, extraServicesSelect } from "@/lib/appointment-services";
 import { getTenantContext } from "@/lib/auth-context";
 import { whatsappUrl } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
@@ -210,14 +211,21 @@ export async function sendPaymentLink(values: z.input<typeof sendSchema>): Promi
   if (input.appointmentId) {
     const appointment = await prisma.appointment.findFirst({
       where: { id: input.appointmentId, tenantId },
-      select: { clientId: true, status: true, startTime: true, service: { select: { name: true, price: true } } },
+      select: {
+        clientId: true,
+        status: true,
+        startTime: true,
+        service: { select: { name: true, price: true } },
+        extraServices: extraServicesSelect,
+      },
     });
     if (!appointment) return { success: false, error: "Appuntamento non trovato." };
     if (appointment.status === "CANCELLED") return { success: false, error: "L'appuntamento è annullato." };
     if (clientId && clientId !== appointment.clientId) return { success: false, error: "Appuntamento non trovato." };
     clientId = appointment.clientId;
-    amount ??= appointment.service.price.toNumber();
-    description ??= `${appointment.service.name} del ${dayFormatter.format(appointment.startTime)}`;
+    // Tutti i trattamenti dell'appuntamento (es. Manicure + Pedicure).
+    amount ??= appointmentTotalPrice(appointment);
+    description ??= `${appointmentServiceNames(appointment)} del ${dayFormatter.format(appointment.startTime)}`;
   }
   if (!clientId) return { success: false, error: "Scegli la cliente." };
   if (amount === undefined) return { success: false, error: "Scrivi l'importo." };

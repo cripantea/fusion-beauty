@@ -2,6 +2,7 @@ import { AlertCircle, Clock, Sparkles } from "lucide-react";
 import { notFound } from "next/navigation";
 
 import { EmptyState, Panel, Pill } from "@/components/boutique";
+import { appointmentServiceNames, appointmentTotalPrice, extraServicesSelect } from "@/lib/appointment-services";
 import { getTenantContext } from "@/lib/auth-context";
 import { formatEuro } from "@/lib/format";
 import { getClientStatsMap } from "@/lib/insights";
@@ -74,6 +75,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
         take: 20,
         include: {
           service: { select: { name: true, price: true } },
+          extraServices: extraServicesSelect,
           operator: { select: { firstName: true, lastName: true } },
           payment: { select: { amount: true } },
         },
@@ -86,7 +88,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
           status: { in: ["BOOKED", "CONFIRMED"] },
         },
         orderBy: { startTime: "asc" },
-        select: { startTime: true, service: { select: { name: true } } },
+        select: { startTime: true, service: { select: { name: true } }, extraServices: extraServicesSelect },
       }),
       prisma.appointment.groupBy({
         by: ["serviceId"],
@@ -154,7 +156,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
               <dt className="text-muted-foreground">Prossimo appuntamento</dt>
               <dd className="text-right font-semibold text-mint-ink">
                 {nextAppointment
-                  ? `${dateTimeFormatter.format(nextAppointment.startTime)} · ${nextAppointment.service.name}`
+                  ? `${dateTimeFormatter.format(nextAppointment.startTime)} · ${appointmentServiceNames(nextAppointment)}`
                   : "Non programmato"}
               </dd>
             </div>
@@ -250,7 +252,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
                   className="flex items-center justify-between gap-4 px-5 py-3 text-sm"
                 >
                   <div className="min-w-0">
-                    <div className="font-semibold">{appointment.service.name}</div>
+                    <div className="font-semibold">{appointmentServiceNames(appointment)}</div>
                     <div className="text-xs text-muted-foreground">
                       {dateTimeFormatter.format(appointment.startTime)}
                       {appointment.operator ? ` — ${appointment.operator.firstName}` : ""}
@@ -259,7 +261,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
                   <div className="flex items-center gap-3">
                     <span className="font-semibold">
                       {formatEuro(
-                        (appointment.payment?.amount ?? appointment.service.price).toNumber()
+                        appointment.payment?.amount.toNumber() ?? appointmentTotalPrice(appointment)
                       )}
                     </span>
                     <Pill tone={statusTones[appointment.status]}>

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { appointmentTotalPrice, extraServicesSelect } from "@/lib/appointment-services";
 import { isPaymentsEnabled } from "@/lib/payments-mode";
 import { prisma } from "@/lib/prisma";
 
@@ -63,13 +64,13 @@ export type RangeMetrics = {
   servedClients: number;
 };
 
-/** Trattamenti svolti nel periodo con il prezzo di listino (incasso stimato, senza incassi in cassa). */
+/** Trattamenti svolti nel periodo (tutti quelli di ogni appuntamento) con il prezzo di listino (incasso stimato, senza incassi in cassa). */
 async function estimatedRevenue(tenantId: string, range: DateRange) {
   const rows = await prisma.appointment.findMany({
     where: { tenantId, status: "COMPLETED", startTime: { gte: range.start, lt: range.end } },
-    select: { startTime: true, service: { select: { price: true } } },
+    select: { startTime: true, service: { select: { name: true, price: true } }, extraServices: extraServicesSelect },
   });
-  return rows.map((row) => ({ at: row.startTime, amount: row.service.price.toNumber() }));
+  return rows.map((row) => ({ at: row.startTime, amount: appointmentTotalPrice(row) }));
 }
 
 export async function getRangeMetrics(tenantId: string, range: DateRange): Promise<RangeMetrics> {

@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { appointmentServiceNames } from "@/lib/appointment-services";
 import { whatsappUrl } from "@/lib/format";
 
 import { getOnlineRequests, proposeAlternative, setAutoConfirmOnline, type RequestDTO } from "./actions";
@@ -125,7 +126,7 @@ export function RequestsManager({ tenantSlug, autoConfirm: initialAutoConfirm, i
                       {request.client.firstName} {request.client.lastName}
                     </div>
                     <div className="text-sm capitalize text-muted-foreground">
-                      {request.service.name} · {whenFormatter.format(request.startTime)}
+                      {appointmentServiceNames(request)} · {whenFormatter.format(request.startTime)}
                     </div>
                     {request.notes ? (
                       <div className="mt-1 text-sm text-muted-foreground">“{request.notes}”</div>
@@ -270,7 +271,7 @@ function ProposeBody({ request, tenantSlug, operators, onSent }: { request: Requ
       <DialogHeader>
         <DialogTitle>Proponi un altro orario</DialogTitle>
         <DialogDescription>
-          A {request.client.firstName} arriva su WhatsApp la proposta per {request.service.name}, con i pulsanti “Sì, confermo” e “Scelgo
+          A {request.client.firstName} arriva su WhatsApp la proposta per {appointmentServiceNames(request)}, con i pulsanti “Sì, confermo” e “Scelgo
           un altro orario”. Se conferma, l&apos;appuntamento si sposta e si conferma da solo.
         </DialogDescription>
       </DialogHeader>

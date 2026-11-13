@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import type { AppointmentDTO } from "@/app/dashboard/calendar/dto";
+import { appointmentServiceNames, appointmentTotalPrice } from "@/lib/appointment-services";
 import {
   Dialog,
   DialogContent,
@@ -67,7 +68,7 @@ function PaymentBody({
   isAdmin: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
-  const servicePrice = Number(appointment.service.price);
+  const servicePrice = appointmentTotalPrice(appointment);
   const [amount, setAmount] = useState(
     String(appointment.payment?.amount ?? servicePrice),
   );
@@ -132,7 +133,7 @@ function PaymentBody({
               {appointment.client.firstName} {appointment.client.lastName}
             </div>
             <div className="text-sm text-muted-foreground">
-              {appointment.service.name}
+              {appointmentServiceNames(appointment)}
             </div>
             <div className="mt-3 flex items-center gap-2">
               <span className="font-heading text-3xl font-bold">€</span>

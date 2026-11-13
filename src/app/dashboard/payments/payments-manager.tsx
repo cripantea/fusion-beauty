@@ -4,6 +4,7 @@ import { Banknote, CreditCard, Receipt, Wallet } from "lucide-react";
 import { useState, useTransition } from "react";
 
 import type { AppointmentDTO } from "@/app/dashboard/calendar/dto";
+import { appointmentServiceNames, appointmentTotalPrice } from "@/lib/appointment-services";
 import { EmptyState, PageHeader, Panel, Pill, StatCard } from "@/components/boutique";
 import { Button } from "@/components/ui/button";
 import { formatEuro } from "@/lib/format";
@@ -29,7 +30,7 @@ export function PaymentsManager({ initialOverview }: { initialOverview: Payments
     startTransition(async () => setOverview(await getPaymentsOverview()));
   }
 
-  const toCollectTotal = overview.toCollect.reduce((sum, appointment) => sum + appointment.service.price, 0);
+  const toCollectTotal = overview.toCollect.reduce((sum, appointment) => sum + appointmentTotalPrice(appointment), 0);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -68,10 +69,10 @@ export function PaymentsManager({ initialOverview }: { initialOverview: Payments
                     {appointment.client.firstName} {appointment.client.lastName}
                   </div>
                   <div className="truncate text-xs text-muted-foreground">
-                    {appointment.service.name} · {dateTimeFormatter.format(appointment.startTime)}
+                    {appointmentServiceNames(appointment)} · {dateTimeFormatter.format(appointment.startTime)}
                   </div>
                 </div>
-                <span className="text-sm font-semibold">{formatEuro(appointment.service.price)}</span>
+                <span className="text-sm font-semibold">{formatEuro(appointmentTotalPrice(appointment))}</span>
                 <Button className="h-8 rounded-lg" size="sm" onClick={() => setPaying(appointment)}>
                   Incassa
                 </Button>

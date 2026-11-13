@@ -1,5 +1,6 @@
 import { stopAppointmentRuns, triggerAppointmentAutomations } from "@/lib/automation-engine";
 import { findClash } from "@/lib/availability";
+import { extraServicesSelect } from "@/lib/appointment-services";
 import { listTemplates } from "@/lib/fusion-wa";
 import { prisma } from "@/lib/prisma";
 import { appointmentVars, hasActiveWhatsapp, sendWhatsappTemplate, sendWhatsappText } from "@/lib/whatsapp";
@@ -38,11 +39,13 @@ export async function proposeNewTime(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const appointment = await prisma.appointment.findFirst({
     where: { id: input.appointmentId, tenantId },
-    include: { client: true, service: true, tenant: { select: { name: true } } },
+    include: { client: true, service: true, extraServices: extraServicesSelect, tenant: { select: { name: true } } },
   });
   if (!appointment) return { ok: false, error: "Richiesta non trovata." };
   if (input.start.getTime() < Date.now()) return { ok: false, error: "L'orario proposto è già passato." };
-  const end = new Date(input.start.getTime() + appointment.service.durationMinutes * 60_000);
+  // Tutti i trattamenti dell'appuntamento, uno dopo l'altro.
+  const minutes = appointment.service.durationMinutes + appointment.extraServices.reduce((sum, extra) => sum + extra.durationMinutes, 0);
+  const end = new Date(input.start.getTime() + minutes * 60_000);
 
   // Né altri appuntamenti né impegni in quell'orario (controllo unico dell'agenda).
   const clash = await findClash(tenantId, { operatorId: input.operatorId, start: input.start, end, excludeAppointmentId: appointment.id });
@@ -54,7 +57,7 @@ export async function proposeNewTime(
   if (!template) return { ok: false, error: "Il messaggio “proposta_orario” non è ancora approvato da Meta." };
 
   const operator = input.operatorId ? await prisma.user.findUnique({ where: { id: input.operatorId }, select: { firstName: true } }) : null;
-  const vars = appointmentVars({ startTime: input.start, service: appointment.service, operator });
+  const vars = appointmentVars({ startTime: input.start, service: appointment.service, extraServices: appointment.extraServices, operator });
   await prisma.bookingProposal.updateMany({ where: { appointmentId: appointment.id, status: "PENDING" }, data: { status: "CANCELLED" } });
   const proposal = await prisma.bookingProposal.create({
     data: { tenantId, appointmentId: appointment.id, proposedStart: input.start, proposedEnd: end, operatorId: input.operatorId },
@@ -65,7 +68,7 @@ export async function proposeNewTime(
     templateName: template.name,
     language: template.language,
     templateBody: template.body,
-    params: [appointment.client.firstName || "-", appointment.service.name, vars.data ?? "-", vars.ora ?? "-"],
+    params: [appointment.client.firstName || "-", vars.trattamento ?? appointment.service.name, vars.data ?? "-", vars.ora ?? "-"],
     dedupeKey: `proposal:${proposal.id}`,
   });
   if (!sent.ok) {

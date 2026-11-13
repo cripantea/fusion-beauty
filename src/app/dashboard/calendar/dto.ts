@@ -1,4 +1,5 @@
 import type { Prisma } from "@/generated/prisma/client";
+import { extraServicesSelect } from "@/lib/appointment-services";
 
 import type { AppointmentStatusValue } from "./schema";
 
@@ -12,7 +13,10 @@ export type AppointmentDTO = {
   source: "INTERNAL" | "ONLINE";
   notes: string | null;
   client: { id: string; firstName: string; lastName: string; phone: string };
+  /** Trattamento principale (il primo). */
   service: { id: string; name: string; durationMinutes: number; price: number };
+  /** Tutti i trattamenti dell'appuntamento, il principale per primo (es. Manicure + Pedicure). */
+  services: { id: string; name: string; durationMinutes: number; price: number }[];
   operator: { id: string; firstName: string; lastName: string } | null;
   payment: { amount: number; method: PaymentMethodValue; notes: string | null } | null;
   /** Ultimo link di pagamento online (Stripe) non annullato. */
@@ -24,6 +28,7 @@ export type AppointmentDTO = {
 export const appointmentInclude = {
   client: { select: { id: true, firstName: true, lastName: true, phone: true } },
   service: { select: { id: true, name: true, durationMinutes: true, price: true } },
+  extraServices: extraServicesSelect,
   operator: { select: { id: true, firstName: true, lastName: true } },
   payment: { select: { amount: true, method: true, notes: true } },
   paymentLinks: {
@@ -37,6 +42,7 @@ export const appointmentInclude = {
 export type AppointmentRow = Prisma.AppointmentGetPayload<{ include: typeof appointmentInclude }>;
 
 export function toAppointmentDTO(appointment: AppointmentRow): AppointmentDTO {
+  const service = { ...appointment.service, price: appointment.service.price.toNumber() };
   return {
     id: appointment.id,
     startTime: appointment.startTime,
@@ -45,7 +51,16 @@ export function toAppointmentDTO(appointment: AppointmentRow): AppointmentDTO {
     source: appointment.source,
     notes: appointment.notes,
     client: appointment.client,
-    service: { ...appointment.service, price: appointment.service.price.toNumber() },
+    service,
+    services: [
+      service,
+      ...appointment.extraServices.map((extra) => ({
+        id: extra.service.id,
+        name: extra.service.name,
+        durationMinutes: extra.durationMinutes,
+        price: extra.price.toNumber(),
+      })),
+    ],
     operator: appointment.operator,
     payment: appointment.payment
       ? { amount: appointment.payment.amount.toNumber(), method: appointment.payment.method, notes: appointment.payment.notes }

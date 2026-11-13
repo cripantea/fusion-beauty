@@ -1,6 +1,7 @@
 "use server";
 
 import { appointmentInclude, toAppointmentDTO, type AppointmentDTO } from "@/app/dashboard/calendar/dto";
+import { appointmentTotalPrice } from "@/lib/appointment-services";
 import { findAppointmentsMissingConsent } from "@/lib/consents";
 import { getTenantContext } from "@/lib/auth-context";
 import { getInactiveClients, getUpcomingBirthdays } from "@/lib/insights";
@@ -81,7 +82,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   return {
     appointments: dtos,
     completedToday: dtos.filter((appointment) => appointment.status === "COMPLETED").length,
-    estimatedRevenueToday: billable.reduce((sum, appointment) => sum + appointment.service.price, 0),
+    estimatedRevenueToday: billable.reduce((sum, appointment) => sum + appointmentTotalPrice(appointment), 0),
     collectedToday: collected._sum.amount?.toNumber() ?? 0,
     newClientsToday,
     operatorsToday: operatorIds.size,

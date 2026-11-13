@@ -2,6 +2,7 @@ import { Cake, CalendarClock, MessageCircle, TriangleAlert } from "lucide-react"
 
 import { EmptyState, PageHeader, Panel } from "@/components/boutique";
 import { Button } from "@/components/ui/button";
+import { appointmentServiceNames, extraServicesSelect } from "@/lib/appointment-services";
 import { getTenantContext } from "@/lib/auth-context";
 import { whatsappUrl } from "@/lib/format";
 import { getInactiveClients, getUpcomingBirthdays, INACTIVE_MONTHS } from "@/lib/insights";
@@ -53,6 +54,7 @@ export default async function FollowUpPage() {
       include: {
         client: { select: { firstName: true, lastName: true, phone: true } },
         service: { select: { name: true } },
+        extraServices: extraServicesSelect,
       },
     }),
     prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true } }),
@@ -114,7 +116,7 @@ export default async function FollowUpPage() {
                   <div className="truncate text-sm font-semibold">
                     {appointment.client.firstName} {appointment.client.lastName}
                   </div>
-                  <div className="truncate text-xs text-muted-foreground">{appointment.service.name}</div>
+                  <div className="truncate text-xs text-muted-foreground">{appointmentServiceNames(appointment)}</div>
                 </div>
                 <WhatsappButton
                   label="Invia promemoria"

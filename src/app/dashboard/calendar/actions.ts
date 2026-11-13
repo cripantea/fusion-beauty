@@ -2,6 +2,7 @@
 
 import { after } from "next/server";
 
+import type { Prisma } from "@/generated/prisma/client";
 import { getTenantContext } from "@/lib/auth-context";
 import { prisma } from "@/lib/prisma";
 import { stopAppointmentRuns, triggerAppointmentAutomations } from "@/lib/automation-engine";
@@ -91,10 +92,37 @@ async function stopPendingForAppointment(appointmentId: string) {
   await stopAppointmentRuns(appointmentId);
 }
 
+/** I trattamenti scelti, nell'ordine scelto (il primo è il principale), tutti del centro. */
+async function loadServices(tenantId: string, serviceIds: string[]) {
+  const ids = [...new Set(serviceIds)];
+  const found = await prisma.service.findMany({ where: { tenantId, id: { in: ids } } });
+  const services = ids.map((id) => found.find((service) => service.id === id));
+  return services.every((service) => service !== undefined) ? services : null;
+}
+
+/**
+ * Trattamenti dopo il primo: si salvano con prezzo e durata di adesso; in una modifica
+ * quelli che c'erano già tengono prezzo e durata della prenotazione.
+ */
+function extraServicesData(
+  services: { id: string; price: Prisma.Decimal; durationMinutes: number }[],
+  previous: { serviceId: string; price: Prisma.Decimal; durationMinutes: number }[] = []
+) {
+  return services.slice(1).map((service, index) => {
+    const kept = previous.find((extra) => extra.serviceId === service.id);
+    return {
+      serviceId: service.id,
+      position: index + 1,
+      price: kept?.price ?? service.price,
+      durationMinutes: kept?.durationMinutes ?? service.durationMinutes,
+    };
+  });
+}
+
 async function resolveOperatorId(
   tenantId: string,
   operatorId: string | null,
-  serviceId: string
+  serviceIds: string[]
 ): Promise<
   { ok: true; operatorId: string | null } | { ok: false; error: string }
 > {
@@ -106,14 +134,16 @@ async function resolveOperatorId(
 
   const operator = await prisma.user.findFirst({
     where: { id: operatorId, tenantId, role: { in: ["ADMIN", "OPERATOR"] } },
-    include: { excludedServices: { where: { id: serviceId }, select: { id: true } } },
+    include: { excludedServices: { where: { id: { in: serviceIds } }, select: { id: true, name: true } } },
   });
 
   if (!operator) {
     return { ok: false, error: "Operatore non valido." };
   }
+  // Deve saper fare tutti i trattamenti dell'appuntamento.
   if (operator.excludedServices.length > 0) {
-    return { ok: false, error: `${operator.firstName} non esegue questo trattamento.` };
+    const names = operator.excludedServices.map((service) => service.name).join(" e ");
+    return { ok: false, error: `${operator.firstName} non esegue ${names}.` };
   }
 
   return { ok: true, operatorId: operator.id };
@@ -141,14 +171,14 @@ export async function createAppointment(
     return { success: false, error: "Cliente non trovato." };
   }
 
-  const service = await prisma.service.findFirst({
-    where: { id: parsed.data.serviceId, tenantId },
-  });
-  if (!service) {
+  const services = await loadServices(tenantId, parsed.data.serviceIds);
+  if (!services) {
     return { success: false, error: "Trattamento non trovato." };
   }
+  const service = services[0];
+  const serviceIds = services.map((item) => item.id);
 
-  const operatorResult = await resolveOperatorId(tenantId, parsed.data.operatorId, service.id);
+  const operatorResult = await resolveOperatorId(tenantId, parsed.data.operatorId, serviceIds);
   if (!operatorResult.ok) {
     return { success: false, error: operatorResult.error };
   }
@@ -175,6 +205,7 @@ export async function createAppointment(
       startTime: parsed.data.startTime,
       endTime,
       notes: parsed.data.notes?.trim() ? parsed.data.notes.trim() : null,
+      extraServices: { create: extraServicesData(services) },
     },
     include: appointmentInclude,
   });
@@ -183,7 +214,7 @@ export async function createAppointment(
     after(() => triggerAppointmentAutomations("APPOINTMENT_CONFIRMED", appointment.id));
   }
   // Trattamento con consenso (es. laser) non ancora firmato: il link è già pronto da mandare.
-  after(() => prepareConsentLinks(tenantId, client.id, service.id));
+  after(() => prepareConsentLinks(tenantId, client.id, serviceIds));
 
   return { success: true, appointment: await withConsentFlag(tenantId, appointment) };
 }
@@ -206,14 +237,14 @@ export async function updateAppointment(
     return { success: false, error: "Cliente non trovato." };
   }
 
-  const service = await prisma.service.findFirst({
-    where: { id: parsed.data.serviceId, tenantId },
-  });
-  if (!service) {
+  const services = await loadServices(tenantId, parsed.data.serviceIds);
+  if (!services) {
     return { success: false, error: "Trattamento non trovato." };
   }
+  const service = services[0];
+  const serviceIds = services.map((item) => item.id);
 
-  const operatorResult = await resolveOperatorId(tenantId, parsed.data.operatorId, service.id);
+  const operatorResult = await resolveOperatorId(tenantId, parsed.data.operatorId, serviceIds);
   if (!operatorResult.ok) {
     return { success: false, error: operatorResult.error };
   }
@@ -224,7 +255,13 @@ export async function updateAppointment(
 
   const previous = await prisma.appointment.findFirst({
     where: { id, tenantId },
-    select: { startTime: true, endTime: true, operatorId: true, status: true },
+    select: {
+      startTime: true,
+      endTime: true,
+      operatorId: true,
+      status: true,
+      extraServices: { select: { serviceId: true, price: true, durationMinutes: true } },
+    },
   });
   if (!previous) {
     return { success: false, error: "Appuntamento non trovato." };
@@ -248,17 +285,24 @@ export async function updateAppointment(
     if (clash) return { success: false, error: clash, clash: true };
   }
 
-  const result = await prisma.appointment.updateMany({
-    where: { id, tenantId },
-    data: {
-      clientId: client.id,
-      serviceId: service.id,
-      operatorId: operatorResult.operatorId,
-      startTime: parsed.data.startTime,
-      endTime,
-      notes: parsed.data.notes?.trim() ? parsed.data.notes.trim() : null,
-    },
-  });
+  // Appuntamento e lista dei trattamenti cambiano insieme (gli altri trattamenti si riscrivono da capo).
+  const [result] = await prisma.$transaction([
+    prisma.appointment.updateMany({
+      where: { id, tenantId },
+      data: {
+        clientId: client.id,
+        serviceId: service.id,
+        operatorId: operatorResult.operatorId,
+        startTime: parsed.data.startTime,
+        endTime,
+        notes: parsed.data.notes?.trim() ? parsed.data.notes.trim() : null,
+      },
+    }),
+    prisma.appointmentExtraService.deleteMany({ where: { appointmentId: id, appointment: { tenantId } } }),
+    prisma.appointmentExtraService.createMany({
+      data: extraServicesData(services, previous.extraServices).map((extra) => ({ ...extra, appointmentId: id })),
+    }),
+  ]);
 
   if (result.count === 0) {
     return { success: false, error: "Appuntamento non trovato." };
@@ -270,7 +314,7 @@ export async function updateAppointment(
   });
 
   // Cambiato trattamento con consenso (es. laser): il link è già pronto da mandare.
-  after(() => prepareConsentLinks(tenantId, client.id, service.id));
+  after(() => prepareConsentLinks(tenantId, client.id, serviceIds));
 
   // Spostato: le proposte e i promemoria del vecchio orario non valgono più;
   // se era confermato la cliente riceve la conferma col nuovo orario.

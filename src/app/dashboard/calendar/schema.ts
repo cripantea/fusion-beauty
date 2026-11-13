@@ -15,7 +15,8 @@ export const NO_OPERATOR_VALUE = "none";
 /** react-hook-form schema for the raw dialog fields (date/time kept separate). */
 export const appointmentFormSchema = z.object({
   clientId: z.string().min(1, "Seleziona un cliente."),
-  serviceId: z.string().min(1, "Seleziona un trattamento."),
+  /** Uno o più trattamenti, nell'ordine scelto: il primo è il principale. */
+  serviceIds: z.array(z.string()).min(1, "Scegli almeno un trattamento."),
   operatorId: z.string(),
   date: z.string().min(1, "Seleziona una data."),
   time: z.string().min(1, "Seleziona un orario."),
@@ -31,7 +32,7 @@ export type AppointmentFormValues = z.output<typeof appointmentFormSchema>;
 
 export const appointmentFormDefaultValues: AppointmentFormInput = {
   clientId: "",
-  serviceId: "",
+  serviceIds: [],
   operatorId: NO_OPERATOR_VALUE,
   date: "",
   time: "",
@@ -46,7 +47,8 @@ export const appointmentFormDefaultValues: AppointmentFormInput = {
  */
 export const appointmentInputSchema = z.object({
   clientId: z.string().min(1),
-  serviceId: z.string().min(1),
+  /** Il primo è il trattamento principale, gli altri si fanno di seguito nello stesso appuntamento. */
+  serviceIds: z.array(z.string().min(1)).min(1).max(10),
   operatorId: z.string().nullable(),
   startTime: z.date(),
   durationMinutes: z.coerce.number().int().positive(),

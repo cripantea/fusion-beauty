@@ -15,8 +15,8 @@ const dateFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome"
 type ConsentNoticeProps = {
   clientId: string;
   clientName: string;
-  /** Dal dettaglio appuntamento: consensi richiesti da quel trattamento. Senza: appuntamenti in arrivo della cliente. */
-  appointment?: { id: string; serviceId: string; serviceName: string };
+  /** Dal dettaglio appuntamento: consensi richiesti dai suoi trattamenti. Senza: appuntamenti in arrivo della cliente. */
+  appointment?: { id: string; serviceIds: string[]; serviceName: string };
   /** Dopo una firma in cabina (es. per aggiornare la scheda). */
   onSigned?: () => void;
 };
@@ -25,9 +25,13 @@ type ConsentNoticeProps = {
 export function ConsentNotice({ clientId, clientName, appointment, onSigned }: ConsentNoticeProps) {
   const [items, setItems] = useState<ConsentNoticeItem[]>([]);
   const [signingTemplateId, setSigningTemplateId] = useState<string | null>(null);
-  const serviceId = appointment?.serviceId;
+  // Come testo: un nuovo array a ogni render non deve far ricaricare.
+  const serviceKey = appointment?.serviceIds.join(",");
 
-  const load = useCallback(() => getConsentNotices({ clientId, serviceId }), [clientId, serviceId]);
+  const load = useCallback(
+    () => getConsentNotices({ clientId, serviceIds: serviceKey ? serviceKey.split(",") : undefined }),
+    [clientId, serviceKey]
+  );
 
   useEffect(() => {
     let cancelled = false;

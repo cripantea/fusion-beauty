@@ -1,3 +1,4 @@
+import { appointmentServiceNames, appointmentTotalPrice, extraServicesSelect } from "@/lib/appointment-services";
 import { getTenantContext } from "@/lib/auth-context";
 import { isPaymentsEnabled } from "@/lib/payments-mode";
 import { parseMonth } from "@/lib/reports";
@@ -36,6 +37,7 @@ export async function GET(request: Request) {
       appointment: {
         select: {
           service: { select: { name: true } },
+          extraServices: extraServicesSelect,
           operator: { select: { firstName: true, lastName: true } },
         },
       },
@@ -50,7 +52,7 @@ export async function GET(request: Request) {
     rows.push([
       dateTimeFormatter.format(payment.paidAt),
       `${payment.client.firstName} ${payment.client.lastName}`,
-      payment.appointment?.service.name ?? "",
+      payment.appointment ? appointmentServiceNames(payment.appointment) : "",
       payment.appointment?.operator
         ? `${payment.appointment.operator.firstName} ${payment.appointment.operator.lastName}`
         : "",
@@ -79,18 +81,19 @@ async function estimateCsv(tenantId: string, month: ReturnType<typeof parseMonth
     include: {
       client: { select: { firstName: true, lastName: true } },
       service: { select: { name: true, price: true } },
+      extraServices: extraServicesSelect,
       operator: { select: { firstName: true, lastName: true } },
     },
   });
   const rows = [["Data", "Cliente", "Trattamento", "Operatrice", "Prezzo di listino (EUR)"]];
   let total = 0;
   for (const appointment of appointments) {
-    const price = appointment.service.price.toNumber();
+    const price = appointmentTotalPrice(appointment);
     total += price;
     rows.push([
       dateTimeFormatter.format(appointment.startTime),
       `${appointment.client.firstName} ${appointment.client.lastName}`,
-      appointment.service.name,
+      appointmentServiceNames(appointment),
       appointment.operator ? `${appointment.operator.firstName} ${appointment.operator.lastName}` : "",
       csvAmount(price),
     ]);

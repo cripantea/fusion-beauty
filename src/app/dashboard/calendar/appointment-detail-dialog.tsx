@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Pill } from "@/components/boutique";
+import { appointmentServiceNames, appointmentTotalPrice } from "@/lib/appointment-services";
 import { formatEuro, whatsappUrl } from "@/lib/format";
 
 import { ConsentCollectDialog } from "@/app/dashboard/consents/consent-collect-dialog";
@@ -101,7 +102,7 @@ export function AppointmentDetailDialog({
   const reminderText =
     `Ciao ${appointment.client.firstName} 😊 ti ricordiamo il tuo appuntamento ` +
     `${new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", weekday: "long", day: "numeric", month: "long" }).format(appointment.startTime)} ` +
-    `alle ${timeFormatter.format(appointment.startTime)} (${appointment.service.name}). A presto!`;
+    `alle ${timeFormatter.format(appointment.startTime)} (${appointmentServiceNames(appointment)}). A presto!`;
 
   function handleStatusChange(status: AppointmentStatusValue) {
     if (!appointment) return;
@@ -122,8 +123,9 @@ export function AppointmentDetailDialog({
 
   const link = appointment.paymentLink;
   const canCollect = paymentsEnabled && !appointment.payment && link?.status !== "PAID" && !["CANCELLED", "NO_SHOW"].includes(appointment.status);
-  // Un tocco: link già da pagare (stesso importo, si rimanda) o prezzo del trattamento.
-  const linkAmount = link?.status === "PENDING" ? link.amountCents / 100 : appointment.service.price;
+  // Un tocco: link già da pagare (stesso importo, si rimanda) o prezzo di tutti i trattamenti.
+  const totalPrice = appointmentTotalPrice(appointment);
+  const linkAmount = link?.status === "PENDING" ? link.amountCents / 100 : totalPrice;
 
   function handleSendLink() {
     if (!appointment) return;
@@ -168,7 +170,7 @@ export function AppointmentDetailDialog({
               {appointment.client.firstName} {appointment.client.lastName}
             </Link>
           </DialogTitle>
-          <DialogDescription>{appointment.service.name}</DialogDescription>
+          <DialogDescription>{appointmentServiceNames(appointment)}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-2 rounded-xl bg-muted/50 p-3 text-sm">
@@ -198,7 +200,7 @@ export function AppointmentDetailDialog({
             <span className="font-semibold">
               {paymentsEnabled && appointment.payment
                 ? `${formatEuro(appointment.payment.amount)} · ${appointment.payment.method === "CARD" ? "Carta" : appointment.payment.method === "CASH" ? "Contanti" : "Altro"}`
-                : formatEuro(appointment.service.price)}
+                : formatEuro(totalPrice)}
             </span>
           </div>
           {link ? (
@@ -216,8 +218,8 @@ export function AppointmentDetailDialog({
           ) : null}
           {appointment.notes ? (
             <div className="border-t pt-2">
-              <span className="text-muted-foreground">Note: </span>
-              {appointment.notes}
+              <div className="text-muted-foreground">Note</div>
+              <p className="mt-0.5 whitespace-pre-wrap font-medium">📝 {appointment.notes}</p>
             </div>
           ) : null}
         </div>
@@ -228,7 +230,11 @@ export function AppointmentDetailDialog({
             key={appointment.id}
             clientId={appointment.client.id}
             clientName={`${appointment.client.firstName} ${appointment.client.lastName}`}
-            appointment={{ id: appointment.id, serviceId: appointment.service.id, serviceName: appointment.service.name }}
+            appointment={{
+              id: appointment.id,
+              serviceIds: appointment.services.map((service) => service.id),
+              serviceName: appointmentServiceNames(appointment),
+            }}
           />
         ) : null}
 
@@ -238,7 +244,7 @@ export function AppointmentDetailDialog({
             onClick={() => onCollect(appointment)}
           >
             <CreditCard className="size-5" />
-            Incassa {formatEuro(appointment.service.price)}
+            Incassa {formatEuro(totalPrice)}
           </Button>
         ) : null}
 
@@ -348,8 +354,8 @@ export function AppointmentDetailDialog({
           clientName={`${appointment.client.firstName} ${appointment.client.lastName}`}
           appointment={{
             id: appointment.id,
-            serviceId: appointment.service.id,
-            serviceName: appointment.service.name,
+            serviceIds: appointment.services.map((service) => service.id),
+            serviceName: appointmentServiceNames(appointment),
           }}
         />
       </DialogContent>

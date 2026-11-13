@@ -1,4 +1,5 @@
 import type { AutomationTrigger, Prisma } from "@/generated/prisma/client";
+import { appointmentServiceIds, extraServicesSelect } from "@/lib/appointment-services";
 import {
   parseStoredSteps,
   parseStoredTriggerConfig,
@@ -8,6 +9,13 @@ import {
 import { prisma } from "@/lib/prisma";
 import { appointmentVars, sendWhatsappTemplate, sendWhatsappText } from "@/lib/whatsapp";
 import { renderVariables, type TemplateVars } from "@/lib/whatsapp-shared";
+
+/** Quello che serve per le variabili del messaggio: trattamenti (tutti), giorno, ora, operatrice. */
+const appointmentVarsInclude = {
+  service: true,
+  extraServices: extraServicesSelect,
+  operator: { select: { firstName: true } },
+} as const;
 
 /**
  * Motore delle automazioni (come workflow-engine.ts del CRM, in piccolo).
@@ -78,7 +86,8 @@ export async function triggerAutomations(
     clientId: string;
     triggerKey: string;
     context?: RunContext;
-    filter?: { formId?: string; serviceId?: string; message?: string };
+    /** serviceIds: tutti i trattamenti dell'appuntamento (basta che uno sia tra quelli scelti). */
+    filter?: { formId?: string; serviceIds?: string[]; message?: string };
   }
 ): Promise<TriggerResult> {
   const result: TriggerResult = { started: 0, sent: false };
@@ -87,7 +96,11 @@ export async function triggerAutomations(
     for (const automation of automations) {
       const config = parseStoredTriggerConfig(automation.triggerConfig);
       if (config.formId && input.filter?.formId !== undefined && config.formId !== input.filter.formId) continue;
-      if (config.serviceIds?.length && input.filter?.serviceId && !config.serviceIds.includes(input.filter.serviceId)) continue;
+      if (
+        config.serviceIds?.length &&
+        input.filter?.serviceIds?.length &&
+        !input.filter.serviceIds.some((id) => config.serviceIds?.includes(id))
+      ) continue;
       if (config.keyword && !matchesKeyword(input.filter?.message ?? "", config.keyword)) continue;
 
       const outcome = await startRun(automation, input);
@@ -307,7 +320,7 @@ async function checkAppointment(
 ): Promise<{ ok: true; vars: TemplateVars } | { ok: false; reason: string }> {
   const appointment = await prisma.appointment.findUnique({
     where: { id: appointmentId },
-    include: { service: true, operator: { select: { firstName: true } } },
+    include: appointmentVarsInclude,
   });
   if (!appointment) return { ok: false, reason: "L'appuntamento non esiste più: automazione fermata." };
   const { trigger } = run.automation;
@@ -447,7 +460,10 @@ export async function runAutomationScans(now = new Date()) {
 
   for (const automation of automations) {
     const config = parseStoredTriggerConfig(automation.triggerConfig);
-    const services = config.serviceIds?.length ? { serviceId: { in: config.serviceIds } } : {};
+    // Basta che uno dei trattamenti dell'appuntamento sia tra quelli scelti.
+    const services = config.serviceIds?.length
+      ? { OR: [{ serviceId: { in: config.serviceIds } }, { extraServices: { some: { serviceId: { in: config.serviceIds } } } }] }
+      : {};
     try {
       if (automation.trigger === "BEFORE_APPOINTMENT" && config.hours) {
         // Appuntamenti che entrano adesso nella finestra "N ore prima" (con un
@@ -461,7 +477,7 @@ export async function runAutomationScans(now = new Date()) {
             startTime: { gt: now, lte: new Date(now.getTime() + lead), gte: new Date(now.getTime() + lead - margin) },
             ...services,
           },
-          include: { service: true, operator: { select: { firstName: true } } },
+          include: appointmentVarsInclude,
         });
         for (const appointment of appointments) {
           await startRun(automation, {
@@ -485,7 +501,7 @@ export async function runAutomationScans(now = new Date()) {
             endTime: { lte: new Date(now.getTime() - lag), gte: new Date(now.getTime() - lag - margin) },
             ...services,
           },
-          include: { service: true, operator: { select: { firstName: true } } },
+          include: appointmentVarsInclude,
         });
         for (const appointment of appointments) {
           await startRun(automation, {
@@ -547,7 +563,7 @@ export async function runAutomationScans(now = new Date()) {
 export async function triggerAppointmentAutomations(trigger: "BOOKING_REQUESTED" | "APPOINTMENT_CONFIRMED", appointmentId: string) {
   const appointment = await prisma.appointment.findUnique({
     where: { id: appointmentId },
-    include: { service: true, operator: { select: { firstName: true } } },
+    include: appointmentVarsInclude,
   });
   if (!appointment) return { started: 0, sent: false };
   return triggerAutomations(appointment.tenantId, trigger, {
@@ -555,7 +571,7 @@ export async function triggerAppointmentAutomations(trigger: "BOOKING_REQUESTED"
     // Una conferma per appuntamento e orario: se lo sposti, parte la nuova conferma.
     triggerKey: `appointment:${appointment.id}:${appointment.startTime.toISOString()}`,
     context: { vars: appointmentVars(appointment), appointmentId: appointment.id },
-    filter: { serviceId: appointment.serviceId },
+    filter: { serviceIds: appointmentServiceIds(appointment) },
   });
 }
 

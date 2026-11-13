@@ -3,6 +3,7 @@
 import { z } from "zod";
 
 import { appointmentInclude, toAppointmentDTO, type AppointmentDTO } from "@/app/dashboard/calendar/dto";
+import { appointmentServiceNames, extraServicesSelect } from "@/lib/appointment-services";
 import { getTenantContext } from "@/lib/auth-context";
 import { prisma } from "@/lib/prisma";
 
@@ -158,7 +159,7 @@ export async function getPaymentsOverview(): Promise<PaymentsOverview> {
       take: 30,
       include: {
         client: { select: { id: true, firstName: true, lastName: true } },
-        appointment: { select: { service: { select: { name: true } } } },
+        appointment: { select: { service: { select: { name: true } }, extraServices: extraServicesSelect } },
         plan: { select: { name: true } },
       },
     }),
@@ -180,7 +181,7 @@ export async function getPaymentsOverview(): Promise<PaymentsOverview> {
       method: payment.method,
       paidAt: payment.paidAt,
       client: payment.client,
-      serviceName: payment.appointment?.service.name ?? (payment.plan ? `Percorso ${payment.plan.name}` : null),
+      serviceName: (payment.appointment ? appointmentServiceNames(payment.appointment) : null) ?? (payment.plan ? `Percorso ${payment.plan.name}` : null),
     })),
   };
 }
