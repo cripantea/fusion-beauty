@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, ChevronUp, Plus, Undo2 } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Link2, Plus, Trash2, Undo2, Wallet } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -18,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Panel, Pill } from "@/components/boutique";
 import { formatEuro } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { PaymentLinkDialog, parseEuroInput, type PaymentLinkTarget } from "@/app/dashboard/payment-links/payment-link-dialog";
 
 import {
   getClientPlans,
@@ -25,9 +27,20 @@ import {
   completeSession,
   uncompleteSession,
   addPlanPayment,
+  removePlanPayment,
   updatePlanStatus,
   type ClientPlanDTO,
+  type PlanPaymentMethod,
 } from "./plan-actions";
+
+type PlanClient = { id: string; firstName: string; phone: string };
+
+const METHOD_LABEL: Record<PlanPaymentMethod, string> = {
+  CASH: "Contanti",
+  CARD: "Carta / POS",
+  TRANSFER: "Bonifico",
+  OTHER: "Altro",
+};
 
 const dateFormatter = new Intl.DateTimeFormat("it-IT", {
   day: "numeric",
@@ -64,7 +77,7 @@ function NewPlanDialog({
   const [notes, setNotes] = useState("");
 
   const parsedSessions = parseInt(sessions, 10);
-  const parsedPrice = parseFloat(price.replace(",", "."));
+  const parsedPrice = parseEuroInput(price);
   const pricePerSession =
     Number.isFinite(parsedPrice) && Number.isFinite(parsedSessions) && parsedSessions > 0
       ? parsedPrice / parsedSessions
@@ -163,24 +176,140 @@ function NewPlanDialog({
   );
 }
 
+// ── Payment dialog ────────────────────────────────────────────────────────────
+
+const toInput = (value: number) => value.toFixed(2).replace(".", ",").replace(",00", "");
+
+/** Rata o saldo: un tocco sull'importo proposto, il metodo, e via. Finisce anche in Cassa. */
+function PlanPaymentDialog({
+  plan,
+  open,
+  onOpenChange,
+  onSaved,
+}: {
+  plan: ClientPlanDTO;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSaved: (plan: ClientPlanDTO) => void;
+}) {
+  const remaining = Math.max(0, plan.totalPrice - plan.paidAmount);
+  const perSession = plan.totalSessions > 0 ? plan.totalPrice / plan.totalSessions : 0;
+  const [amount, setAmount] = useState(toInput(remaining));
+  const [method, setMethod] = useState<PlanPaymentMethod>("CASH");
+  const [isPending, startTransition] = useTransition();
+  const value = parseEuroInput(amount);
+  const tooMuch = value > remaining + 0.005;
+
+  const quick = [
+    { label: "Saldo", value: remaining },
+    ...(perSession > 0 && perSession < remaining - 0.005 ? [{ label: "1 seduta", value: perSession }] : []),
+    ...(remaining / 3 >= 1 && plan.paidAmount === 0 ? [{ label: "1/3", value: Math.round((remaining / 3) * 100) / 100 }] : []),
+  ];
+
+  function save() {
+    if (!(value > 0) || tooMuch) return;
+    startTransition(async () => {
+      const result = await addPlanPayment(plan.id, value, method);
+      if (!result.success || !result.plan) {
+        toast.error(result.error ?? "Pagamento non registrato.");
+        return;
+      }
+      onSaved(result.plan);
+      onOpenChange(false);
+      toast.success(`${formatEuro(value)} registrati.`);
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Registra pagamento</DialogTitle>
+          <DialogDescription>
+            {plan.name} · resta {formatEuro(remaining)} su {formatEuro(plan.totalPrice)}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-1">
+          <div className="flex flex-wrap gap-2">
+            {quick.map((q) => (
+              <button
+                key={q.label}
+                type="button"
+                onClick={() => setAmount(toInput(q.value))}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
+                  Math.abs(value - q.value) < 0.005 ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted"
+                )}
+              >
+                {q.label} · {formatEuro(q.value)}
+              </button>
+            ))}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="plan-pay-amount">Importo (€)</Label>
+            <Input
+              id="plan-pay-amount"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && save()}
+            />
+            {tooMuch ? <p className="text-xs text-destructive">È più del rimanente ({formatEuro(remaining)}).</p> : null}
+          </div>
+          <div className="space-y-1.5">
+            <Label>Come ha pagato</Label>
+            <div className="grid grid-cols-3 gap-2">
+              {(["CASH", "CARD", "TRANSFER"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMethod(m)}
+                  className={cn(
+                    "rounded-lg border px-2 py-2 text-sm font-medium transition-colors",
+                    method === m ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted"
+                  )}
+                >
+                  {METHOD_LABEL[m]}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button className="w-full" onClick={save} disabled={isPending || !(value > 0) || tooMuch}>
+            {isPending ? "Registrazione..." : `Registra ${Number.isFinite(value) && value > 0 ? formatEuro(value) : ""}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Single plan card ──────────────────────────────────────────────────────────
 
 function PlanCard({
   plan,
+  client,
+  onlinePayments,
   onUpdated,
 }: {
   plan: ClientPlanDTO;
+  client: PlanClient;
+  onlinePayments: boolean;
   onUpdated: (plan: ClientPlanDTO) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [payAmount, setPayAmount] = useState("");
-  const [showPayInput, setShowPayInput] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
+  const [linkTarget, setLinkTarget] = useState<PaymentLinkTarget | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const completed = plan.sessions.filter((s) => s.completedAt !== null).length;
   const progressPct = plan.totalSessions > 0 ? (completed / plan.totalSessions) * 100 : 0;
   const meta = statusMeta[plan.status];
   const remaining = plan.totalPrice - plan.paidAmount;
+  const canPay = plan.status === "ACTIVE" && remaining > 0.005;
+  // Pagato prima che i pagamenti finissero in Cassa: si mostra come una riga sola.
+  const earlier = plan.paidAmount - plan.payments.reduce((sum, p) => sum + p.amount, 0);
 
   function handleToggleSession(sessionId: string, isDone: boolean) {
     startTransition(async () => {
@@ -197,16 +326,12 @@ function PlanCard({
     });
   }
 
-  function handleAddPayment() {
-    const amount = parseFloat(payAmount.replace(",", "."));
-    if (!Number.isFinite(amount) || amount <= 0) return;
+  function handleRemovePayment(paymentId: string) {
     startTransition(async () => {
-      const result = await addPlanPayment(plan.id, amount);
-      if (!result.success) { toast.error(result.error); return; }
-      onUpdated({ ...plan, paidAmount: result.newPaidAmount ?? plan.paidAmount });
-      setPayAmount("");
-      setShowPayInput(false);
-      toast.success("Pagamento registrato.");
+      const result = await removePlanPayment(paymentId);
+      if (!result.success || !result.plan) { toast.error(result.error ?? "Non è stato possibile toglierlo."); return; }
+      onUpdated(result.plan);
+      toast.success("Pagamento tolto.");
     });
   }
 
@@ -264,6 +389,36 @@ function PlanCard({
         )}
       </button>
 
+      {/* Pagamento: sempre a portata, senza aprire il percorso */}
+      {canPay && (
+        <div className="flex flex-wrap gap-2 px-4 pb-3">
+          <Button size="sm" className="h-8 gap-1.5" onClick={() => setPayOpen(true)}>
+            <Wallet className="size-3.5" />
+            Registra pagamento
+          </Button>
+          {onlinePayments && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5"
+              onClick={() =>
+                setLinkTarget({
+                  clientId: client.id,
+                  clientFirstName: client.firstName,
+                  clientPhone: client.phone,
+                  planId: plan.id,
+                  amount: Math.round(remaining * 100) / 100,
+                  description: `Percorso ${plan.name}`,
+                })
+              }
+            >
+              <Link2 className="size-3.5" />
+              Link di pagamento
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Expanded content */}
       {expanded && (
         <div className="border-t border-border/60 px-4 py-3 space-y-4">
@@ -317,40 +472,46 @@ function PlanCard({
             })}
           </div>
 
+          {/* Pagamenti */}
+          {(plan.payments.length > 0 || earlier > 0.005) && (
+            <div className="space-y-1 border-t border-border/60 pt-3">
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">Pagamenti</p>
+              {plan.payments.map((payment) => (
+                <div key={payment.id} className="flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm">
+                  <span className="w-24 shrink-0 text-xs text-muted-foreground">{dateFormatter.format(new Date(payment.paidAt))}</span>
+                  <span className="flex-1 text-muted-foreground">{payment.online ? "Online (link)" : METHOD_LABEL[payment.method]}</span>
+                  <span className="font-semibold">{formatEuro(payment.amount)}</span>
+                  {payment.online ? (
+                    <span className="size-6 shrink-0" />
+                  ) : (
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label="Togli pagamento"
+                      title="Registrato per errore? Toglilo"
+                      disabled={isPending}
+                      onClick={() => handleRemovePayment(payment.id)}
+                      className="size-6 text-muted-foreground/60 hover:text-destructive"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              {earlier > 0.005 && (
+                <div className="flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm">
+                  <span className="w-24 shrink-0 text-xs text-muted-foreground">—</span>
+                  <span className="flex-1 text-muted-foreground">Registrati in precedenza</span>
+                  <span className="font-semibold">{formatEuro(earlier)}</span>
+                  <span className="size-6 shrink-0" />
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Actions */}
           {plan.status === "ACTIVE" && (
             <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
-              {/* Payment */}
-              {showPayInput ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold">€</span>
-                  <Input
-                    inputMode="decimal"
-                    placeholder="Importo"
-                    value={payAmount}
-                    onChange={(e) => setPayAmount(e.target.value)}
-                    className="h-8 w-28 text-sm"
-                    autoFocus
-                  />
-                  <Button size="sm" onClick={handleAddPayment} disabled={isPending} className="h-8">
-                    Conferma
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => { setShowPayInput(false); setPayAmount(""); }} className="h-8">
-                    Annulla
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 gap-1.5"
-                  onClick={() => setShowPayInput(true)}
-                >
-                  <Plus className="size-3.5" />
-                  Registra pagamento
-                </Button>
-              )}
-
               <div className="ml-auto flex gap-2">
                 <Button
                   size="sm"
@@ -375,13 +536,19 @@ function PlanCard({
           )}
         </div>
       )}
+
+      {canPay && (
+        <PlanPaymentDialog key={`${plan.id}-${plan.paidAmount}`} plan={plan} open={payOpen} onOpenChange={setPayOpen} onSaved={onUpdated} />
+      )}
+      <PaymentLinkDialog target={linkTarget} onClose={() => setLinkTarget(null)} />
     </div>
   );
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-export function ClientPlansCard({ clientId }: { clientId: string }) {
+export function ClientPlansCard({ client, onlinePayments }: { client: PlanClient; onlinePayments: boolean }) {
+  const clientId = client.id;
   const [plans, setPlans] = useState<ClientPlanDTO[]>([]);
   const [newOpen, setNewOpen] = useState(false);
   const [, startTransition] = useTransition();
@@ -422,7 +589,7 @@ export function ClientPlansCard({ clientId }: { clientId: string }) {
             </p>
           )}
           {active.map((plan) => (
-            <PlanCard key={plan.id} plan={plan} onUpdated={handleUpdated} />
+            <PlanCard key={plan.id} plan={plan} client={client} onlinePayments={onlinePayments} onUpdated={handleUpdated} />
           ))}
           {past.length > 0 && (
             <>
@@ -431,7 +598,7 @@ export function ClientPlansCard({ clientId }: { clientId: string }) {
                 Chiusi
               </p>
               {past.map((plan) => (
-                <PlanCard key={plan.id} plan={plan} onUpdated={handleUpdated} />
+                <PlanCard key={plan.id} plan={plan} client={client} onlinePayments={onlinePayments} onUpdated={handleUpdated} />
               ))}
             </>
           )}

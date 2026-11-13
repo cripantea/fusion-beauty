@@ -1,5 +1,7 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+
 import { getTenantContext } from "@/lib/auth-context";
 import { prisma } from "@/lib/prisma";
 
@@ -8,6 +10,17 @@ export type ClientPlanSessionDTO = {
   sessionNumber: number;
   completedAt: string | null;
   notes: string | null;
+};
+
+export type PlanPaymentMethod = "CASH" | "CARD" | "TRANSFER" | "OTHER";
+
+export type PlanPaymentDTO = {
+  id: string;
+  amount: number;
+  method: PlanPaymentMethod;
+  paidAt: string;
+  /** Pagato con il link (Stripe): si rimborsa da Stripe, non si cancella da qui. */
+  online: boolean;
 };
 
 export type ClientPlanDTO = {
@@ -20,8 +33,11 @@ export type ClientPlanDTO = {
   notes: string | null;
   status: "ACTIVE" | "COMPLETED" | "CANCELLED";
   sessions: ClientPlanSessionDTO[];
+  payments: PlanPaymentDTO[];
   createdAt: string;
 };
+
+const ONLINE_NOTE = "Pagato online con Stripe";
 
 function toSessionDTO(s: {
   id: string;
@@ -39,6 +55,10 @@ function toSessionDTO(s: {
 
 const planInclude = {
   sessions: { orderBy: { sessionNumber: "asc" as const } },
+  payments: {
+    orderBy: { paidAt: "desc" as const },
+    select: { id: true, amount: true, method: true, paidAt: true, notes: true },
+  },
 } as const;
 
 function toPlanDTO(plan: {
@@ -51,6 +71,7 @@ function toPlanDTO(plan: {
   notes: string | null;
   status: "ACTIVE" | "COMPLETED" | "CANCELLED";
   sessions: { id: string; sessionNumber: number; completedAt: Date | null; notes: string | null }[];
+  payments: { id: string; amount: { toNumber(): number }; method: PlanPaymentMethod; paidAt: Date; notes: string | null }[];
   createdAt: Date;
 }): ClientPlanDTO {
   return {
@@ -63,6 +84,13 @@ function toPlanDTO(plan: {
     notes: plan.notes,
     status: plan.status,
     sessions: plan.sessions.map(toSessionDTO),
+    payments: plan.payments.map((p) => ({
+      id: p.id,
+      amount: p.amount.toNumber(),
+      method: p.method,
+      paidAt: p.paidAt.toISOString(),
+      online: p.notes?.startsWith(ONLINE_NOTE) ?? false,
+    })),
     createdAt: plan.createdAt.toISOString(),
   };
 }
@@ -159,23 +187,76 @@ export async function uncompleteSession(
   return { success: true };
 }
 
+const METHODS: PlanPaymentMethod[] = ["CASH", "CARD", "TRANSFER", "OTHER"];
+
+/**
+ * Rata o saldo di un percorso: diventa un incasso vero (Cassa e statistiche)
+ * collegato al percorso, e si somma al pagato.
+ */
 export async function addPlanPayment(
   planId: string,
-  amount: number
-): Promise<{ success: boolean; newPaidAmount?: number; error?: string }> {
-  const { tenantId } = await getTenantContext();
+  amount: number,
+  method: PlanPaymentMethod = "CASH"
+): Promise<{ success: boolean; plan?: ClientPlanDTO; error?: string }> {
+  const { tenantId, user } = await getTenantContext();
+
+  if (!Number.isFinite(amount) || amount <= 0) return { success: false, error: "Importo non valido." };
+  if (!METHODS.includes(method)) return { success: false, error: "Metodo non valido." };
+  const cents = Math.round(amount * 100);
 
   const plan = await prisma.clientPlan.findFirst({ where: { id: planId, tenantId } });
   if (!plan) return { success: false, error: "Percorso non trovato." };
-  if (amount <= 0) return { success: false, error: "Importo non valido." };
+  if (plan.status === "CANCELLED") return { success: false, error: "Il percorso è annullato." };
 
-  const updated = await prisma.clientPlan.update({
-    where: { id: planId },
-    data: { paidAmount: { increment: amount } },
-    select: { paidAmount: true },
+  const remainingCents = Math.round(plan.totalPrice.toNumber() * 100) - Math.round(plan.paidAmount.toNumber() * 100);
+  if (cents > remainingCents) {
+    return {
+      success: false,
+      error: remainingCents > 0 ? `È più del rimanente (${(remainingCents / 100).toFixed(2).replace(".", ",")} €).` : "Il percorso è già saldato.",
+    };
+  }
+
+  await prisma.$transaction([
+    prisma.payment.create({
+      data: {
+        tenantId,
+        clientId: plan.clientId,
+        planId: plan.id,
+        amount: cents / 100,
+        method,
+        notes: `Percorso: ${plan.name}`,
+        createdById: user.id,
+      },
+    }),
+    prisma.clientPlan.update({ where: { id: plan.id }, data: { paidAmount: { increment: cents / 100 } } }),
+  ]);
+
+  revalidatePath("/dashboard/payments");
+  return { success: true, plan: toPlanDTO(await prisma.clientPlan.findUniqueOrThrow({ where: { id: plan.id }, include: planInclude })) };
+}
+
+/** Toglie un pagamento registrato per errore (non quelli online: quelli si rimborsano da Stripe). */
+export async function removePlanPayment(
+  paymentId: string
+): Promise<{ success: boolean; plan?: ClientPlanDTO; error?: string }> {
+  const { tenantId } = await getTenantContext();
+
+  const payment = await prisma.payment.findFirst({
+    where: { id: paymentId, tenantId, planId: { not: null } },
+    select: { id: true, planId: true, amount: true, notes: true },
   });
+  if (!payment?.planId) return { success: false, error: "Pagamento non trovato." };
+  if (payment.notes?.startsWith(ONLINE_NOTE)) {
+    return { success: false, error: "È stato pagato online: per restituirlo fai il rimborso da Stripe." };
+  }
 
-  return { success: true, newPaidAmount: updated.paidAmount.toNumber() };
+  await prisma.$transaction([
+    prisma.payment.delete({ where: { id: payment.id } }),
+    prisma.clientPlan.update({ where: { id: payment.planId }, data: { paidAmount: { decrement: payment.amount } } }),
+  ]);
+
+  revalidatePath("/dashboard/payments");
+  return { success: true, plan: toPlanDTO(await prisma.clientPlan.findUniqueOrThrow({ where: { id: payment.planId }, include: planInclude })) };
 }
 
 export async function updatePlanStatus(

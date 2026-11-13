@@ -17,6 +17,8 @@ export type PaymentLinkTarget = {
   clientFirstName: string;
   clientPhone: string;
   appointmentId?: string;
+  /** Rata o saldo di un percorso: pagato, si somma da solo al percorso. */
+  planId?: string;
   /** Vuoto (dalla scheda cliente): l'importo va scritto. */
   amount?: number;
   description: string;
@@ -40,7 +42,7 @@ export function PaymentLinkDialog({ target, onClose, onCreated }: { target: Paym
   return (
     <Dialog open={target !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-md">
-        {target ? <Body key={`${target.clientId}-${target.appointmentId ?? ""}`} target={target} onCreated={onCreated} /> : null}
+        {target ? <Body key={`${target.clientId}-${target.appointmentId ?? ""}-${target.planId ?? ""}`} target={target} onCreated={onCreated} /> : null}
       </DialogContent>
     </Dialog>
   );
@@ -127,6 +129,7 @@ function Body({ target, onCreated }: { target: PaymentLinkTarget; onCreated?: (l
                 const result = await sendPaymentLink({
                   clientId: target.clientId,
                   appointmentId: target.appointmentId,
+                  planId: target.planId,
                   amount: value,
                   description,
                 });

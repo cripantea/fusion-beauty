@@ -25,6 +25,8 @@ const createSchema = z.object({
 
 const sendSchema = z.object({
   appointmentId: z.string().min(1).optional(),
+  /** Rata o saldo di un percorso. */
+  planId: z.string().min(1).optional(),
   clientId: z.string().min(1).optional(),
   amount: amountSchema.optional(),
   description: z.string().trim().max(200).optional(),
@@ -75,7 +77,7 @@ const linkSelect = {
 async function ensureLink(
   tenantId: string,
   userId: string,
-  input: { clientId: string; appointmentId?: string; amountCents: number; description: string }
+  input: { clientId: string; appointmentId?: string; planId?: string; amountCents: number; description: string }
 ): Promise<{ ok: true; link: LinkWithClient; reused: boolean } | { ok: false; error: string }> {
   const stripe = await getStripeStatus(tenantId);
   if (!stripe.connected) return { ok: false, error: "Collega prima Stripe (Impostazioni → Pagamenti online)." };
@@ -89,7 +91,30 @@ async function ensureLink(
   const client = await prisma.client.findFirst({ where: { id: input.clientId, tenantId }, select: { id: true } });
   if (!client) return { ok: false, error: "Cliente non trovata." };
 
-  if (input.appointmentId) {
+  if (input.planId) {
+    const plan = await prisma.clientPlan.findFirst({
+      where: { id: input.planId, tenantId, clientId: client.id },
+      select: { status: true, totalPrice: true, paidAmount: true },
+    });
+    if (!plan) return { ok: false, error: "Percorso non trovato." };
+    if (plan.status === "CANCELLED") return { ok: false, error: "Il percorso è annullato." };
+    const remainingCents = Math.round(plan.totalPrice.toNumber() * 100) - Math.round(plan.paidAmount.toNumber() * 100);
+    if (input.amountCents > remainingCents) return { ok: false, error: remainingCents > 0 ? "È più del rimanente del percorso." : "Il percorso è già saldato." };
+
+    // Un solo link aperto per percorso: con un altro importo il vecchio si chiude.
+    const pending = await prisma.paymentLink.findMany({
+      where: { tenantId, planId: input.planId, status: "PENDING" },
+      orderBy: { createdAt: "desc" },
+      select: { ...linkSelect, stripeSessionId: true },
+    });
+    const same = pending.find((l) => l.amountCents === input.amountCents);
+    for (const old of pending) {
+      if (old.id === same?.id) continue;
+      const cancelled = await cancelLink(tenantId, old);
+      if (!cancelled) return { ok: false, error: "La cliente ha appena pagato il link precedente: aspetta qualche secondo e ricarica." };
+    }
+    if (same) return { ok: true, link: same, reused: true };
+  } else if (input.appointmentId) {
     const appointment = await prisma.appointment.findFirst({ where: { id: input.appointmentId, tenantId, clientId: client.id }, select: { id: true } });
     if (!appointment) return { ok: false, error: "Appuntamento non trovato." };
     const paid = await prisma.paymentLink.findFirst({ where: { appointmentId: appointment.id, status: "PAID" }, select: { id: true } });
@@ -123,7 +148,8 @@ async function ensureLink(
     data: {
       tenantId,
       clientId: client.id,
-      appointmentId: input.appointmentId ?? null,
+      appointmentId: input.planId ? null : (input.appointmentId ?? null),
+      planId: input.planId ?? null,
       amountCents: input.amountCents,
       description: input.description,
       token: randomBytes(18).toString("base64url"),
@@ -201,6 +227,7 @@ export async function sendPaymentLink(values: z.input<typeof sendSchema>): Promi
   const result = await ensureLink(tenantId, user.id, {
     clientId,
     appointmentId: input.appointmentId,
+    planId: input.planId,
     amountCents: Math.round(amount * 100),
     description,
   });

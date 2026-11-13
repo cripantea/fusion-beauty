@@ -159,6 +159,7 @@ export async function getPaymentsOverview(): Promise<PaymentsOverview> {
       include: {
         client: { select: { id: true, firstName: true, lastName: true } },
         appointment: { select: { service: { select: { name: true } } } },
+        plan: { select: { name: true } },
       },
     }),
   ]);
@@ -179,7 +180,7 @@ export async function getPaymentsOverview(): Promise<PaymentsOverview> {
       method: payment.method,
       paidAt: payment.paidAt,
       client: payment.client,
-      serviceName: payment.appointment?.service.name ?? null,
+      serviceName: payment.appointment?.service.name ?? (payment.plan ? `Percorso ${payment.plan.name}` : null),
     })),
   };
 }

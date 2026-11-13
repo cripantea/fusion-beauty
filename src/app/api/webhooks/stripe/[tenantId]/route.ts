@@ -54,7 +54,7 @@ async function markPaid(tenantId: string, session: Stripe.Checkout.Session) {
 
   const link = await prisma.paymentLink.findFirst({
     where: { id: linkId, tenantId },
-    select: { id: true, status: true, clientId: true, appointmentId: true, amountCents: true, description: true },
+    select: { id: true, status: true, clientId: true, appointmentId: true, planId: true, amountCents: true, description: true },
   });
   if (!link || link.status === "PAID") return;
   if (link.status === "CANCELLED") {
@@ -67,7 +67,22 @@ async function markPaid(tenantId: string, session: Stripe.Checkout.Session) {
     where: { id: link.id, tenantId, status: { not: "PAID" } },
     data: { status: "PAID", paidAt: new Date(), stripeSessionId: session.id, stripePaymentId: paymentIntentId, paidWith },
   });
-  if (updated.count === 0 || !link.appointmentId) return;
+  if (updated.count === 0) return;
+
+  const notes = `Pagato online con Stripe${paidWith ? ` (${paidWith})` : ""}`;
+
+  // Rata di un percorso: incasso collegato al percorso e somma al pagato.
+  if (link.planId) {
+    await prisma.$transaction([
+      prisma.payment.create({
+        data: { tenantId, clientId: link.clientId, planId: link.planId, amount: link.amountCents / 100, method: "CARD", notes },
+      }),
+      prisma.clientPlan.update({ where: { id: link.planId }, data: { paidAmount: { increment: link.amountCents / 100 } } }),
+    ]);
+    return;
+  }
+
+  if (!link.appointmentId) return;
 
   // Incasso dell'appuntamento: sparisce "Incassa" e il pagamento entra nelle statistiche.
   // Se era già stato incassato in cassa non si tocca (si vede comunque il link pagato).
@@ -85,7 +100,7 @@ async function markPaid(tenantId: string, session: Stripe.Checkout.Session) {
         amount: link.amountCents / 100,
         // Non c'è un metodo "online": carta è il più vicino (anche per Klarna e simili).
         method: "CARD",
-        notes: `Pagato online con Stripe${paidWith ? ` (${paidWith})` : ""}`,
+        notes,
       },
     });
   } catch (err) {

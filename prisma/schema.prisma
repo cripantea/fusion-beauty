@@ -136,22 +136,22 @@ enum CampaignRecipientStatus {
 }
 
 model Tenant {
-  id              String   @id @default(cuid())
-  name            String
-  slug            String   @unique
-  phone           String?
-  email           String?
-  logoUrl         String?
-  isActive        Boolean  @default(true)
+  id                String   @id @default(cuid())
+  name              String
+  slug              String   @unique
+  phone             String?
+  email             String?
+  logoUrl           String?
+  isActive          Boolean  @default(true)
   /// Incassi in cassa (Incassa, POS, contanti). Spento: niente sezione Pagamenti,
   /// incasso stimato dai trattamenti e appuntamenti passati completati da soli.
-  paymentsEnabled Boolean  @default(false)
+  paymentsEnabled   Boolean  @default(false)
   /// Prenotazioni online confermate subito (come Treatwell/Fresha): l'agenda
   /// mostra solo orari liberi negli orari di lavoro. Spento: le conferma il centro.
-  autoConfirmOnline Boolean @default(true)
-  icsFeedToken    String?  @unique
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  autoConfirmOnline Boolean  @default(true)
+  icsFeedToken      String?  @unique
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   users                  User[]
   clients                Client[]
@@ -341,6 +341,8 @@ model Payment {
   clientId      String
   // Un solo incasso per appuntamento.
   appointmentId String?       @unique
+  /// Rata o saldo di un percorso (pacchetto di sedute).
+  planId        String?
   amount        Decimal       @db.Decimal(10, 2)
   method        PaymentMethod
   notes         String?
@@ -353,10 +355,12 @@ model Payment {
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   client      Client       @relation(fields: [clientId], references: [id], onDelete: Restrict)
   appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  plan        ClientPlan?  @relation(fields: [planId], references: [id], onDelete: SetNull)
   createdBy   User?        @relation("PaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([tenantId, paidAt])
   @@index([clientId])
+  @@index([planId])
   @@map("payments")
 }
 
@@ -494,9 +498,11 @@ model ClientPlan {
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
-  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  client   Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  sessions ClientPlanSession[]
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client       Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  sessions     ClientPlanSession[]
+  payments     Payment[]
+  paymentLinks PaymentLink[]
 
   @@index([tenantId, clientId])
   @@map("client_plans")
@@ -781,6 +787,8 @@ model PaymentLink {
   tenantId        String
   clientId        String
   appointmentId   String?
+  /// Rata o saldo di un percorso: pagato, si somma al percorso.
+  planId          String?
   /// Importo in centesimi.
   amountCents     Int
   description     String
@@ -798,9 +806,11 @@ model PaymentLink {
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   client      Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
   appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  plan        ClientPlan?  @relation(fields: [planId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, createdAt])
   @@index([appointmentId])
+  @@index([planId])
   @@map("payment_links")
 }
 

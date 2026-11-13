@@ -125,6 +125,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
   const questionnaireDate = questionnaire?.completedAt ?? questionnaire?.sentAt ?? null;
 
   const hasMedicalInfo = Boolean(client.allergies || client.healthNotes);
+  const onlinePayments = (await getStripeStatus(tenantId)).connected;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -134,7 +135,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
         totalSpent={stats.totalSpent}
         estimated={!(await isPaymentsEnabled(tenantId))}
         whatsappConnected={await hasActiveWhatsapp(tenantId)}
-        onlinePayments={(await getStripeStatus(tenantId)).connected}
+        onlinePayments={onlinePayments}
       />
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -231,7 +232,10 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
           </div>
         </section>
 
-        <ClientPlansCard clientId={client.id} />
+        <ClientPlansCard
+          client={{ id: client.id, firstName: client.firstName, phone: client.phone }}
+          onlinePayments={onlinePayments}
+        />
 
         <Panel title="Storico appuntamenti" className="md:col-span-2">
           {appointments.length === 0 ? (
