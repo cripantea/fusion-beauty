@@ -1,19 +1,22 @@
 "use client";
 
-import { Check, MessageCircle, Phone, X } from "lucide-react";
+import { CalendarClock, Check, MessageCircle, Phone, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { updateAppointmentStatus, type OperatorDTO } from "@/app/dashboard/calendar/actions";
-import { AppointmentFormDialog } from "@/app/dashboard/calendar/appointment-form-dialog";
 import type { AppointmentDTO } from "@/app/dashboard/calendar/dto";
+import { getAvailableSlots } from "@/app/embed/[slug]/actions";
 import type { ClientListItemDTO } from "@/app/dashboard/clients/actions";
 import type { ServiceDTO } from "@/app/dashboard/services/actions";
 import { EmptyState, PageHeader, Panel, Pill } from "@/components/boutique";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { whatsappUrl } from "@/lib/format";
 
-import { getOnlineRequests } from "./actions";
+import { getOnlineRequests, proposeAlternative, type RequestDTO } from "./actions";
 
 const whenFormatter = new Intl.DateTimeFormat("it-IT", {
   weekday: "long",
@@ -23,16 +26,19 @@ const whenFormatter = new Intl.DateTimeFormat("it-IT", {
   minute: "2-digit",
 });
 
+const timeFormatter = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" });
+
 type RequestsManagerProps = {
-  initialRequests: AppointmentDTO[];
+  tenantSlug: string;
+  initialRequests: RequestDTO[];
   clients: ClientListItemDTO[];
   services: ServiceDTO[];
   operators: OperatorDTO[];
 };
 
-export function RequestsManager({ initialRequests, clients, services, operators }: RequestsManagerProps) {
+export function RequestsManager({ tenantSlug, initialRequests, operators }: RequestsManagerProps) {
   const [requests, setRequests] = useState(initialRequests);
-  const [editing, setEditing] = useState<AppointmentDTO | null>(null);
+  const [editing, setEditing] = useState<RequestDTO | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function refresh() {
@@ -46,7 +52,7 @@ export function RequestsManager({ initialRequests, clients, services, operators 
         toast.error(result.error);
         return;
       }
-      toast.success(status === "CONFIRMED" ? "Richiesta confermata: è in agenda." : "Richiesta rifiutata.");
+      toast.success(status === "CONFIRMED" ? "Confermata: è in agenda e alla cliente arriva la conferma su WhatsApp." : "Richiesta rifiutata.");
       setRequests(await getOnlineRequests());
     });
   }
@@ -56,7 +62,7 @@ export function RequestsManager({ initialRequests, clients, services, operators 
       <PageHeader
         eyebrow="Dal sito"
         title="Le richieste del sito arrivano qui."
-        description="Conferma, proponi un altro orario o chiama: una volta confermata, la richiesta resta in agenda."
+        description="Conferma o proponi un altro orario: la cliente riceve tutto su WhatsApp e, se accetta la proposta, l'appuntamento si conferma da solo."
       />
 
       <Panel title={`Richieste da confermare${requests.length ? ` · ${requests.length}` : ""}`}>
@@ -83,6 +89,19 @@ export function RequestsManager({ initialRequests, clients, services, operators 
                   </div>
                   <Pill tone="amber">Da confermare</Pill>
                 </div>
+                {request.proposal ? (
+                  <div className="mt-3 flex items-start gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm">
+                    <CalendarClock className="mt-0.5 size-4 shrink-0 text-mint-ink" />
+                    <span>
+                      Proposto <strong className="capitalize">{whenFormatter.format(request.proposal.start)}</strong> ·{" "}
+                      {request.proposal.status === "PENDING"
+                        ? "in attesa di risposta su WhatsApp"
+                        : request.proposal.status === "DECLINED"
+                          ? "la cliente vuole un altro orario: le è arrivato il link per sceglierlo, oppure chiamala"
+                          : "accettato"}
+                    </span>
+                  </div>
+                ) : null}
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Button
                     className="h-9 rounded-xl"
@@ -93,7 +112,8 @@ export function RequestsManager({ initialRequests, clients, services, operators 
                     Conferma
                   </Button>
                   <Button variant="outline" className="h-9 rounded-xl" onClick={() => setEditing(request)}>
-                    Proponi altro orario
+                    <CalendarClock className="size-4" />
+                    {request.proposal?.status === "PENDING" ? "Proponi un altro orario ancora" : "Proponi un altro orario"}
                   </Button>
                   <Button
                     variant="outline"
@@ -129,17 +149,146 @@ export function RequestsManager({ initialRequests, clients, services, operators 
         )}
       </Panel>
 
-      <AppointmentFormDialog
-        open={Boolean(editing)}
-        onOpenChange={(open) => {
-          if (!open) setEditing(null);
-        }}
-        appointment={editing}
-        clients={clients}
-        services={services}
+      <ProposeDialog
+        request={editing}
+        tenantSlug={tenantSlug}
         operators={operators}
-        onSuccess={refresh}
+        onClose={() => setEditing(null)}
+        onSent={() => {
+          setEditing(null);
+          refresh();
+        }}
       />
     </div>
+  );
+}
+
+function ProposeDialog({
+  request,
+  tenantSlug,
+  operators,
+  onClose,
+  onSent,
+}: {
+  request: RequestDTO | null;
+  tenantSlug: string;
+  operators: OperatorDTO[];
+  onClose: () => void;
+  onSent: () => void;
+}) {
+  return (
+    <Dialog open={request !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        {request ? <ProposeBody key={request.id} request={request} tenantSlug={tenantSlug} operators={operators} onSent={onSent} /> : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ProposeBody({ request, tenantSlug, operators, onSent }: { request: RequestDTO; tenantSlug: string; operators: OperatorDTO[]; onSent: () => void }) {
+  const [date, setDate] = useState(() => new Date(request.startTime).toISOString().slice(0, 10));
+  const [slots, setSlots] = useState<string[] | null>(null);
+  const [slot, setSlot] = useState<string | null>(null);
+  const [manualTime, setManualTime] = useState("");
+  const [operatorId, setOperatorId] = useState<string>(request.operator?.id ?? "");
+  const [isPending, startTransition] = useTransition();
+
+  function loadSlots(day: string) {
+    setDate(day);
+    setSlot(null);
+    setSlots(null);
+    startTransition(async () => {
+      const result = await getAvailableSlots({ slug: tenantSlug, serviceId: request.service.id, date: day });
+      setSlots(result.success ? result.slots : []);
+    });
+  }
+
+  const start = slot ?? (manualTime ? new Date(`${date}T${manualTime}:00`).toISOString() : null);
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Proponi un altro orario</DialogTitle>
+        <DialogDescription>
+          A {request.client.firstName} arriva su WhatsApp la proposta per {request.service.name}, con i pulsanti “Sì, confermo” e “Scelgo
+          un altro orario”. Se conferma, l&apos;appuntamento si sposta e si conferma da solo.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="space-y-3">
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-muted-foreground">Giorno</Label>
+          <Input type="date" value={date} min={new Date().toISOString().slice(0, 10)} onChange={(e) => loadSlots(e.target.value)} />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-muted-foreground">Orari liberi</Label>
+          {slots === null ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => loadSlots(date)} disabled={isPending}>
+              {isPending ? "Cerco…" : "Mostra gli orari liberi"}
+            </Button>
+          ) : slots.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nessun orario libero online quel giorno: scrivi tu l&apos;orario qui sotto.</p>
+          ) : (
+            <div className="grid grid-cols-4 gap-1.5">
+              {slots.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => {
+                    setSlot(s);
+                    setManualTime("");
+                  }}
+                  className={`rounded-lg border px-2 py-1.5 text-sm ${slot === s ? "border-mint-ink bg-mint-soft font-semibold" : "hover:bg-muted"}`}
+                >
+                  {timeFormatter.format(new Date(s))}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-muted-foreground">Oppure un orario a scelta</Label>
+            <Input
+              type="time"
+              value={manualTime}
+              onChange={(e) => {
+                setManualTime(e.target.value);
+                setSlot(null);
+              }}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-muted-foreground">Operatrice</Label>
+            <select className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm" value={operatorId} onChange={(e) => setOperatorId(e.target.value)}>
+              <option value="">Qualsiasi</option>
+              {operators.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.firstName}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <Button
+          className="w-full"
+          disabled={!start || isPending}
+          onClick={() =>
+            startTransition(async () => {
+              if (!start) return;
+              const result = await proposeAlternative({ appointmentId: request.id, start, operatorId: operatorId || null });
+              if (!result.success) {
+                toast.error(result.error);
+                return;
+              }
+              toast.success("Proposta inviata su WhatsApp.");
+              onSent();
+            })
+          }
+        >
+          <MessageCircle className="size-4" />
+          Invia la proposta su WhatsApp
+        </Button>
+      </div>
+    </>
   );
 }

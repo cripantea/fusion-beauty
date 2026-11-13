@@ -172,6 +172,13 @@ export async function ingestWebhookPayload(payload: { entry?: { changes?: { valu
             createdAt,
           },
         });
+        // Risposta a una proposta di orario: col pulsante (cita il messaggio) o
+        // scrivendo "sì / va bene" all'ultima proposta in attesa.
+        const quoted = (message.context as { id?: string } | undefined)?.id;
+        const { handleProposalReply, latestPendingProposalWamid } = await import("@/lib/booking-proposals");
+        const target = quoted ?? (clientId ? await latestPendingProposalWamid(tenantId, clientId) : null);
+        if (target) await handleProposalReply(tenantId, target, body, Boolean(quoted));
+
         if (clientId) {
           // Import dinamico: il motore delle automazioni importa a sua volta questo file.
           const { stopRunsOnReply, triggerAutomations } = await import("@/lib/automation-engine");

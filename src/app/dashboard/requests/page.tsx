@@ -2,12 +2,14 @@ import { getOperators } from "@/app/dashboard/calendar/actions";
 import { getClients } from "@/app/dashboard/clients/actions";
 import { getServices } from "@/app/dashboard/services/actions";
 import { getTenantContext } from "@/lib/auth-context";
+import { prisma } from "@/lib/prisma";
 
 import { getOnlineRequests } from "./actions";
 import { RequestsManager } from "./requests-manager";
 
 export default async function RequestsPage() {
-  await getTenantContext();
+  const { tenantId } = await getTenantContext();
+  const tenant = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { slug: true } });
 
   const [requests, clients, services, operators] = await Promise.all([
     getOnlineRequests(),
@@ -22,6 +24,7 @@ export default async function RequestsPage() {
       clients={clients}
       services={services}
       operators={operators}
+      tenantSlug={tenant.slug}
     />
   );
 }

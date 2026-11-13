@@ -43,6 +43,7 @@ const addNoteStep = z.object({ id, type: z.literal("ADD_NOTE"), text: z.string()
 const addInterestStep = z.object({ id, type: z.literal("ADD_INTEREST"), interest: z.string().trim().max(60).default("") });
 
 export const CONDITION_FIELDS = [
+  "FIRST_VISIT",
   "HAS_FUTURE_APPOINTMENT",
   "VISITS_AT_LEAST",
   "HAS_INTEREST",
@@ -53,6 +54,7 @@ export const CONDITION_FIELDS = [
 export type ConditionField = (typeof CONDITION_FIELDS)[number];
 
 export const CONDITION_LABELS: Record<ConditionField, string> = {
+  FIRST_VISIT: "È la sua prima visita al centro",
   HAS_FUTURE_APPOINTMENT: "Ha già un appuntamento fissato",
   VISITS_AT_LEAST: "Ha fatto almeno N visite",
   HAS_INTEREST: "Ha l'interesse…",

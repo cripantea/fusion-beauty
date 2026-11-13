@@ -67,7 +67,7 @@ const template = (templateName: string, templateBody: string, params: string[]) 
 const AUTOMATIONS: {
   key: string;
   name: string;
-  trigger: "FORM_SUBMITTED" | "WHATSAPP_RECEIVED" | "BIRTHDAY" | "BEFORE_APPOINTMENT";
+  trigger: "FORM_SUBMITTED" | "WHATSAPP_RECEIVED" | "BIRTHDAY" | "BEFORE_APPOINTMENT" | "AFTER_APPOINTMENT" | "BOOKING_REQUESTED" | "APPOINTMENT_CONFIRMED";
   triggerConfig: Record<string, unknown>;
   steps: unknown[];
   quietHours: boolean;
@@ -151,6 +151,59 @@ const AUTOMATIONS: {
     ],
     quietHours: true,
     allowReentry: true,
+  },
+  {
+    key: "boutique:richiesta-ricevuta",
+    name: "Richiesta online ricevuta",
+    trigger: "BOOKING_REQUESTED",
+    triggerConfig: {},
+    steps: [
+      template(
+        "richiesta_ricevuta",
+        "Ciao {{1}}, abbiamo ricevuto la tua richiesta per {{2}} di {{3}} alle {{4}}. Ti confermiamo l'appuntamento qui su WhatsApp a breve. La Boutique del Benessere",
+        ["{{nome}}", "{{trattamento}}", "{{data}}", "{{ora}}"]
+      ),
+    ],
+    quietHours: false,
+    allowReentry: true,
+  },
+  {
+    key: "boutique:conferma",
+    name: "Conferma appuntamento",
+    trigger: "APPOINTMENT_CONFIRMED",
+    triggerConfig: {},
+    steps: [
+      template(
+        "conferma_appuntamento",
+        "Ciao {{1}}, il tuo appuntamento per {{2}} di {{3}} alle {{4}} è confermato. Ti aspettiamo alla Boutique del Benessere in Corso G. di Vittorio 69 a Vigevano. Se hai un imprevisto scrivici qui.",
+        ["{{nome}}", "{{trattamento}}", "{{data}}", "{{ora}}"]
+      ),
+    ],
+    quietHours: false,
+    allowReentry: true,
+  },
+  {
+    key: "boutique:recensione-prima-visita",
+    name: "Richiesta recensione dopo la prima visita",
+    trigger: "AFTER_APPOINTMENT",
+    triggerConfig: { hours: 2 },
+    steps: [
+      {
+        id: "se-prima",
+        type: "CONDITION",
+        condition: { field: "FIRST_VISIT" },
+        then: [
+          template(
+            "recensione_a",
+            "Ciao {{1}} 😊 Speriamo che la tua esperienza da noi sia stata piacevole. Se ti fa piacere, puoi lasciarci una recensione qui: https://g.page/r/CY_sL-BiyPcdEBM/review Mandaci lo screenshot e avrai 5€ di sconto sul prossimo trattamento. Grazie davvero 🩵",
+            ["{{nome}}"]
+          ),
+        ],
+        else: [],
+      },
+    ],
+    quietHours: true,
+    allowReentry: false,
   },
   {
     key: "ghl:risposta-auto",

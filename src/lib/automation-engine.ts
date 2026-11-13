@@ -293,6 +293,9 @@ async function repliedSince(tenantId: string, clientId: string, since: Date) {
 
 async function evaluate(condition: Condition, tenantId: string, clientId: string, since: Date): Promise<boolean> {
   switch (condition.field) {
+    case "FIRST_VISIT":
+      // Il trattamento appena fatto è l'unico completato
+      return (await prisma.appointment.count({ where: { tenantId, clientId, status: "COMPLETED" } })) <= 1;
     case "HAS_FUTURE_APPOINTMENT":
       return (await prisma.appointment.count({ where: { tenantId, clientId, status: { in: ["BOOKED", "CONFIRMED"] }, startTime: { gt: new Date() } } })) > 0;
     case "VISITS_AT_LEAST": {
