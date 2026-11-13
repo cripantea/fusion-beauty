@@ -17,7 +17,7 @@ type ImportRow = { id: string; status: string; stats: Record<string, number>; er
 const SCOPES = ["contacts.readonly", "conversations.readonly", "conversations/message.readonly"];
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+  return new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
 export function GhlImport({ imports }: { imports: ImportRow[] }) {

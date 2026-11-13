@@ -41,7 +41,7 @@ const BILLING_LABELS: Record<string, string> = {
 
 function formatDate(value: string | null | undefined) {
   if (!value) return "";
-  return new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+  return new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
 export function WhatsappSettings({

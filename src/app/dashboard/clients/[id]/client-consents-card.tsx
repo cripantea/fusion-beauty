@@ -16,7 +16,7 @@ import type {
 } from "@/app/dashboard/consents/collect-actions";
 import { consentTypeLabels } from "@/app/dashboard/consents/schema";
 
-const dateFormatter = new Intl.DateTimeFormat("it-IT", {
+const dateFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome",
   day: "2-digit",
   month: "2-digit",
   year: "numeric",

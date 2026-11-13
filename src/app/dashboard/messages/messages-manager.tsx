@@ -28,8 +28,8 @@ import {
 
 const POLL_MS = 10_000;
 
-const timeFormatter = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" });
-const dayFormatter = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short" });
+const timeFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" });
+const dayFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "short" });
 
 function shortTime(iso: string) {
   const date = new Date(iso);

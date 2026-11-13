@@ -15,7 +15,7 @@ type QuestionnaireCardProps = {
   date: Date | null;
 };
 
-const dateFormatter = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "long" });
+const dateFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "long" });
 
 export function QuestionnaireCard({ clientId, status, date }: QuestionnaireCardProps) {
   const [isPending, startTransition] = useTransition();

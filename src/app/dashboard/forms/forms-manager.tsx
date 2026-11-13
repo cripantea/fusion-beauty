@@ -27,7 +27,7 @@ type FormRow = {
   publicUrl: string;
 };
 
-const dateFormatter = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const dateFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 export function FormsManager({ forms }: { forms: FormRow[] }) {
   const router = useRouter();

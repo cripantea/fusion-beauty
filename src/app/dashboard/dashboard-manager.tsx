@@ -20,8 +20,8 @@ import { formatEuro, getInitials } from "@/lib/format";
 
 import { getDashboardData, type DashboardData } from "./actions";
 
-const timeFormatter = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" });
-const dateFormatter = new Intl.DateTimeFormat("it-IT", {
+const timeFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" });
+const dateFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome",
   weekday: "long",
   day: "numeric",
   month: "long",
@@ -356,7 +356,7 @@ export function DashboardManager({
             clientPhone: appointment.client.phone,
             appointmentId: appointment.id,
             amount: appointment.service.price,
-            description: `${appointment.service.name} del ${new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "long" }).format(appointment.startTime)}`,
+            description: `${appointment.service.name} del ${new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "long" }).format(appointment.startTime)}`,
           });
         }}
       />

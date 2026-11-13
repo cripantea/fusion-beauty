@@ -10,7 +10,7 @@ import { createConsentLink } from "./collect-actions";
 import { ConsentCollectDialog } from "./consent-collect-dialog";
 import { getConsentNotices, sendConsentLink, type ConsentNoticeItem } from "./notice-actions";
 
-const dateFormatter = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "long", year: "numeric" });
+const dateFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "long", year: "numeric" });
 
 type ConsentNoticeProps = {
   clientId: string;

@@ -24,7 +24,7 @@ type ClientDetailHeaderProps = {
   onlinePayments?: boolean;
 };
 
-const birthdayFormatter = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "long" });
+const birthdayFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "long" });
 
 export function ClientDetailHeader({ client, visits, totalSpent, estimated = false, whatsappConnected = false, onlinePayments = false }: ClientDetailHeaderProps) {
   const [dialogOpen, setDialogOpen] = useState(false);

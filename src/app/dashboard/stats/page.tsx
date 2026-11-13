@@ -18,8 +18,8 @@ type StatsPageProps = {
   searchParams: Promise<{ period?: string }>;
 };
 
-const monthFormatter = new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric" });
-const dayFormatter = new Intl.DateTimeFormat("it-IT", { weekday: "long", day: "numeric", month: "long" });
+const monthFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", month: "long", year: "numeric" });
+const dayFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", weekday: "long", day: "numeric", month: "long" });
 
 export default async function StatsPage({ searchParams }: StatsPageProps) {
   const { tenantId } = await getTenantContext();

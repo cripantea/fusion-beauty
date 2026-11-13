@@ -37,8 +37,8 @@ const palettes = [
   { head: "bg-sky-100 text-sky-900 border-sky-200", card: "bg-sky-50 border-sky-200 text-sky-950" },
 ];
 
-const timeFormatter = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" });
-const dayFormatter = new Intl.DateTimeFormat("it-IT", { weekday: "short", day: "numeric", month: "short" });
+const timeFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" });
+const dayFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", weekday: "short", day: "numeric", month: "short" });
 
 type WorkingHour = { dayOfWeek: number; startTime: string; endTime: string };
 type Grid = { startHour: number; endHour: number };

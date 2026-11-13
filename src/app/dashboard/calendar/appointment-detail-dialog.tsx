@@ -25,7 +25,7 @@ import { updateAppointmentStatus } from "./actions";
 import type { AppointmentDTO } from "./dto";
 import type { AppointmentStatusValue } from "./schema";
 
-const dateTimeFormatter = new Intl.DateTimeFormat("it-IT", {
+const dateTimeFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome",
   weekday: "short",
   day: "2-digit",
   month: "long",
@@ -33,7 +33,7 @@ const dateTimeFormatter = new Intl.DateTimeFormat("it-IT", {
   minute: "2-digit",
 });
 
-const timeFormatter = new Intl.DateTimeFormat("it-IT", {
+const timeFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome",
   hour: "2-digit",
   minute: "2-digit",
 });
@@ -100,7 +100,7 @@ export function AppointmentDetailDialog({
 
   const reminderText =
     `Ciao ${appointment.client.firstName} 😊 ti ricordiamo il tuo appuntamento ` +
-    `${new Intl.DateTimeFormat("it-IT", { weekday: "long", day: "numeric", month: "long" }).format(appointment.startTime)} ` +
+    `${new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", weekday: "long", day: "numeric", month: "long" }).format(appointment.startTime)} ` +
     `alle ${timeFormatter.format(appointment.startTime)} (${appointment.service.name}). A presto!`;
 
   function handleStatusChange(status: AppointmentStatusValue) {

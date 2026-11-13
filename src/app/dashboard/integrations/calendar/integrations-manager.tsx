@@ -24,7 +24,7 @@ import {
   type IntegrationSettings,
 } from "./actions";
 
-const dateTimeFormatter = new Intl.DateTimeFormat("it-IT", {
+const dateTimeFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome",
   dateStyle: "short",
   timeStyle: "short",
 });

@@ -11,7 +11,7 @@ import { formatEuro } from "@/lib/format";
 import { getPaymentsOverview, type PaymentsOverview } from "./actions";
 import { PaymentDialog } from "./payment-dialog";
 
-const dateTimeFormatter = new Intl.DateTimeFormat("it-IT", {
+const dateTimeFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome",
   day: "2-digit",
   month: "short",
   hour: "2-digit",

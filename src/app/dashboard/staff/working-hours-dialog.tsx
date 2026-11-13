@@ -251,7 +251,7 @@ export function WorkingHoursDialog({ staffId, staffName, onClose }: WorkingHours
     label: `${String(DAY_START + i).padStart(2, "0")}:00`,
   }));
 
-  const dateFormatter = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "long", year: "numeric" });
+  const dateFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "long", year: "numeric" });
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>

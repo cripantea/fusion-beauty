@@ -289,7 +289,7 @@ export function AppointmentFormDialog({
     const timeChanged = oldWhen !== newWhen;
     if (timeChanged) {
       const fmt = (d: Date) =>
-        new Intl.DateTimeFormat("it-IT", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(d);
+        new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(d);
       lines.push(`Orario: ${fmt(appointment.startTime)} → ${fmt(new Date(`${values.date}T${values.time}:00`))}`);
     }
     // Solo un nuovo orario fa partire un messaggio (la conferma con il nuovo orario).

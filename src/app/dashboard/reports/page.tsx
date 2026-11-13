@@ -15,7 +15,7 @@ type ReportsPageProps = {
   searchParams: Promise<{ month?: string }>;
 };
 
-const monthFormatter = new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric" });
+const monthFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", month: "long", year: "numeric" });
 
 function shiftMonth(start: Date, delta: number) {
   const date = new Date(start.getFullYear(), start.getMonth() + delta, 1);

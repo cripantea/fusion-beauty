@@ -42,7 +42,7 @@ const METHOD_LABEL: Record<PlanPaymentMethod, string> = {
   OTHER: "Altro",
 };
 
-const dateFormatter = new Intl.DateTimeFormat("it-IT", {
+const dateFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome",
   day: "numeric",
   month: "short",
   year: "numeric",

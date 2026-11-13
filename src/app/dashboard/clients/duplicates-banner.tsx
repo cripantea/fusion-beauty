@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 
 import { mergeDuplicateGroup, type DuplicateGroupDTO } from "./duplicate-actions";
 
-const dateFormatter = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short", year: "numeric" });
+const dateFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "short", year: "numeric" });
 
 /** Stesso numero su più schede: si uniscono con un tocco nella prima (che tiene il suo nome). */
 export function DuplicatesBanner({ groups }: { groups: DuplicateGroupDTO[] }) {

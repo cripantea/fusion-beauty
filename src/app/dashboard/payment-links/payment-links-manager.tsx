@@ -33,7 +33,7 @@ const STATUS = {
 const PAID_WITH: Record<string, string> = { card: "carta", klarna: "Klarna (rate)", satispay: "Satispay", link: "Link", paypal: "PayPal" };
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+  return new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
 export function PaymentLinksManager({ connected, links }: { connected: boolean; links: LinkRow[] }) {

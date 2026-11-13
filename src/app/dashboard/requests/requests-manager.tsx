@@ -21,7 +21,7 @@ import { whatsappUrl } from "@/lib/format";
 
 import { getOnlineRequests, proposeAlternative, setAutoConfirmOnline, type RequestDTO } from "./actions";
 
-const whenFormatter = new Intl.DateTimeFormat("it-IT", {
+const whenFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome",
   weekday: "long",
   day: "numeric",
   month: "long",
@@ -29,7 +29,7 @@ const whenFormatter = new Intl.DateTimeFormat("it-IT", {
   minute: "2-digit",
 });
 
-const timeFormatter = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" });
+const timeFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" });
 
 type RequestsManagerProps = {
   tenantSlug: string;
@@ -86,7 +86,7 @@ export function RequestsManager({ tenantSlug, autoConfirm: initialAutoConfirm, i
         title="Le prenotazioni del sito arrivano qui."
         description={
           autoConfirm
-            ? "Come su Treatwell: la cliente sceglie solo orari liberi negli orari di lavoro e la prenotazione è subito confermata, con il riepilogo su WhatsApp. Se devi spostarla, proponi un altro orario: se la cliente accetta si sposta da sola, se dice di no torna qui."
+            ? "La cliente sceglie solo orari liberi negli orari di lavoro e la prenotazione è subito confermata, con il riepilogo su WhatsApp. Se devi spostarla, proponi un altro orario: se la cliente accetta si sposta da sola, se dice di no torna qui."
             : "Conferma, oppure se l'orario non va bene proponine un altro: la cliente riceve tutto su WhatsApp e, se accetta, l'appuntamento si conferma da solo. Se dice di no, la richiesta torna qui per un'altra proposta."
         }
       />

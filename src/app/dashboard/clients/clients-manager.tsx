@@ -18,7 +18,7 @@ import { DuplicatesBanner } from "./duplicates-banner";
 import { toNewClientListItem } from "./list-item";
 import { QuickClientDialog } from "./quick-client-dialog";
 
-const dateFormatter = new Intl.DateTimeFormat("it-IT", {
+const dateFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome",
   day: "numeric",
   month: "short",
   year: "numeric",

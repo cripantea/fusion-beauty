@@ -323,7 +323,7 @@ export function CalendarManager({
             clientPhone: appointment.client.phone,
             appointmentId: appointment.id,
             amount: appointment.service.price,
-            description: `${appointment.service.name} del ${new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "long" }).format(appointment.startTime)}`,
+            description: `${appointment.service.name} del ${new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "long" }).format(appointment.startTime)}`,
           });
         }}
       />

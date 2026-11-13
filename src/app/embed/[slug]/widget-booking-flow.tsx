@@ -42,12 +42,12 @@ const currencyFormatter = new Intl.NumberFormat("it-IT", {
   currency: "EUR",
 });
 
-const timeFormatter = new Intl.DateTimeFormat("it-IT", {
+const timeFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome",
   hour: "2-digit",
   minute: "2-digit",
 });
 
-const dateTimeFormatter = new Intl.DateTimeFormat("it-IT", {
+const dateTimeFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome",
   weekday: "long",
   day: "numeric",
   month: "long",

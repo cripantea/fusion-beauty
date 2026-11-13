@@ -18,13 +18,13 @@ import { ClientDetailHeader } from "./client-detail-header";
 import { ClientPlansCard } from "./client-plans-card";
 import { QuestionnaireCard } from "./questionnaire-card";
 
-const dateFormatter = new Intl.DateTimeFormat("it-IT", {
+const dateFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome",
   day: "numeric",
   month: "long",
   year: "numeric",
 });
 
-const dateTimeFormatter = new Intl.DateTimeFormat("it-IT", {
+const dateTimeFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome",
   day: "2-digit",
   month: "short",
   year: "numeric",

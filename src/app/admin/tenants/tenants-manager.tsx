@@ -18,7 +18,7 @@ import {
 import { setTenantPayments, toggleTenantStatus, type TenantDTO } from "./actions";
 import { TenantFormDialog } from "./tenant-form-dialog";
 
-const dateFormatter = new Intl.DateTimeFormat("it-IT", {
+const dateFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome",
   day: "2-digit",
   month: "2-digit",
   year: "numeric",

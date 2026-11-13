@@ -7,9 +7,9 @@ import { whatsappUrl } from "@/lib/format";
 import { getInactiveClients, getUpcomingBirthdays, INACTIVE_MONTHS } from "@/lib/insights";
 import { prisma } from "@/lib/prisma";
 
-const timeFormatter = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" });
-const dayFormatter = new Intl.DateTimeFormat("it-IT", { weekday: "long", day: "numeric", month: "long" });
-const birthdayFormatter = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "long" });
+const timeFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" });
+const dayFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", weekday: "long", day: "numeric", month: "long" });
+const birthdayFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "long" });
 
 function monthsAgo(date: Date) {
   const now = new Date();

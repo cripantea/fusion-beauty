@@ -3,7 +3,7 @@ import { isPaymentsEnabled } from "@/lib/payments-mode";
 import { parseMonth } from "@/lib/reports";
 import { prisma } from "@/lib/prisma";
 
-const dateTimeFormatter = new Intl.DateTimeFormat("it-IT", {
+const dateTimeFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome",
   day: "2-digit",
   month: "2-digit",
   year: "numeric",
