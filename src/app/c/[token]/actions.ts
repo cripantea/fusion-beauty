@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 
 import { headers } from "next/headers";
 
+import { cleanAnamnesis, formatAnamnesis, isAnamnesisAnswered, type AnamnesisAnswers } from "@/lib/anamnesis";
 import { generateConsentPdf } from "@/lib/consent-pdf";
 import { prisma } from "@/lib/prisma";
 import { removeStorageFile, writeStorageFile } from "@/lib/storage";
@@ -25,7 +26,8 @@ export type SignConsentFromLinkResult = { success: true } | { success: false; er
 
 export async function signConsentFromLink(
   token: string,
-  signatureDataUrl: string
+  signatureDataUrl: string,
+  answers?: AnamnesisAnswers
 ): Promise<SignConsentFromLinkResult> {
   const record = await prisma.consentRecord.findUnique({
     where: { token },
@@ -47,6 +49,18 @@ export async function signConsentFromLink(
   if (!signature) {
     return { success: false, error: "Firma non valida." };
   }
+
+  // Domande di salute del modello: si tengono solo le voci previste.
+  const checklist = record.template.checklist;
+  const anamnesisAnswers = cleanAnamnesis(checklist, {
+    conditions: Array.isArray(answers?.conditions) ? answers.conditions.filter((item) => typeof item === "string") : [],
+    none: answers?.none === true,
+    note: typeof answers?.note === "string" ? answers.note : "",
+  });
+  if (!isAnamnesisAnswered(checklist, anamnesisAnswers)) {
+    return { success: false, error: "Rispondi alla domanda sulle condizioni di salute." };
+  }
+  const anamnesis = formatAnamnesis(checklist, anamnesisAnswers);
 
   const requestHeaders = await headers();
   const ipAddress = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
@@ -75,7 +89,7 @@ export async function signConsentFromLink(
       serviceName: record.template.service?.name ?? null,
       appointmentStart: null,
       marketingChoice: record.template.type === "MARKETING" ? record.granted : null,
-      anamnesis: null,
+      anamnesis,
       signedAt,
       operatorName: null,
       ipAddress,
@@ -89,6 +103,7 @@ export async function signConsentFromLink(
       where: { id: record.id },
       data: {
         status: "SIGNED",
+        answers: anamnesis ? { anamnesis, ...anamnesisAnswers } : undefined,
         signatureKey,
         pdfKey,
         documentHash: createHash("sha256").update(pdf).digest("hex"),

@@ -4,8 +4,10 @@ import { CheckCircle2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { AnamnesisChecklist } from "@/components/anamnesis-checklist";
 import { Button } from "@/components/ui/button";
 import { SignaturePad } from "@/components/signature-pad";
+import { emptyAnamnesis, isAnamnesisAnswered, type AnamnesisAnswers } from "@/lib/anamnesis";
 
 import { signConsentFromLink } from "./actions";
 
@@ -15,6 +17,8 @@ type ConsentSignFormProps = {
   clientPhone: string;
   consentTitle: string;
   consentBody: string;
+  /** Condizioni di salute da spuntare prima della firma (consenso informato). */
+  checklist: string[];
 };
 
 export function ConsentSignForm({
@@ -23,16 +27,19 @@ export function ConsentSignForm({
   clientPhone,
   consentTitle,
   consentBody,
+  checklist,
 }: ConsentSignFormProps) {
   const [signature, setSignature] = useState<string | null>(null);
+  const [anamnesis, setAnamnesis] = useState<AnamnesisAnswers>(emptyAnamnesis);
+  const answered = isAnamnesisAnswered(checklist, anamnesis);
   const [done, setDone] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit() {
-    if (!signature) return;
+    if (!signature || !answered) return;
 
     startTransition(async () => {
-      const result = await signConsentFromLink(token, signature);
+      const result = await signConsentFromLink(token, signature, checklist.length > 0 ? anamnesis : undefined);
       if (!result.success) {
         toast.error(result.error);
         return;
@@ -71,6 +78,10 @@ export function ConsentSignForm({
         </div>
       </div>
 
+      {checklist.length > 0 ? (
+        <AnamnesisChecklist checklist={checklist} value={anamnesis} onChange={setAnamnesis} />
+      ) : null}
+
       <div className="space-y-2">
         <p className="text-sm font-semibold">Firma qui</p>
         <SignaturePad onChange={setSignature} />
@@ -80,11 +91,15 @@ export function ConsentSignForm({
         type="button"
         size="lg"
         className="h-12 w-full text-base"
-        disabled={isPending || !signature}
+        disabled={isPending || !signature || !answered}
         onClick={handleSubmit}
       >
         {isPending ? "Salvataggio..." : "Firma e invia"}
       </Button>
+
+      {!answered ? (
+        <p className="text-center text-xs text-amber-700">Rispondi alla domanda sulle condizioni di salute prima di firmare.</p>
+      ) : null}
 
       <p className="text-center text-xs text-muted-foreground">
         La firma ha valore legale. Verrà conservata in modo sicuro.

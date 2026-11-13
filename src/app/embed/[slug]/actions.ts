@@ -6,6 +6,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { triggerAppointmentAutomations, triggerClientCreated } from "@/lib/automation-engine";
 import { closeSupersededRequests } from "@/lib/booking-proposals";
+import { prepareConsentLinks } from "@/lib/consents";
 
 import { createBookingSchema, getSlotsSchema } from "./schema";
 
@@ -293,6 +294,8 @@ export async function createPublicBooking(values: unknown): Promise<CreateBookin
     );
 
     after(async () => {
+      // Trattamento con consenso (es. laser): il link da firmare è già pronto per il centro (non si manda nulla).
+      await prepareConsentLinks(result.client.tenantId, result.client.id, service.id);
       if (isNewClient) await triggerClientCreated(result.client.tenantId, result.client.id);
       else await closeSupersededRequests(result.client.tenantId, result.client.id, result.appointment.id);
       // Confermata subito: parte la conferma; altrimenti "richiesta ricevuta" e la conferma il centro.

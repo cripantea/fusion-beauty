@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Panel, Pill } from "@/components/boutique";
 import { Button } from "@/components/ui/button";
 import { ConsentCollectDialog } from "@/app/dashboard/consents/consent-collect-dialog";
+import { ConsentNotice } from "@/app/dashboard/consents/consent-notice";
 import { revokeConsent } from "@/app/dashboard/consents/collect-actions";
 import type {
   ClientConsentsDTO,
@@ -98,6 +99,15 @@ export function ClientConsentsCard({ clientId, clientName, consents }: ClientCon
       }
     >
       <div className="space-y-6 p-5">
+        {/* Consensi richiesti dai prossimi appuntamenti (es. laser): link da mandare o firma in cabina. */}
+        {/* La chiave cambia dopo ogni firma o revoca: l'avviso si ricarica. */}
+        <ConsentNotice
+          key={consents.history.map((record) => `${record.id}:${record.status}`).join(",")}
+          clientId={clientId}
+          clientName={clientName}
+          onSigned={() => router.refresh()}
+        />
+
         {consents.items.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nessun modello di consenso attivo.</p>
         ) : (

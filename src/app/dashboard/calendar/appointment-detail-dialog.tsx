@@ -18,6 +18,7 @@ import { Pill } from "@/components/boutique";
 import { formatEuro, whatsappUrl } from "@/lib/format";
 
 import { ConsentCollectDialog } from "@/app/dashboard/consents/consent-collect-dialog";
+import { ConsentNotice } from "@/app/dashboard/consents/consent-notice";
 import { sendPaymentLink } from "@/app/dashboard/payment-links/actions";
 
 import { updateAppointmentStatus } from "./actions";
@@ -220,6 +221,16 @@ export function AppointmentDetailDialog({
             </div>
           ) : null}
         </div>
+
+        {/* Trattamento con consenso (es. laser): da firmare (link alla cliente) o già firmato. */}
+        {appointment.status !== "CANCELLED" && appointment.status !== "NO_SHOW" ? (
+          <ConsentNotice
+            key={appointment.id}
+            clientId={appointment.client.id}
+            clientName={`${appointment.client.firstName} ${appointment.client.lastName}`}
+            appointment={{ id: appointment.id, serviceId: appointment.service.id, serviceName: appointment.service.name }}
+          />
+        ) : null}
 
         {canCollect ? (
           <Button

@@ -1,6 +1,7 @@
 "use server";
 
 import { appointmentInclude, toAppointmentDTO, type AppointmentDTO } from "@/app/dashboard/calendar/dto";
+import { findAppointmentsMissingConsent } from "@/lib/consents";
 import { getTenantContext } from "@/lib/auth-context";
 import { getInactiveClients, getUpcomingBirthdays } from "@/lib/insights";
 import { actionableRequestsWhere } from "@/lib/booking-proposals";
@@ -72,7 +73,11 @@ export async function getDashboardData(): Promise<DashboardData> {
     prisma.appointment.count({ where: actionableRequestsWhere(tenantId) }),
   ]);
 
-  const dtos = appointments.map(toAppointmentDTO);
+  const missingConsent = await findAppointmentsMissingConsent(tenantId, appointments);
+  const dtos = appointments.map((appointment) => ({
+    ...toAppointmentDTO(appointment),
+    consentMissing: missingConsent.has(appointment.id),
+  }));
   const billable = dtos.filter((appointment) =>
     ["BOOKED", "CONFIRMED", "COMPLETED"].includes(appointment.status)
   );

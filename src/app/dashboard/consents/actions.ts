@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 
 import {
   consentTemplateFormSchema,
+  parseChecklist,
   type ConsentTemplateFormValues,
   type ConsentTypeValue,
 } from "./schema";
@@ -12,10 +13,13 @@ import {
 export type ConsentTemplateDTO = {
   id: string;
   type: ConsentTypeValue;
-  serviceId: string | null;
+  /** Trattamenti collegati (vecchio campo singolo compreso). */
+  serviceIds: string[];
+  /** Riassunto per la tabella: "Laser 808 — Ascelle" o "16 trattamenti". */
   serviceName: string | null;
   title: string;
   body: string;
+  checklist: string[];
   version: number;
   isActive: boolean;
   signedCount: number;
@@ -23,29 +27,37 @@ export type ConsentTemplateDTO = {
 };
 
 const templateInclude = {
-  service: { select: { name: true } },
+  service: { select: { id: true, name: true } },
+  services: { select: { id: true, name: true }, orderBy: { name: "asc" } },
   _count: { select: { records: true } },
 } as const;
 
 function toTemplateDTO(template: {
   id: string;
   type: ConsentTypeValue;
-  serviceId: string | null;
   title: string;
   body: string;
+  checklist: string[];
   version: number;
   isActive: boolean;
   updatedAt: Date;
-  service: { name: string } | null;
+  service: { id: string; name: string } | null;
+  services: { id: string; name: string }[];
   _count: { records: number };
 }): ConsentTemplateDTO {
+  const services = [...template.services];
+  if (template.service && !services.some((service) => service.id === template.service?.id)) {
+    services.unshift(template.service);
+  }
   return {
     id: template.id,
     type: template.type,
-    serviceId: template.serviceId,
-    serviceName: template.service?.name ?? null,
+    serviceIds: services.map((service) => service.id),
+    serviceName:
+      services.length === 0 ? null : services.length === 1 ? services[0].name : `${services.length} trattamenti`,
     title: template.title,
     body: template.body,
+    checklist: template.checklist,
     version: template.version,
     isActive: template.isActive,
     signedCount: template._count.records,
@@ -71,20 +83,23 @@ export type ConsentTemplateActionResult =
 
 export type ConsentTemplateDeleteResult = { success: true } | { success: false; error: string };
 
-async function resolveServiceId(
+async function resolveServiceIds(
   tenantId: string,
   values: ConsentTemplateFormValues
-): Promise<{ ok: true; serviceId: string | null } | { ok: false; error: string }> {
-  if (values.type !== "TREATMENT" || !values.serviceId) {
-    return { ok: true, serviceId: null };
+): Promise<{ ok: true; serviceIds: string[] } | { ok: false; error: string }> {
+  const wanted = [...new Set(values.serviceIds)];
+  if (values.type !== "TREATMENT" || wanted.length === 0) {
+    return { ok: true, serviceIds: [] };
   }
 
-  const service = await prisma.service.findFirst({
-    where: { id: values.serviceId, tenantId },
+  const services = await prisma.service.findMany({
+    where: { id: { in: wanted }, tenantId },
     select: { id: true },
   });
 
-  return service ? { ok: true, serviceId: service.id } : { ok: false, error: "Trattamento non valido." };
+  return services.length === wanted.length
+    ? { ok: true, serviceIds: services.map((service) => service.id) }
+    : { ok: false, error: "Trattamento non valido." };
 }
 
 export async function createConsentTemplate(
@@ -97,18 +112,19 @@ export async function createConsentTemplate(
     return { success: false, error: "Controlla i dati inseriti." };
   }
 
-  const service = await resolveServiceId(tenantId, parsed.data);
-  if (!service.ok) {
-    return { success: false, error: service.error };
+  const services = await resolveServiceIds(tenantId, parsed.data);
+  if (!services.ok) {
+    return { success: false, error: services.error };
   }
 
   const template = await prisma.consentTemplate.create({
     data: {
       tenantId,
       type: parsed.data.type,
-      serviceId: service.serviceId,
+      services: { connect: services.serviceIds.map((id) => ({ id })) },
       title: parsed.data.title,
       body: parsed.data.body,
+      checklist: parsed.data.type === "TREATMENT" ? parseChecklist(parsed.data.checklist) : [],
       isActive: parsed.data.isActive,
     },
     include: templateInclude,
@@ -138,20 +154,28 @@ export async function updateConsentTemplate(
     return { success: false, error: "Il tipo di consenso non può essere modificato." };
   }
 
-  const service = await resolveServiceId(tenantId, parsed.data);
-  if (!service.ok) {
-    return { success: false, error: service.error };
+  const services = await resolveServiceIds(tenantId, parsed.data);
+  if (!services.ok) {
+    return { success: false, error: services.error };
   }
 
-  // Il testo cambia → nuova versione. I record firmati conservano il loro snapshot.
-  const contentChanged = existing.title !== parsed.data.title || existing.body !== parsed.data.body;
+  // Il testo (o le domande di salute) cambia → nuova versione: le firme vecchie non
+  // valgono più per i prossimi appuntamenti. I record firmati conservano il loro snapshot.
+  const checklist = parsed.data.type === "TREATMENT" ? parseChecklist(parsed.data.checklist) : [];
+  const contentChanged =
+    existing.title !== parsed.data.title ||
+    existing.body !== parsed.data.body ||
+    existing.checklist.join("\n") !== checklist.join("\n");
 
   const template = await prisma.consentTemplate.update({
     where: { id },
     data: {
-      serviceId: service.serviceId,
+      // Il vecchio trattamento singolo confluisce nella lista.
+      serviceId: null,
+      services: { set: services.serviceIds.map((serviceId) => ({ id: serviceId })) },
       title: parsed.data.title,
       body: parsed.data.body,
+      checklist,
       isActive: parsed.data.isActive,
       ...(contentChanged ? { version: { increment: 1 } } : {}),
     },

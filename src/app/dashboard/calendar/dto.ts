@@ -17,6 +17,8 @@ export type AppointmentDTO = {
   payment: { amount: number; method: PaymentMethodValue; notes: string | null } | null;
   /** Ultimo link di pagamento online (Stripe) non annullato. */
   paymentLink: { status: "PENDING" | "PAID" | "CANCELLED"; amountCents: number; token: string; paidWith: string | null } | null;
+  /** Manca un consenso richiesto dal trattamento (es. laser): calcolato solo per agenda e "Oggi". */
+  consentMissing?: boolean;
 };
 
 export const appointmentInclude = {

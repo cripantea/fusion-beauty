@@ -4,8 +4,11 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { headers } from "next/headers";
 
+import { cleanAnamnesis, formatAnamnesis, isAnamnesisAnswered } from "@/lib/anamnesis";
+import { getBaseUrl } from "@/lib/app-url";
 import { getTenantContext } from "@/lib/auth-context";
 import { generateConsentPdf } from "@/lib/consent-pdf";
+import { ensureConsentLink } from "@/lib/consents";
 import { prisma } from "@/lib/prisma";
 import { removeStorageFile, writeStorageFile } from "@/lib/storage";
 
@@ -27,8 +30,26 @@ export type CollectableTemplateDTO = {
   body: string;
   version: number;
   serviceName: string | null;
+  /** Domande di salute da spuntare prima della firma. */
+  checklist: string[];
   alreadySigned: boolean;
 };
+
+/** Nome del trattamento collegato, o "N trattamenti" se il modello ne ha più di uno. */
+function linkedServicesLabel(template: {
+  service: { id: string; name: string } | null;
+  services: { id: string; name: string }[];
+}) {
+  const names = new Set(template.services.map((service) => service.name));
+  if (template.service) names.add(template.service.name);
+  if (names.size === 0) return null;
+  return names.size === 1 ? [...names][0] : `${names.size} trattamenti`;
+}
+
+const linkedServicesInclude = {
+  service: { select: { id: true, name: true } },
+  services: { select: { id: true, name: true } },
+} as const;
 
 /**
  * Modelli attivi proponibili a una cliente. Con `serviceId` (appuntamento) i modelli
@@ -57,14 +78,15 @@ export async function getCollectableTemplates(input: {
         ? {
             OR: [
               { type: { not: "TREATMENT" as const } },
-              { serviceId: null },
+              { serviceId: null, services: { none: {} } },
               { serviceId: input.serviceId },
+              { services: { some: { id: input.serviceId } } },
             ],
           }
         : {}),
     },
     orderBy: [{ type: "asc" }, { title: "asc" }],
-    include: { service: { select: { name: true } } },
+    include: linkedServicesInclude,
   });
 
   const signed = await prisma.consentRecord.findMany({
@@ -74,23 +96,20 @@ export async function getCollectableTemplates(input: {
       status: "SIGNED",
       templateId: { in: templates.map((template) => template.id) },
     },
-    select: { templateId: true, templateVersion: true, appointmentId: true },
+    select: { templateId: true, templateVersion: true },
   });
 
+  // Una firma vale per tutti gli appuntamenti finché il testo non cambia (o viene revocata).
   return templates.map((template) => ({
     id: template.id,
     type: template.type,
     title: template.title,
     body: template.body,
     version: template.version,
-    serviceName: template.service?.name ?? null,
+    serviceName: linkedServicesLabel(template),
+    checklist: template.type === "TREATMENT" ? template.checklist : [],
     alreadySigned: signed.some(
-      (record) =>
-        record.templateId === template.id &&
-        record.templateVersion === template.version &&
-        (template.type !== "TREATMENT" ||
-          !input.appointmentId ||
-          record.appointmentId === input.appointmentId)
+      (record) => record.templateId === template.id && record.templateVersion === template.version
     ),
   }));
 }
@@ -120,7 +139,7 @@ export async function collectConsent(values: CollectConsentValues): Promise<Coll
     prisma.client.findFirst({ where: { id: input.clientId, tenantId } }),
     prisma.consentTemplate.findFirst({
       where: { id: input.templateId, tenantId, isActive: true },
-      include: { service: { select: { name: true } } },
+      include: linkedServicesInclude,
     }),
     prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true } }),
   ]);
@@ -148,7 +167,8 @@ export async function collectConsent(values: CollectConsentValues): Promise<Coll
     if (!appointment) {
       return { success: false, error: "Appuntamento non trovato." };
     }
-    if (template.serviceId && template.serviceId !== appointment.serviceId) {
+    const linkedIds = [template.serviceId, ...template.services.map((service) => service.id)].filter(Boolean);
+    if (linkedIds.length > 0 && !linkedIds.includes(appointment.serviceId)) {
       return { success: false, error: "Il modello non corrisponde al trattamento dell'appuntamento." };
     }
     appointmentId = appointment.id;
@@ -168,7 +188,22 @@ export async function collectConsent(values: CollectConsentValues): Promise<Coll
   const id = randomUUID();
   const signatureKey = `consents/${tenantId}/${id}/signature.png`;
   const pdfKey = `consents/${tenantId}/${id}/consent.pdf`;
-  const anamnesis = template.type === "TREATMENT" ? input.anamnesis?.trim() || null : null;
+  // Con le domande di salute del modello: voci spuntate + nota; altrimenti solo la nota libera.
+  const checklist = template.type === "TREATMENT" ? template.checklist : [];
+  const anamnesisAnswers = cleanAnamnesis(checklist, {
+    conditions: input.conditions ?? [],
+    none: input.noConditions === true,
+    note: input.anamnesis ?? "",
+  });
+  if (!isAnamnesisAnswered(checklist, anamnesisAnswers)) {
+    return { success: false, error: "Spunta le condizioni di salute oppure \"Nessuna di queste\"." };
+  }
+  const anamnesis =
+    template.type !== "TREATMENT"
+      ? null
+      : checklist.length > 0
+        ? formatAnamnesis(checklist, anamnesisAnswers)
+        : input.anamnesis?.trim() || null;
   const granted = template.type === "MARKETING" ? input.granted : true;
   const signedAt = new Date();
 
@@ -182,7 +217,7 @@ export async function collectConsent(values: CollectConsentValues): Promise<Coll
       body: template.body,
       version: template.version,
       client,
-      serviceName: appointmentServiceName ?? template.service?.name ?? null,
+      serviceName: appointmentServiceName ?? linkedServicesLabel(template),
       appointmentStart,
       marketingChoice: template.type === "MARKETING" ? granted : null,
       anamnesis,
@@ -207,7 +242,7 @@ export async function collectConsent(values: CollectConsentValues): Promise<Coll
         templateVersion: template.version,
         titleSnapshot: template.title,
         bodySnapshot: template.body,
-        answers: anamnesis ? { anamnesis } : undefined,
+        answers: anamnesis ? (checklist.length > 0 ? { anamnesis, ...anamnesisAnswers } : { anamnesis }) : undefined,
         granted,
         signatureKey,
         pdfKey,
@@ -253,45 +288,21 @@ export async function createConsentLink(input: {
 }): Promise<CreateConsentLinkResult> {
   const { tenantId } = await getTenantContext();
 
-  const [template, client] = await Promise.all([
-    prisma.consentTemplate.findFirst({
-      where: { id: input.templateId, tenantId },
-      select: { id: true },
-    }),
-    prisma.client.findFirst({
-      where: { id: input.clientId, tenantId },
-      select: { id: true, phone: true },
-    }),
-  ]);
-
-  if (!template) {
-    return { success: false, error: "Modello non trovato." };
-  }
+  const client = await prisma.client.findFirst({
+    where: { id: input.clientId, tenantId },
+    select: { id: true, phone: true },
+  });
   if (!client) {
     return { success: false, error: "Cliente non trovata." };
   }
 
-  const token = randomUUID();
-  const template2 = await prisma.consentTemplate.findUniqueOrThrow({
-    where: { id: input.templateId },
-    select: { title: true, body: true, version: true },
-  });
+  // Se c'è già un link aperto per la versione attuale si riusa quello.
+  const link = await ensureConsentLink(tenantId, client.id, input.templateId);
+  if (!link.ok) {
+    return { success: false, error: link.error };
+  }
 
-  await prisma.consentRecord.create({
-    data: {
-      tenantId,
-      clientId: client.id,
-      templateId: template.id,
-      status: "PENDING",
-      token,
-      templateVersion: template2.version,
-      titleSnapshot: template2.title,
-      bodySnapshot: template2.body,
-    },
-  });
-
-  const base = process.env.APP_BASE_URL ?? "";
-  return { success: true, url: `${base}/c/${token}`, phone: client.phone };
+  return { success: true, url: `${await getBaseUrl()}/c/${link.token}`, phone: client.phone };
 }
 
 export type RevokeConsentResult = { success: true } | { success: false; error: string };
@@ -356,7 +367,7 @@ export async function getClientConsents(clientId: string): Promise<ClientConsent
     prisma.consentTemplate.findMany({
       where: { tenantId, isActive: true },
       orderBy: [{ type: "asc" }, { title: "asc" }],
-      include: { service: { select: { name: true } } },
+      include: linkedServicesInclude,
     }),
     prisma.consentRecord.findMany({
       where: { tenantId, clientId },
@@ -374,15 +385,17 @@ export async function getClientConsents(clientId: string): Promise<ClientConsent
 
   const items: ClientConsentItemDTO[] = [];
   for (const template of templates) {
-    // Ordinati dal più recente: il primo è l'ultimo stato per quel modello.
-    const latest = records.find((record) => record.templateId === template.id);
+    // Ordinati dal più recente: il primo è l'ultimo stato per quel modello
+    // (i link ancora da firmare non cambiano lo stato).
+    const latest = records.find((record) => record.templateId === template.id && record.status !== "PENDING");
+    const linkedIds = [template.serviceId, ...template.services.map((service) => service.id)];
 
     // I consensi per trattamento sono rilevanti solo se la cliente ha quel trattamento
     // (o ne ha già firmato uno): altrimenti sarebbero tutti "mancanti".
     if (
       template.type === "TREATMENT" &&
       !latest &&
-      !(template.serviceId && clientServiceIds.has(template.serviceId))
+      !linkedIds.some((serviceId) => serviceId && clientServiceIds.has(serviceId))
     ) {
       continue;
     }
@@ -401,7 +414,7 @@ export async function getClientConsents(clientId: string): Promise<ClientConsent
       revocable: latest?.status === "SIGNED" && latest.granted,
       title: template.title,
       type: template.type,
-      serviceName: template.service?.name ?? null,
+      serviceName: linkedServicesLabel(template),
       state,
       signedAt: latest?.signedAt ?? null,
       currentVersion: template.version,

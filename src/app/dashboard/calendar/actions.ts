@@ -7,8 +7,9 @@ import { prisma } from "@/lib/prisma";
 import { stopAppointmentRuns, triggerAppointmentAutomations } from "@/lib/automation-engine";
 import { findClash } from "@/lib/availability";
 import { cancelPendingProposals } from "@/lib/booking-proposals";
+import { findAppointmentsMissingConsent, prepareConsentLinks } from "@/lib/consents";
 
-import { appointmentInclude, toAppointmentDTO, type AppointmentDTO } from "./dto";
+import { appointmentInclude, toAppointmentDTO, type AppointmentDTO, type AppointmentRow } from "./dto";
 
 export type { AppointmentDTO } from "./dto";
 import {
@@ -42,7 +43,17 @@ export async function getAppointments(input: {
     include: appointmentInclude,
   });
 
-  return appointments.map(toAppointmentDTO);
+  const missingConsent = await findAppointmentsMissingConsent(tenantId, appointments);
+  return appointments.map((appointment) => ({
+    ...toAppointmentDTO(appointment),
+    consentMissing: missingConsent.has(appointment.id),
+  }));
+}
+
+/** DTO con l'avviso "Consenso" dell'agenda (trattamento che richiede un consenso non firmato). */
+async function withConsentFlag(tenantId: string, appointment: AppointmentRow): Promise<AppointmentDTO> {
+  const missing = await findAppointmentsMissingConsent(tenantId, [appointment]);
+  return { ...toAppointmentDTO(appointment), consentMissing: missing.has(appointment.id) };
 }
 
 export async function getOperators(): Promise<OperatorDTO[]> {
@@ -166,8 +177,10 @@ export async function createAppointment(
   if (appointment.startTime > new Date()) {
     after(() => triggerAppointmentAutomations("APPOINTMENT_CONFIRMED", appointment.id));
   }
+  // Trattamento con consenso (es. laser) non ancora firmato: il link è già pronto da mandare.
+  after(() => prepareConsentLinks(tenantId, client.id, service.id));
 
-  return { success: true, appointment: toAppointmentDTO(appointment) };
+  return { success: true, appointment: await withConsentFlag(tenantId, appointment) };
 }
 
 export async function updateAppointment(
@@ -212,10 +225,11 @@ export async function updateAppointment(
     return { success: false, error: "Appuntamento non trovato." };
   }
 
-  const moved =
-    previous.startTime.getTime() !== parsed.data.startTime.getTime() ||
-    previous.operatorId !== operatorResult.operatorId;
-  const slotChanged = moved || previous.endTime.getTime() !== endTime.getTime();
+  // Per la cliente conta solo l'orario: cambiare operatrice non le manda niente
+  // e non tocca promemoria e conferme già programmati.
+  const moved = previous.startTime.getTime() !== parsed.data.startTime.getTime();
+  const slotChanged =
+    moved || previous.operatorId !== operatorResult.operatorId || previous.endTime.getTime() !== endTime.getTime();
   const active = previous.status === "BOOKED" || previous.status === "CONFIRMED";
 
   // Si controlla solo se cambia l'orario: salvare una nota non deve bloccare.
@@ -250,6 +264,9 @@ export async function updateAppointment(
     include: appointmentInclude,
   });
 
+  // Cambiato trattamento con consenso (es. laser): il link è già pronto da mandare.
+  after(() => prepareConsentLinks(tenantId, client.id, service.id));
+
   // Spostato: le proposte e i promemoria del vecchio orario non valgono più;
   // se era confermato la cliente riceve la conferma col nuovo orario.
   if (moved) {
@@ -259,7 +276,7 @@ export async function updateAppointment(
     }
   }
 
-  return { success: true, appointment: toAppointmentDTO(appointment) };
+  return { success: true, appointment: await withConsentFlag(tenantId, appointment) };
 }
 
 export async function updateAppointmentStatus(

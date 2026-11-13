@@ -23,14 +23,16 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { AnamnesisChecklist } from "@/components/anamnesis-checklist";
 import { SignaturePad } from "@/components/signature-pad";
+import { emptyAnamnesis, isAnamnesisAnswered, type AnamnesisAnswers } from "@/lib/anamnesis";
 
 import {
   collectConsent,
-  createConsentLink,
   getCollectableTemplates,
   type CollectableTemplateDTO,
 } from "./collect-actions";
+import { sendConsentLink } from "./notice-actions";
 import { consentTypeLabels } from "./schema";
 
 type ConsentCollectDialogProps = {
@@ -69,6 +71,7 @@ function ConsentCollectBody({
   const [signature, setSignature] = useState<string | null>(null);
   const [granted, setGranted] = useState(true);
   const [anamnesis, setAnamnesis] = useState("");
+  const [checklistAnswers, setChecklistAnswers] = useState<AnamnesisAnswers>(emptyAnamnesis);
   const [signatureKey, setSignatureKey] = useState(0);
   const [isPending, startTransition] = useTransition();
   const [isWhatsAppPending, startWhatsAppTransition] = useTransition();
@@ -95,18 +98,21 @@ function ConsentCollectBody({
   }, [clientId, serviceId, appointmentId, initialTemplateId]);
 
   const selected = templates?.find((template) => template.id === templateId) ?? null;
+  const checklist = selected?.checklist ?? [];
+  const answered = isAnamnesisAnswered(checklist, checklistAnswers);
 
   function handleTemplateChange(value: string) {
     setTemplateId(value);
     setSignature(null);
     setGranted(true);
     setAnamnesis("");
+    setChecklistAnswers(emptyAnamnesis);
     // La firma è legata al testo mostrato: cambiando modello si riparte da un canvas vuoto.
     setSignatureKey((key) => key + 1);
   }
 
   function handleSubmit() {
-    if (!selected || !signature) return;
+    if (!selected || !signature || !answered) return;
 
     startTransition(async () => {
       const result = await collectConsent({
@@ -115,7 +121,9 @@ function ConsentCollectBody({
         appointmentId: selected.type === "TREATMENT" ? appointmentId : undefined,
         signature,
         granted: selected.type === "MARKETING" ? granted : true,
-        anamnesis: selected.type === "TREATMENT" ? anamnesis : undefined,
+        anamnesis: selected.type !== "TREATMENT" ? undefined : checklist.length > 0 ? checklistAnswers.note : anamnesis,
+        conditions: checklist.length > 0 ? checklistAnswers.conditions : undefined,
+        noConditions: checklist.length > 0 ? checklistAnswers.none : undefined,
       });
 
       if (!result.success) {
@@ -133,25 +141,23 @@ function ConsentCollectBody({
     if (!selected) return;
 
     startWhatsAppTransition(async () => {
-      const result = await createConsentLink({ templateId: selected.id, clientId });
+      // Dal numero del centro se c'è il template approvato, altrimenti WhatsApp col messaggio pronto.
+      const result = await sendConsentLink({ templateId: selected.id, clientId });
 
       if (!result.success) {
         toast.error(result.error);
         return;
       }
 
-      const { url, phone } = result;
-
-      if (phone && phone.startsWith("+")) {
-        const digits = phone.replace(/\D/g, "").replace(/^0/, "");
-        const text = encodeURIComponent(
-          `Ciao! Ti inviamo il consenso informato da firmare prima del trattamento:\n${url}`
-        );
-        window.open(`https://wa.me/${digits}?text=${text}`, "_blank");
-        toast.success("Link WhatsApp generato");
-      } else {
-        await navigator.clipboard.writeText(url);
-        toast.success("Link copiato negli appunti");
+      if (result.sent) {
+        toast.success("Link inviato su WhatsApp.");
+      } else if (result.fallbackUrl) {
+        const opened = window.open(result.fallbackUrl, "_blank");
+        if (opened) opened.opener = null;
+        else {
+          await navigator.clipboard.writeText(result.url).catch(() => undefined);
+          toast.success("Link copiato negli appunti");
+        }
       }
     });
   }
@@ -235,7 +241,9 @@ function ConsentCollectBody({
                   </div>
                 ) : null}
 
-                {selected.type === "TREATMENT" ? (
+                {selected.type === "TREATMENT" && checklist.length > 0 ? (
+                  <AnamnesisChecklist checklist={checklist} value={checklistAnswers} onChange={setChecklistAnswers} />
+                ) : selected.type === "TREATMENT" ? (
                   <div className="space-y-2">
                     <Label>Anamnesi / note (facoltativo)</Label>
                     <Textarea
@@ -261,7 +269,7 @@ function ConsentCollectBody({
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Annulla
           </Button>
-          <Button type="button" disabled={isPending || !selected || !signature} onClick={handleSubmit}>
+          <Button type="button" disabled={isPending || !selected || !signature || !answered} onClick={handleSubmit}>
             {isPending ? "Salvataggio..." : "Salva consenso"}
           </Button>
         </DialogFooter>

@@ -233,6 +233,7 @@ export function DashboardManager({
                   <span className="text-sm font-semibold">
                     {formatEuro((paymentsEnabled ? appointment.payment?.amount : undefined) ?? appointment.service.price)}
                   </span>
+                  {appointment.consentMissing ? <Pill tone="amber">Consenso</Pill> : null}
                   {paymentsEnabled && paid ? (
                     <Pill>Pagato</Pill>
                   ) : appointment.paymentLink?.status === "PAID" ? (

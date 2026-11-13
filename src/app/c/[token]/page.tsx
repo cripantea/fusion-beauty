@@ -21,7 +21,7 @@ export default async function ConsentPage({ params }: ConsentPageProps) {
     where: { token },
     include: {
       client: { select: { firstName: true, lastName: true, phone: true } },
-      template: { select: { title: true } },
+      template: { select: { title: true, body: true, version: true, isActive: true, checklist: true } },
       tenant: { select: { name: true, isActive: true } },
     },
   });
@@ -30,7 +30,22 @@ export default async function ConsentPage({ params }: ConsentPageProps) {
     notFound();
   }
 
-  if (record.status === "SIGNED") {
+  // Link creato prima di una modifica del testo: si firma la versione attuale del modello.
+  if (record.status === "PENDING" && record.template.isActive && record.templateVersion !== record.template.version) {
+    await prisma.consentRecord.update({
+      where: { id: record.id },
+      data: {
+        templateVersion: record.template.version,
+        titleSnapshot: record.template.title,
+        bodySnapshot: record.template.body,
+      },
+    });
+    record.templateVersion = record.template.version;
+    record.titleSnapshot = record.template.title;
+    record.bodySnapshot = record.template.body;
+  }
+
+  if (record.status !== "PENDING") {
     return (
       <div className="min-h-screen bg-background">
         <header className="bg-forest px-5 pb-10 pt-8 text-forest-foreground">
@@ -38,13 +53,17 @@ export default async function ConsentPage({ params }: ConsentPageProps) {
             <div className="text-xs font-semibold uppercase tracking-[0.14em] text-mint">
               {record.tenant.name}
             </div>
-            <h1 className="mt-2 text-3xl font-bold leading-tight">Consenso già firmato</h1>
+            <h1 className="mt-2 text-3xl font-bold leading-tight">
+              {record.status === "SIGNED" ? "Consenso già firmato" : "Link non più valido"}
+            </h1>
           </div>
         </header>
         <main className="mx-auto -mt-5 max-w-lg px-4 pb-12">
           <div className="rounded-2xl border border-mint-border bg-card p-8 text-center shadow-sm">
             <p className="text-sm text-muted-foreground">
-              Hai già firmato questo consenso. Non è necessaria nessuna azione.
+              {record.status === "SIGNED"
+                ? "Hai già firmato questo consenso. Non è necessaria nessuna azione."
+                : "Questo consenso è stato revocato. Se serve, il centro ti manderà un nuovo link."}
             </p>
           </div>
         </main>
@@ -75,6 +94,7 @@ export default async function ConsentPage({ params }: ConsentPageProps) {
           clientPhone={record.client.phone}
           consentTitle={record.titleSnapshot}
           consentBody={record.bodySnapshot}
+          checklist={record.template.checklist}
         />
       </main>
     </div>

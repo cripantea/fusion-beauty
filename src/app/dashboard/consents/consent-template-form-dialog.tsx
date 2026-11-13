@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -48,8 +48,6 @@ import {
 
 export type ServiceOption = { id: string; name: string };
 
-const NO_SERVICE = "none";
-
 type ConsentTemplateFormDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -82,9 +80,10 @@ export function ConsentTemplateFormDialog({
       template
         ? {
             type: template.type,
-            serviceId: template.serviceId ?? "",
+            serviceIds: template.serviceIds,
             title: template.title,
             body: template.body,
+            checklist: template.checklist.join("\n"),
             isActive: template.isActive,
           }
         : consentTemplateFormDefaultValues
@@ -153,38 +152,14 @@ export function ConsentTemplateFormDialog({
             {type === "TREATMENT" ? (
               <FormField
                 control={form.control}
-                name="serviceId"
+                name="serviceIds"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Trattamento (facoltativo)</FormLabel>
-                    <Select
-                      value={field.value || NO_SERVICE}
-                      onValueChange={(value) => field.onChange(value === NO_SERVICE ? "" : value)}
-                    >
-                      <FormControl>
-                        <SelectTrigger className="w-full">
-                          <SelectValue>
-                            {(value: string) =>
-                              value === NO_SERVICE
-                                ? "Nessuno (modello generico)"
-                                : (services.find((service) => service.id === value)?.name ??
-                                  template?.serviceName ??
-                                  "")
-                            }
-                          </SelectValue>
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value={NO_SERVICE}>Nessuno (modello generico)</SelectItem>
-                        {services.map((service) => (
-                          <SelectItem key={service.id} value={service.id}>
-                            {service.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormLabel>Trattamenti che lo richiedono</FormLabel>
+                    <ServicesPicker services={services} value={field.value} onChange={field.onChange} />
                     <FormDescription>
-                      Collegandolo a un trattamento, verrà proposto per quell&apos;appuntamento.
+                      Quando si prenota uno di questi trattamenti, il link da firmare è già pronto. Una firma vale
+                      per tutti, finché non cambi il testo. Nessuno spuntato = modello generico.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -217,6 +192,25 @@ export function ConsentTemplateFormDialog({
                 </FormItem>
               )}
             />
+            {type === "TREATMENT" ? (
+              <FormField
+                control={form.control}
+                name="checklist"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Domande di salute (facoltativo)</FormLabel>
+                    <FormControl>
+                      <Textarea rows={5} placeholder={"Pace-maker\nGravidanza o allattamento\nDiabete"} {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      Una condizione per riga: prima di firmare la cliente spunta quelle che ha, oppure
+                      &quot;Nessuna di queste&quot;, e può aggiungere una nota.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : null}
             <FormField
               control={form.control}
               name="isActive"
@@ -244,5 +238,81 @@ export function ConsentTemplateFormDialog({
         </Form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Lista di trattamenti con spunta; la ricerca serve a spuntare tutti quelli che contengono una parola. */
+function ServicesPicker({
+  services,
+  value,
+  onChange,
+}: {
+  services: ServiceOption[];
+  value: string[];
+  onChange: (value: string[]) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const needle = query.trim().toLowerCase();
+  const visible = needle ? services.filter((service) => service.name.toLowerCase().includes(needle)) : services;
+  const selected = new Set(value);
+  // Collegati ma non più in listino (disattivati): restano collegati, si mostrano solo nel conteggio.
+  const hidden = value.filter((id) => !services.some((service) => service.id === id)).length;
+
+  function toggle(id: string) {
+    onChange(selected.has(id) ? value.filter((item) => item !== id) : [...value, id]);
+  }
+
+  return (
+    <div className="space-y-2">
+      <Input
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Cerca, es. Laser 808"
+      />
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>
+          {value.length} spuntati{hidden > 0 ? ` (${hidden} non più in listino)` : ""}
+        </span>
+        <span className="space-x-3">
+          <button
+            type="button"
+            className="underline"
+            onClick={() => onChange([...new Set([...value, ...visible.map((service) => service.id)])])}
+          >
+            {needle ? `Seleziona tutti quelli che contengono "${query.trim()}"` : "Tutti"}
+          </button>
+          <button
+            type="button"
+            className="underline"
+            onClick={() => {
+              const ids = new Set(visible.map((service) => service.id));
+              onChange(value.filter((id) => !ids.has(id)));
+            }}
+          >
+            Nessuno
+          </button>
+        </span>
+      </div>
+      <div className="max-h-56 divide-y overflow-y-auto rounded-xl border">
+        {visible.length === 0 ? (
+          <p className="px-3 py-2 text-sm text-muted-foreground">Nessun trattamento trovato.</p>
+        ) : (
+          visible.map((service) => (
+            <label
+              key={service.id}
+              className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-mint-soft/40"
+            >
+              <input
+                type="checkbox"
+                className="size-4 accent-forest"
+                checked={selected.has(service.id)}
+                onChange={() => toggle(service.id)}
+              />
+              {service.name}
+            </label>
+          ))
+        )}
+      </div>
+    </div>
   );
 }

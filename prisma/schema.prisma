@@ -301,6 +301,8 @@ model Service {
   tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   appointments      Appointment[]
   consentTemplates  ConsentTemplate[]
+  // Consensi informati richiesti per questo trattamento (un modello vale per più trattamenti).
+  requiredConsents  ConsentTemplate[] @relation("ConsentTemplateServices")
   excludedOperators User[]            @relation("OperatorExcludedServices")
 
   @@index([tenantId, isActive])
@@ -387,9 +389,12 @@ model ConsentTemplate {
   tenantId  String
   type      ConsentType
   // Per i consensi TREATMENT: trattamento a cui il modello si riferisce (facoltativo).
+  // Vecchio campo singolo: i nuovi modelli usano `services` (più trattamenti).
   serviceId String?
   title     String
   body      String      @db.Text
+  // Condizioni di salute da spuntare prima della firma (anamnesi); vuoto = solo note libere.
+  checklist String[]    @default([])
   // Incrementata a ogni modifica del testo; i record firmati conservano la versione firmata.
   version   Int         @default(1)
   isActive  Boolean     @default(true)
@@ -397,8 +402,9 @@ model ConsentTemplate {
   updatedAt DateTime    @updatedAt
 
   tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  service Service?        @relation(fields: [serviceId], references: [id], onDelete: SetNull)
-  records ConsentRecord[]
+  service  Service?        @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  services Service[]       @relation("ConsentTemplateServices")
+  records  ConsentRecord[]
 
   @@index([tenantId, type, isActive])
   @@map("consent_templates")

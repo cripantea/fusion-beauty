@@ -109,6 +109,11 @@ export function CalendarGrid({ days, appointments, onAppointmentClick }: Calenda
                       {appointment.client.firstName} {appointment.client.lastName}
                     </div>
                     <div className="truncate">{appointment.service.name}</div>
+                    {appointment.consentMissing ? (
+                      <span className="mt-0.5 inline-block rounded border border-amber-300 bg-amber-100 px-1 text-[10px] font-semibold text-amber-900">
+                        Consenso
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}
