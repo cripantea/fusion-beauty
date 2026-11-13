@@ -6,6 +6,7 @@ import { appointmentServiceNames, appointmentTotalPrice, extraServicesSelect } f
 import { getTenantContext } from "@/lib/auth-context";
 import { formatEuro } from "@/lib/format";
 import { getClientStatsMap } from "@/lib/insights";
+import { isConsentsEnabled } from "@/lib/consents";
 import { isPaymentsEnabled } from "@/lib/payments-mode";
 import { prisma } from "@/lib/prisma";
 import { getStripeStatus } from "@/lib/stripe-tenant";
@@ -67,7 +68,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
 
   const [consents, statsMap, appointments, nextAppointment, favorites, questionnaire] =
     await Promise.all([
-      getClientConsents(id),
+      isConsentsEnabled(tenantId).then((enabled) => (enabled ? getClientConsents(id) : null)),
       getClientStatsMap(tenantId, [id]),
       prisma.appointment.findMany({
         where: { tenantId, clientId: id },
@@ -194,11 +195,13 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
           </div>
         </Panel>
 
-        <ClientConsentsCard
-          clientId={client.id}
-          clientName={`${client.firstName} ${client.lastName}`}
-          consents={consents}
-        />
+        {consents ? (
+          <ClientConsentsCard
+            clientId={client.id}
+            clientName={`${client.firstName} ${client.lastName}`}
+            consents={consents}
+          />
+        ) : null}
 
         <QuestionnaireCard
           clientId={client.id}

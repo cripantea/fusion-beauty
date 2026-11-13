@@ -114,6 +114,8 @@ type DashboardSidebarProps = {
   paymentsEnabled: boolean;
   /** Stripe collegato: "Link di pagamento" nel menu. */
   onlinePayments: boolean;
+  /** Consensi informati attivi per il centro: spenti, niente "Modelli consenso". */
+  consentsEnabled: boolean;
 };
 
 export function DashboardSidebar({
@@ -123,6 +125,7 @@ export function DashboardSidebar({
   unreadMessages,
   paymentsEnabled,
   onlinePayments,
+  consentsEnabled,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
 
@@ -148,7 +151,8 @@ export function DashboardSidebar({
         ...(isAdmin ? ADMIN_MORE_ITEMS : []),
       ]
     : [];
-  const settingsItems: NavItem[] = hasTenant && isAdmin ? ADMIN_SETTINGS_ITEMS : [];
+  const settingsItems: NavItem[] =
+    hasTenant && isAdmin ? ADMIN_SETTINGS_ITEMS.filter((item) => consentsEnabled || item.href !== "/dashboard/consents") : [];
 
   // Aperte o chiuse restano come le lascia l'operatrice, su tutte le pagine (anche dopo un ricaricamento).
   // Finché non le tocca, si apre da sola la sezione della pagina in cui si trova.

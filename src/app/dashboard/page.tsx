@@ -2,6 +2,7 @@ import { getOperators } from "@/app/dashboard/calendar/actions";
 import { getClients } from "@/app/dashboard/clients/actions";
 import { getServices } from "@/app/dashboard/services/actions";
 import { getAuthContext } from "@/lib/auth-context";
+import { isConsentsEnabled } from "@/lib/consents";
 import { isPaymentsEnabled } from "@/lib/payments-mode";
 import { getStripeStatus } from "@/lib/stripe-tenant";
 
@@ -22,13 +23,14 @@ export default async function DashboardPage() {
     );
   }
 
-  const [data, clients, services, operators, paymentsEnabled, stripe] = await Promise.all([
+  const [data, clients, services, operators, paymentsEnabled, stripe, consentsEnabled] = await Promise.all([
     getDashboardData(),
     getClients(),
     getServices({ status: "active" }),
     getOperators(),
     isPaymentsEnabled(user.tenantId),
     getStripeStatus(user.tenantId),
+    isConsentsEnabled(user.tenantId),
   ]);
 
   return (
@@ -40,6 +42,7 @@ export default async function DashboardPage() {
       operators={operators}
       paymentsEnabled={paymentsEnabled}
       onlinePayments={stripe.connected}
+      consentsEnabled={consentsEnabled}
     />
   );
 }

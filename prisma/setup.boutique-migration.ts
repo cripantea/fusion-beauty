@@ -10,6 +10,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 
 import { PrismaClient, type Prisma } from "../src/generated/prisma/client";
 import { DEFAULT_SETTINGS, formInputSchema, type FormInput } from "../src/lib/forms";
+import { listTemplates } from "../src/lib/fusion-wa";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -63,6 +64,12 @@ const template = (templateName: string, templateBody: string, params: string[]) 
   templateBody,
   params,
 });
+
+// Compleanno: buono da 5€ su un trattamento viso o corpo (prima era 10€ su qualsiasi trattamento).
+const BIRTHDAY_NAME = "Auguri di compleanno con buono 5€ (viso o corpo)";
+const BIRTHDAY_TEMPLATE = "auguri_compleanno_5";
+const BIRTHDAY_BODY =
+  "Buon compleanno {{1}}! 🎉 Per festeggiarti ti regaliamo un buono da 5€ su un trattamento viso o corpo a tua scelta, valido fino al {{2}}. Mostra questo messaggio in cassa e prenota scrivendoci qui o chiamandoci al 351 857 1506. Un abbraccio da La Boutique del Benessere 🩵";
 
 const AUTOMATIONS: {
   key: string;
@@ -124,13 +131,13 @@ const AUTOMATIONS: {
   },
   {
     key: "boutique:compleanno",
-    name: "Auguri di compleanno con buono 10€",
+    name: BIRTHDAY_NAME,
     trigger: "BIRTHDAY",
     triggerConfig: {},
     steps: [
       template(
-        "auguri_compleanno",
-        "Buon compleanno {{1}}! 🎉 Per festeggiarti ti regaliamo un buono da 10€ su un trattamento a tua scelta, valido fino al {{2}}. Mostra questo messaggio in cassa e prenota scrivendoci al 351 857 1506 o chiamandoci. Un abbraccio da La Boutique del Benessere 🩵",
+        BIRTHDAY_TEMPLATE,
+        BIRTHDAY_BODY,
         ["{{nome}}", "{{scadenza}}"]
       ),
     ],
@@ -274,6 +281,37 @@ async function main() {
     });
     console.log(`✅ Automazione "${automation.name}" creata (in pausa).`);
   }
+
+  await switchBirthdayTemplate(tenant.id);
+}
+
+/**
+ * L'automazione del compleanno già esistente passa al nuovo messaggio (5€ viso o corpo)
+ * solo quando Meta l'ha approvato: fino ad allora resta il vecchio, così gli auguri partono sempre.
+ */
+async function switchBirthdayTemplate(tenantId: string) {
+  const automation = await prisma.automation.findFirst({ where: { tenantId, presetKey: "boutique:compleanno" }, select: { id: true, steps: true } });
+  if (!automation || !Array.isArray(automation.steps)) return;
+  const steps = automation.steps as Record<string, unknown>[];
+  if (!steps.some((step) => step.templateName === "auguri_compleanno")) return;
+
+  const templates = await listTemplates(tenantId).catch(() => null);
+  const approved = templates?.ok && templates.templates.some((t) => t.name === BIRTHDAY_TEMPLATE && t.status === "APPROVED");
+  if (!approved) {
+    console.log(`↷ Compleanno: "${BIRTHDAY_TEMPLATE}" non ancora approvato, resta il messaggio di prima.`);
+    return;
+  }
+
+  await prisma.automation.update({
+    where: { id: automation.id },
+    data: {
+      name: BIRTHDAY_NAME,
+      steps: steps.map((step) =>
+        step.templateName === "auguri_compleanno" ? { ...step, templateName: BIRTHDAY_TEMPLATE, templateBody: BIRTHDAY_BODY } : step
+      ) as Prisma.InputJsonValue,
+    },
+  });
+  console.log("✅ Compleanno: ora il buono è da 5€ su un trattamento viso o corpo.");
 }
 
 main()

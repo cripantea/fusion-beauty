@@ -59,12 +59,19 @@ type DayPlan = {
 const overlaps = (a: Interval, start: number, end: number) => a.start < end && a.end > start;
 const toInterval = (r: { startTime: Date; endTime: Date }): Interval => ({ start: r.startTime.getTime(), end: r.endTime.getTime() });
 
-async function loadDayPlan(db: Db, tenantId: string, day: string, serviceId: string): Promise<DayPlan> {
+async function loadDayPlan(db: Db, tenantId: string, day: string, serviceId: string, operatorId?: string | null): Promise<DayPlan> {
   const dow = ((new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7) + 1; // 1=lun … 7=dom
 
   // Le stesse operatrici delle colonne in agenda, se eseguono il trattamento.
   const operators = await db.user.findMany({
-    where: { tenantId, isActive: true, role: { in: ["ADMIN", "OPERATOR"] }, excludedServices: { none: { id: serviceId } } },
+    where: {
+      tenantId,
+      isActive: true,
+      role: { in: ["ADMIN", "OPERATOR"] },
+      excludedServices: { none: { id: serviceId } },
+      // Scelta dalla cliente: solo i suoi orari liberi.
+      ...(operatorId ? { id: operatorId } : {}),
+    },
     select: {
       id: true,
       workingHours: { where: { isActive: true }, select: { dayOfWeek: true, startTime: true, endTime: true } },
@@ -171,6 +178,7 @@ export async function getAvailableSlots(input: {
   slug: string;
   serviceId: string;
   date: string;
+  operatorId?: string | null;
 }): Promise<SlotsResult> {
   const parsed = getSlotsSchema.safeParse(input);
   if (!parsed.success) {
@@ -191,7 +199,7 @@ export async function getAvailableSlots(input: {
     return { success: false, error: "Data non valida." };
   }
 
-  const plan = await loadDayPlan(prisma, tenant.id, parsed.data.date, service.id);
+  const plan = await loadDayPlan(prisma, tenant.id, parsed.data.date, service.id, parsed.data.operatorId);
   const slots = slotsOf(plan, service.durationMinutes);
 
   return { success: true, slots: slots.map((slot) => slot.toISOString()) };
@@ -202,29 +210,42 @@ export async function getAvailableSlots(input: {
  * (es. mercoledì e domenica) nel calendario si vedono grigi e non si cliccano.
  * Anche i giorni aperti in via eccezionale con un "imprevisto" restano cliccabili.
  */
+export type OpenDays = { weekdays: number[]; extraDates: string[] };
+export type BookableOperator = OpenDays & { id: string; name: string };
+
 export async function getOpenDays(input: {
   slug: string;
   serviceId: string;
-}): Promise<{ success: true; weekdays: number[]; extraDates: string[] } | { success: false }> {
+}): Promise<({ success: true; operators: BookableOperator[] } & OpenDays) | { success: false }> {
   const tenant = await findActiveTenantBySlug(input.slug);
   if (!tenant) return { success: false };
   const service = await findBookableService(tenant.id, input.serviceId);
   if (!service) return { success: false };
 
   const hoursConfigured = (await prisma.workingHours.count({ where: { tenantId: tenant.id, isActive: true } })) > 0;
-  if (!hoursConfigured) return { success: true, weekdays: DEFAULT_HOURS.days, extraDates: [] };
-
   const today = romeDay(new Date());
-  const operators = await prisma.user.findMany({
+  const users = await prisma.user.findMany({
     where: { tenantId: tenant.id, isActive: true, role: { in: ["ADMIN", "OPERATOR"] }, excludedServices: { none: { id: service.id } } },
+    orderBy: [{ agendaOrder: "asc" }, { firstName: "asc" }],
     select: {
+      id: true,
+      firstName: true,
       workingHours: { where: { isActive: true }, select: { dayOfWeek: true } },
       staffExceptions: { where: { date: { gte: new Date(`${today}T00:00:00Z`) }, startTime: { not: null } }, select: { date: true } },
     },
   });
-  const weekdays = [...new Set(operators.flatMap((op) => op.workingHours.map((h) => h.dayOfWeek)))].sort();
-  const extraDates = [...new Set(operators.flatMap((op) => op.staffExceptions.map((e) => e.date.toISOString().slice(0, 10))))];
-  return { success: true, weekdays, extraDates };
+  // Le operatrici che la cliente può scegliere: chi fa il trattamento e lavora almeno un giorno.
+  const operators: BookableOperator[] = users
+    .map((op) => ({
+      id: op.id,
+      name: op.firstName,
+      weekdays: hoursConfigured ? [...new Set(op.workingHours.map((h) => h.dayOfWeek))].sort() : DEFAULT_HOURS.days,
+      extraDates: [...new Set(op.staffExceptions.map((e) => e.date.toISOString().slice(0, 10)))],
+    }))
+    .filter((op) => op.weekdays.length > 0 || op.extraDates.length > 0);
+  const weekdays = [...new Set(operators.flatMap((op) => op.weekdays))].sort();
+  const extraDates = [...new Set(operators.flatMap((op) => op.extraDates))];
+  return { success: true, operators, weekdays, extraDates };
 }
 
 export type BookingConfirmation = {
@@ -275,13 +296,13 @@ export async function createPublicBooking(values: unknown): Promise<CreateBookin
       async (tx) => {
         // Si prenota solo un orario che l'agenda offre davvero (negli orari di
         // lavoro), ricontrollato qui dentro: due prenotazioni insieme non passano.
-        const plan = await loadDayPlan(tx, tenant.id, romeDay(startTime), service.id);
+        const plan = await loadDayPlan(tx, tenant.id, romeDay(startTime), service.id, parsed.data.operatorId);
         const offered = slotsOf(plan, service.durationMinutes).some((slot) => slot.getTime() === startTime.getTime());
         const free = offered ? freeOperatorsAt(plan, startTime.getTime(), endTime.getTime()) : null;
         if (!free || free.length === 0) {
           throw new Error("SLOT_TAKEN");
         }
-        // Va all'operatrice libera meno impegnata quel giorno.
+        // Va all'operatrice scelta dalla cliente, altrimenti alla libera meno impegnata quel giorno.
         const operatorId = free[0];
 
         // Stessa cliente anche se il numero è scritto diverso (+39, spazi…): nome e cognome in scheda restano.

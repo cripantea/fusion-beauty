@@ -15,6 +15,8 @@ import { prisma } from "@/lib/prisma";
 function treatmentTemplatesWhere(tenantId: string, serviceIds: string[]): Prisma.ConsentTemplateWhereInput {
   return {
     tenantId,
+    // Consensi spenti per il centro: nessun trattamento ne richiede (niente avvisi né link).
+    tenant: { consentsEnabled: true },
     isActive: true,
     type: "TREATMENT",
     OR: [{ serviceId: { in: serviceIds } }, { services: { some: { id: { in: serviceIds } } } }],
@@ -196,4 +198,10 @@ async function missingConsentFor(
     }
   }
   return missing;
+}
+
+/** Consensi informati attivi per il centro (spenti: niente modelli, firme né avvisi). */
+export async function isConsentsEnabled(tenantId: string): Promise<boolean> {
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { consentsEnabled: true } });
+  return tenant?.consentsEnabled ?? true;
 }

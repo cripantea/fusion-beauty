@@ -1,6 +1,6 @@
 "use server";
 
-import { requireTenantAdmin } from "@/lib/auth-context";
+import { getTenantContext } from "@/lib/auth-context";
 import { prisma } from "@/lib/prisma";
 
 export type WorkingHourDTO = {
@@ -18,8 +18,16 @@ export type StaffExceptionDTO = {
   note: string | null;
 };
 
+/** Orari di un'operatrice: li cambia l'amministratrice o lei stessa (da "I miei orari" in Agenda). */
+async function canEditHours(userId: string): Promise<{ tenantId: string } | null> {
+  const { user, tenantId } = await getTenantContext();
+  return user.role === "ADMIN" || user.id === userId ? { tenantId } : null;
+}
+
 export async function getWorkingHours(userId: string): Promise<WorkingHourDTO[]> {
-  const { tenantId } = await requireTenantAdmin();
+  const access = await canEditHours(userId);
+  if (!access) return [];
+  const { tenantId } = access;
 
   const rows = await prisma.workingHours.findMany({
     where: { tenantId, userId },
@@ -38,7 +46,9 @@ export async function setWorkingHours(
   userId: string,
   hours: { dayOfWeek: number; startTime: string; endTime: string }[]
 ): Promise<{ success: boolean; error?: string }> {
-  const { tenantId } = await requireTenantAdmin();
+  const access = await canEditHours(userId);
+  if (!access) return { success: false, error: "Puoi cambiare solo i tuoi orari." };
+  const { tenantId } = access;
 
   const member = await prisma.user.findFirst({ where: { id: userId, tenantId }, select: { id: true } });
   if (!member) return { success: false, error: "Operatrice non trovata." };
@@ -66,7 +76,9 @@ export async function setWorkingHours(
 }
 
 export async function getStaffExceptions(userId: string): Promise<StaffExceptionDTO[]> {
-  const { tenantId } = await requireTenantAdmin();
+  const access = await canEditHours(userId);
+  if (!access) return [];
+  const { tenantId } = access;
 
   const rows = await prisma.staffException.findMany({
     where: { tenantId, userId },
@@ -86,7 +98,9 @@ export async function createStaffException(
   userId: string,
   data: { date: string; startTime?: string; endTime?: string; note?: string }
 ): Promise<{ success: boolean; error?: string; exception?: StaffExceptionDTO }> {
-  const { tenantId } = await requireTenantAdmin();
+  const access = await canEditHours(userId);
+  if (!access) return { success: false, error: "Puoi cambiare solo i tuoi orari." };
+  const { tenantId } = access;
 
   const member = await prisma.user.findFirst({ where: { id: userId, tenantId }, select: { id: true } });
   if (!member) return { success: false, error: "Operatrice non trovata." };
@@ -120,7 +134,10 @@ export async function createStaffException(
 export async function deleteStaffException(
   id: string
 ): Promise<{ success: boolean; error?: string }> {
-  const { tenantId } = await requireTenantAdmin();
+  const { tenantId } = await getTenantContext();
+  const exception = await prisma.staffException.findFirst({ where: { id, tenantId }, select: { userId: true } });
+  if (!exception) return { success: false, error: "Imprevisto non trovato." };
+  if (!(await canEditHours(exception.userId))) return { success: false, error: "Puoi cambiare solo i tuoi orari." };
 
   try {
     const result = await prisma.staffException.deleteMany({ where: { id, tenantId } });

@@ -12,7 +12,7 @@ export default async function DashboardLayout({ children }: LayoutProps<"/dashbo
 
   const [tenant, pendingRequests, unreadMessages, stripe] = user.tenantId
     ? await Promise.all([
-        prisma.tenant.findUnique({ where: { id: user.tenantId }, select: { name: true, paymentsEnabled: true } }),
+        prisma.tenant.findUnique({ where: { id: user.tenantId }, select: { name: true, paymentsEnabled: true, consentsEnabled: true } }),
         prisma.appointment.count({ where: actionableRequestsWhere(user.tenantId) }),
         prisma.whatsappMessage.count({
           where: { tenantId: user.tenantId, direction: "INBOUND", readAt: null },
@@ -32,6 +32,7 @@ export default async function DashboardLayout({ children }: LayoutProps<"/dashbo
         unreadMessages={unreadMessages}
         paymentsEnabled={tenant?.paymentsEnabled ?? false}
         onlinePayments={stripe > 0}
+        consentsEnabled={tenant?.consentsEnabled ?? true}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <DashboardTopbar
@@ -43,7 +44,7 @@ export default async function DashboardLayout({ children }: LayoutProps<"/dashbo
         <PageTransition>
           <main className="flex-1 p-4 pb-24 sm:p-6 sm:pb-24 lg:p-8">{children}</main>
           <footer className="border-t border-border px-8 py-4 text-center font-mono text-xs text-muted-foreground print:hidden">
-            © {new Date().getFullYear()} Fusion Beauty · Fusion Media di Luca Gabriele Pantea · P.IVA 13148540969
+            © {new Date().getFullYear()} Fusion Beauty
           </footer>
         </PageTransition>
       </div>

@@ -4,6 +4,8 @@ export const getSlotsSchema = z.object({
   slug: z.string().min(1),
   serviceId: z.string().min(1),
   date: z.string().min(1),
+  /** Operatrice scelta dalla cliente; vuoto = la prima disponibile. */
+  operatorId: z.string().min(1).nullish(),
 });
 
 export const contactFormSchema = z.object({
@@ -34,6 +36,7 @@ export const createBookingSchema = z
     slug: z.string().min(1),
     serviceId: z.string().min(1),
     startTime: z.string().min(1),
+    operatorId: z.string().min(1).nullish(),
   })
   .merge(contactFormSchema);
 

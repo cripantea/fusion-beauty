@@ -42,6 +42,8 @@ type DashboardManagerProps = {
   services: ServiceDTO[];
   operators: OperatorDTO[];
   paymentsEnabled: boolean;
+  /** Consensi informati attivi: spenti, niente "Raccogli consenso". */
+  consentsEnabled: boolean;
   onlinePayments: boolean;
 };
 
@@ -52,6 +54,7 @@ export function DashboardManager({
   services,
   operators,
   paymentsEnabled,
+  consentsEnabled,
   onlinePayments,
 }: DashboardManagerProps) {
   const [linkTarget, setLinkTarget] = useState<PaymentLinkTarget | null>(null);
@@ -347,6 +350,7 @@ export function DashboardManager({
           setPayingAppointment(appointment);
         }}
         paymentsEnabled={paymentsEnabled}
+        consentsEnabled={consentsEnabled}
         onlinePayments={onlinePayments}
         onPaymentLinkSent={() => refresh()}
         onPaymentLink={(appointment) => {

@@ -69,9 +69,13 @@ const CHECKLIST = [
 const isLaser = (name: string) => /^laser 808/i.test(name.trim());
 
 async function main() {
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "boutique-del-benessere" }, select: { id: true } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "boutique-del-benessere" }, select: { id: true, consentsEnabled: true } });
   if (!tenant) {
     console.log("↷ La Boutique del Benessere non trovata, saltato");
+    return;
+  }
+  if (!tenant.consentsEnabled) {
+    console.log("↷ Consensi spenti per La Boutique del Benessere, saltato");
     return;
   }
 

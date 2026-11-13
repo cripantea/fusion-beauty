@@ -66,6 +66,8 @@ type AppointmentDetailDialogProps = {
   onCollect: (appointment: AppointmentDTO) => void;
   /** Incassi in cassa attivi (Incassa, POS): spenti si mostra solo il prezzo di listino. */
   paymentsEnabled: boolean;
+  /** Consensi informati attivi: spenti, niente avviso né "Raccogli consenso". */
+  consentsEnabled: boolean;
   /** Stripe collegato: link di pagamento online (anche in 3 rate con Klarna). */
   onlinePayments: boolean;
   /** "Cambia importo": apre il dialog del link di pagamento. */
@@ -85,6 +87,7 @@ export function AppointmentDetailDialog({
   onStatusChanged,
   onCollect,
   paymentsEnabled,
+  consentsEnabled,
   onlinePayments,
   onPaymentLink,
   onPaymentLinkSent,
@@ -225,7 +228,7 @@ export function AppointmentDetailDialog({
         </div>
 
         {/* Trattamento con consenso (es. laser): da firmare (link alla cliente) o già firmato. */}
-        {appointment.status !== "CANCELLED" && appointment.status !== "NO_SHOW" ? (
+        {consentsEnabled && appointment.status !== "CANCELLED" && appointment.status !== "NO_SHOW" ? (
           <ConsentNotice
             key={appointment.id}
             clientId={appointment.client.id}
@@ -341,9 +344,11 @@ export function AppointmentDetailDialog({
         ) : null}
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setConsentOpen(true)}>
-            Raccogli consenso
-          </Button>
+          {consentsEnabled ? (
+            <Button variant="outline" onClick={() => setConsentOpen(true)}>
+              Raccogli consenso
+            </Button>
+          ) : null}
           <Button onClick={() => onEdit(appointment)}>Modifica</Button>
         </DialogFooter>
 

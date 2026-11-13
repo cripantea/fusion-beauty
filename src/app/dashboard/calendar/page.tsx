@@ -3,6 +3,7 @@ import { addDays, endOfWeek, startOfWeek, subDays } from "date-fns";
 import { getClients } from "@/app/dashboard/clients/actions";
 import { getServices } from "@/app/dashboard/services/actions";
 import { getTenantContext } from "@/lib/auth-context";
+import { isConsentsEnabled } from "@/lib/consents";
 import { isPaymentsEnabled } from "@/lib/payments-mode";
 import { getStripeStatus } from "@/lib/stripe-tenant";
 
@@ -20,7 +21,7 @@ export default async function CalendarPage() {
   const weekStart = subDays(startOfWeek(today, { weekStartsOn: 1 }), 1);
   const weekEnd = addDays(endOfWeek(today, { weekStartsOn: 1 }), 1);
 
-  const [appointments, blocks, absences, clients, services, operators, paymentsEnabled, stripe] = await Promise.all([
+  const [appointments, blocks, absences, clients, services, operators, paymentsEnabled, stripe, consentsEnabled] = await Promise.all([
     getAppointments({ start: weekStart, end: weekEnd }),
     getStaffBlocks({ start: weekStart, end: weekEnd }),
     getStaffAbsences({ start: weekStart, end: weekEnd }),
@@ -29,6 +30,7 @@ export default async function CalendarPage() {
     getOperators(),
     isPaymentsEnabled(tenantId),
     getStripeStatus(tenantId),
+    isConsentsEnabled(tenantId),
   ]);
 
   return (
@@ -44,6 +46,7 @@ export default async function CalendarPage() {
       currentUserId={user.id}
       paymentsEnabled={paymentsEnabled}
       onlinePayments={stripe.connected}
+      consentsEnabled={consentsEnabled}
     />
   );
 }

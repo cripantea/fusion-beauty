@@ -32,7 +32,9 @@ import {
   createPublicBooking,
   getAvailableSlots,
   getOpenDays,
+  type BookableOperator,
   type BookingConfirmation,
+  type OpenDays,
 } from "./actions";
 import type { PublicServiceDTO } from "./data";
 import { contactFormDefaultValues, contactFormSchema, type ContactFormValues } from "./schema";
@@ -235,14 +237,21 @@ export function WidgetBookingFlow({ slug, services, initialServiceId, prefill }:
     defaultValues: { ...contactFormDefaultValues, ...prefill },
   });
 
-  // Giorni di lavoro per il trattamento scelto (null = ancora da sapere: tutto cliccabile).
-  const [openDays, setOpenDays] = useState<{ weekdays: number[]; extraDates: string[] } | null>(null);
+  // Giorni di lavoro per il trattamento scelto (null = ancora da sapere: tutto cliccabile)
+  // e le operatrici che lo fanno, da scegliere ("Prima disponibile" = nessuna scelta).
+  const [allOpenDays, setAllOpenDays] = useState<OpenDays | null>(null);
+  const [operators, setOperators] = useState<BookableOperator[]>([]);
+  const [operatorId, setOperatorId] = useState<string | null>(null);
+  const chosenOperator = operators.find((op) => op.id === operatorId) ?? null;
+  const openDays = chosenOperator ?? allOpenDays;
   useEffect(() => {
     if (!selectedService) return;
     let cancelled = false;
     getOpenDays({ slug, serviceId: selectedService.id })
       .then((result) => {
-        if (!cancelled) setOpenDays(result.success ? { weekdays: result.weekdays, extraDates: result.extraDates } : null);
+        if (cancelled) return;
+        setAllOpenDays(result.success ? { weekdays: result.weekdays, extraDates: result.extraDates } : null);
+        setOperators(result.success ? result.operators : []);
       })
       .catch(() => undefined);
     return () => {
@@ -256,18 +265,19 @@ export function WidgetBookingFlow({ slug, services, initialServiceId, prefill }:
     return !openDays.weekdays.includes(weekday) && !openDays.extraDates.includes(format(date, "yyyy-MM-dd"));
   }
 
-  function fetchSlots(service: PublicServiceDTO, date: Date) {
+  function fetchSlots(service: PublicServiceDTO, date: Date, operator: string | null = operatorId) {
     setSlotsLoading(true);
     setSelectedSlot(null);
-    loadSlots(service, date);
+    loadSlots(service, date, operator);
   }
 
-  function loadSlots(service: PublicServiceDTO, date: Date) {
+  function loadSlots(service: PublicServiceDTO, date: Date, operator: string | null = operatorId) {
     startTransition(async () => {
       const result = await getAvailableSlots({
         slug,
         serviceId: service.id,
         date: format(date, "yyyy-MM-dd"),
+        operatorId: operator,
       }).catch(() => ({ success: false as const, error: "Orari non disponibili in questo momento: riprova tra qualche secondo." }));
       setSlotsLoading(false);
 
@@ -289,8 +299,17 @@ export function WidgetBookingFlow({ slug, services, initialServiceId, prefill }:
 
   function handleSelectService(service: PublicServiceDTO) {
     setSelectedService(service);
+    // Un altro trattamento può farlo un'altra operatrice: si riparte da "Prima disponibile".
+    setOperatorId(null);
+    setOperators([]);
     setStep("datetime");
-    fetchSlots(service, selectedDate);
+    fetchSlots(service, selectedDate, null);
+  }
+
+  function handleSelectOperator(id: string | null) {
+    if (!selectedService) return;
+    setOperatorId(id);
+    fetchSlots(selectedService, selectedDate, id);
   }
 
   function handleSelectDate(date: Date | undefined) {
@@ -320,6 +339,7 @@ export function WidgetBookingFlow({ slug, services, initialServiceId, prefill }:
         slug,
         serviceId: selectedService.id,
         startTime: selectedSlot,
+        operatorId,
         ...values,
       }).catch(() => null);
 
@@ -413,6 +433,25 @@ export function WidgetBookingFlow({ slug, services, initialServiceId, prefill }:
                 {selectedService.durationMinutes} min · {currencyFormatter.format(selectedService.price)}
               </CardDescription>
             </CardHeader>
+            {operators.length > 1 ? (
+              <CardContent className="space-y-2 pb-2">
+                <p className="text-sm font-medium">Con chi?</p>
+                <div className="flex flex-wrap gap-2">
+                  {[{ id: null, name: "Prima disponibile" }, ...operators].map((op) => (
+                    <Button
+                      key={op.id ?? "any"}
+                      type="button"
+                      size="sm"
+                      variant={operatorId === op.id ? "default" : "outline"}
+                      className="rounded-full"
+                      onClick={() => handleSelectOperator(op.id)}
+                    >
+                      {op.name}
+                    </Button>
+                  ))}
+                </div>
+              </CardContent>
+            ) : null}
             <CardContent className="flex justify-center">
               <Calendar
                 mode="single"

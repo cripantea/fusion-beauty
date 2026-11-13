@@ -309,6 +309,8 @@ function PlanCard({
   const meta = statusMeta[plan.status];
   const remaining = plan.totalPrice - plan.paidAmount;
   const canPay = plan.status === "ACTIVE" && remaining > 0.005;
+  // Prossima seduta da segnare come fatta (sempre in vista, senza aprire il percorso).
+  const nextSession = plan.status === "ACTIVE" ? plan.sessions.find((s) => s.completedAt === null) : undefined;
   // Pagato prima che i pagamenti finissero in Cassa: si mostra come una riga sola.
   const earlier = plan.paidAmount - plan.payments.reduce((sum, p) => sum + p.amount, 0);
 
@@ -319,6 +321,7 @@ function PlanCard({
         : await completeSession(sessionId);
 
       if (!result.success) { toast.error(result.error); return; }
+      toast.success(isDone ? "Seduta rimessa da fare." : "Seduta segnata come fatta.");
 
       // Refresh plan from server
       const plans = await getClientPlans(plan.clientId ?? "");
@@ -390,14 +393,28 @@ function PlanCard({
         )}
       </button>
 
-      {/* Pagamento: sempre a portata, senza aprire il percorso */}
-      {canPay && (
+      {/* Seduta e pagamento: sempre a portata, senza aprire il percorso */}
+      {(canPay || nextSession) && (
         <div className="flex flex-wrap gap-2 px-4 pb-3">
-          <Button size="sm" className="h-8 gap-1.5" onClick={() => setPayOpen(true)}>
-            <Wallet className="size-3.5" />
-            Registra pagamento
-          </Button>
-          {onlinePayments && (
+          {nextSession && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5"
+              disabled={isPending}
+              onClick={() => handleToggleSession(nextSession.id, false)}
+            >
+              <Check className="size-3.5" />
+              Segna seduta {nextSession.sessionNumber} fatta
+            </Button>
+          )}
+          {canPay && (
+            <Button size="sm" className="h-8 gap-1.5" onClick={() => setPayOpen(true)}>
+              <Wallet className="size-3.5" />
+              Registra pagamento
+            </Button>
+          )}
+          {canPay && onlinePayments && (
             <Button
               size="sm"
               variant="outline"

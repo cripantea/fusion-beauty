@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-/** Marchio "Un prodotto Fusionsoft" con dati legali, link al sito dell'azienda. */
+/** Marchio "Un prodotto Fusionsoft", link al sito dell'azienda (i dati legali stanno sul sito, non nel gestionale). */
 export function FusionsoftBadge({
   tone = "light",
   className,
@@ -22,11 +22,10 @@ export function FusionsoftBadge({
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/images/fusionsoft-mark.png" alt="" width={20} height={20} className="size-5 shrink-0 object-contain" />
-      <span className="flex flex-col leading-tight">
+      <span className="leading-tight">
         <span className="text-xs">
           Un prodotto <strong className={cn("font-semibold", dark ? "text-white" : "text-foreground")}>Fusionsoft</strong>
         </span>
-        <span className="text-[10px] opacity-80">Fusion Media di Luca Gabriele Pantea · P.IVA 13148540969</span>
       </span>
     </a>
   );

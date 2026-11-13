@@ -62,7 +62,7 @@ export async function getOperators(): Promise<OperatorDTO[]> {
 
   const operators = await prisma.user.findMany({
     where: { tenantId, isActive: true, role: { in: ["ADMIN", "OPERATOR"] } },
-    orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+    orderBy: [{ agendaOrder: "asc" }, { firstName: "asc" }, { lastName: "asc" }],
     select: {
       id: true,
       firstName: true,

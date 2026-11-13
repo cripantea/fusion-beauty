@@ -149,6 +149,8 @@ model Tenant {
   /// Prenotazioni online confermate subito (come Treatwell/Fresha): l'agenda
   /// mostra solo orari liberi negli orari di lavoro. Spento: le conferma il centro.
   autoConfirmOnline Boolean  @default(true)
+  /// Consensi informati (modelli, firme, avviso "Consenso" in agenda). Spento: tutto nascosto.
+  consentsEnabled   Boolean  @default(true)
   icsFeedToken      String?  @unique
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -229,6 +231,8 @@ model User {
   lastName          String
   role              Role      @default(OPERATOR)
   isActive          Boolean   @default(true)
+  /// Posizione della colonna in agenda (vista operatrici): più basso = più a sinistra.
+  agendaOrder       Int       @default(0)
   /// Identità in Fusion ID (claim sub), collegata al primo accesso con Fusion ID.
   fusionIdSub       String?   @unique
   /// Le sessioni emesse prima di questa data non valgono più ("esci ovunque" da Fusion Control).
