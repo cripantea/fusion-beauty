@@ -7,6 +7,7 @@ import { formatEuro } from "@/lib/format";
 import { getClientStatsMap } from "@/lib/insights";
 import { isPaymentsEnabled } from "@/lib/payments-mode";
 import { prisma } from "@/lib/prisma";
+import { getStripeStatus } from "@/lib/stripe-tenant";
 import { hasActiveWhatsapp } from "@/lib/whatsapp";
 
 import { getClientConsents } from "@/app/dashboard/consents/collect-actions";
@@ -133,6 +134,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
         totalSpent={stats.totalSpent}
         estimated={!(await isPaymentsEnabled(tenantId))}
         whatsappConnected={await hasActiveWhatsapp(tenantId)}
+        onlinePayments={(await getStripeStatus(tenantId)).connected}
       />
 
       <div className="grid gap-6 md:grid-cols-2">

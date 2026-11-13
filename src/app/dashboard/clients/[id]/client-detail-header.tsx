@@ -1,6 +1,6 @@
 "use client";
 
-import { Cake, MapPin, MessageCircle, Pencil, Phone } from "lucide-react";
+import { Cake, Link2, MapPin, MessageCircle, Pencil, Phone } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -8,6 +8,7 @@ import { useState } from "react";
 import { Pill } from "@/components/boutique";
 import { Button } from "@/components/ui/button";
 import { ClientFormDialog } from "@/app/dashboard/clients/client-form-dialog";
+import { PaymentLinkDialog, type PaymentLinkTarget } from "@/app/dashboard/payment-links/payment-link-dialog";
 import type { ClientDTO } from "@/app/dashboard/clients/actions";
 import { formatEuro, getInitials, whatsappUrl } from "@/lib/format";
 
@@ -19,12 +20,15 @@ type ClientDetailHeaderProps = {
   estimated?: boolean;
   /** WhatsApp del centro collegato: il pulsante apre la chat interna invece di wa.me. */
   whatsappConnected?: boolean;
+  /** Stripe collegato: link di pagamento online. */
+  onlinePayments?: boolean;
 };
 
 const birthdayFormatter = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "long" });
 
-export function ClientDetailHeader({ client, visits, totalSpent, estimated = false, whatsappConnected = false }: ClientDetailHeaderProps) {
+export function ClientDetailHeader({ client, visits, totalSpent, estimated = false, whatsappConnected = false, onlinePayments = false }: ClientDetailHeaderProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [linkTarget, setLinkTarget] = useState<PaymentLinkTarget | null>(null);
   const router = useRouter();
 
   const birthday = client.dateOfBirth
@@ -71,7 +75,7 @@ export function ClientDetailHeader({ client, visits, totalSpent, estimated = fal
             ) : null}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             className="h-9 rounded-xl bg-mint font-semibold text-forest hover:bg-mint/85"
             nativeButton={false}
@@ -86,6 +90,23 @@ export function ClientDetailHeader({ client, visits, totalSpent, estimated = fal
             <MessageCircle className="size-4" />
             WhatsApp
           </Button>
+          {onlinePayments ? (
+            <Button
+              variant="outline"
+              className="h-9 rounded-xl border-white/25 bg-transparent text-white hover:bg-white/10 hover:text-white"
+              onClick={() =>
+                setLinkTarget({
+                  clientId: client.id,
+                  clientFirstName: client.firstName,
+                  clientPhone: client.phone,
+                  description: "Trattamenti",
+                })
+              }
+            >
+              <Link2 className="size-3.5" />
+              Link di pagamento
+            </Button>
+          ) : null}
           <Button
             variant="outline"
             className="h-9 rounded-xl border-white/25 bg-transparent text-white hover:bg-white/10 hover:text-white"
@@ -114,6 +135,8 @@ export function ClientDetailHeader({ client, visits, totalSpent, estimated = fal
         client={client}
         onSuccess={() => router.refresh()}
       />
+
+      <PaymentLinkDialog target={linkTarget} onClose={() => setLinkTarget(null)} />
     </section>
   );
 }

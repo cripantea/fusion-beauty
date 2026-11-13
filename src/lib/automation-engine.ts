@@ -187,6 +187,21 @@ async function advanceRun(runId: string): Promise<{ sent: boolean }> {
 
   const { automation, client } = run;
   const context = (run.context ?? {}) as RunContext;
+  const note = (step: string, ok: boolean, message: string) => log.push({ at: new Date().toISOString(), step, ok, message });
+
+  // Corsa legata a un appuntamento: si ricontrolla com'è adesso (annullato,
+  // spostato, già iniziato) prima di scrivere alla cliente.
+  if (context.appointmentId) {
+    const check = await checkAppointment(run, context.appointmentId);
+    if (!check.ok) {
+      note("Stop", true, check.reason);
+      await finish({ status: "STOPPED", currentStepId: null, resumeAt: null });
+      return { sent };
+    }
+    // Data, ora, trattamento e operatrice aggiornati (es. operatrice cambiata).
+    context.vars = { ...context.vars, ...check.vars };
+  }
+
   const { first, nodes } = compile(parseStoredSteps(automation.steps));
   let currentId = run.currentStepId ?? (run.log && (run.log as unknown[]).length ? null : first);
   const vars: TemplateVars = {
@@ -198,7 +213,6 @@ async function advanceRun(runId: string): Promise<{ sent: boolean }> {
     scadenza: new Intl.DateTimeFormat("it-IT", { timeZone: TIME_ZONE, day: "numeric", month: "long" }).format(new Date(Date.now() + 14 * 86_400_000)),
     ...context.vars,
   };
-  const note = (step: string, ok: boolean, message: string) => log.push({ at: new Date().toISOString(), step, ok, message });
 
   if (automation.stopOnReply && (await repliedSince(run.tenantId, client.id, run.createdAt))) {
     note("Stop", true, "La cliente ha risposto: automazione fermata.");
@@ -279,6 +293,57 @@ async function advanceRun(runId: string): Promise<{ sent: boolean }> {
   return { sent };
 }
 
+/** "appointment:<id>:<inizio>" → inizio per cui è nata la corsa (null per "dopo il trattamento"). */
+function startFromTriggerKey(triggerKey: string, appointmentId: string): number | null {
+  const prefix = `appointment:${appointmentId}:`;
+  if (!triggerKey.startsWith(prefix)) return null;
+  const time = new Date(triggerKey.slice(prefix.length)).getTime();
+  return Number.isNaN(time) ? null : time;
+}
+
+async function checkAppointment(
+  run: { automationId: string; triggerKey: string; automation: { trigger: AutomationTrigger } },
+  appointmentId: string
+): Promise<{ ok: true; vars: TemplateVars } | { ok: false; reason: string }> {
+  const appointment = await prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    include: { service: true, operator: { select: { firstName: true } } },
+  });
+  if (!appointment) return { ok: false, reason: "L'appuntamento non esiste più: automazione fermata." };
+  const { trigger } = run.automation;
+
+  if (trigger === "AFTER_APPOINTMENT") {
+    // Recensioni e richiami: solo per i trattamenti fatti davvero.
+    if (appointment.status !== "COMPLETED") return { ok: false, reason: "Il trattamento non risulta completato: automazione fermata." };
+    return { ok: true, vars: appointmentVars(appointment) };
+  }
+
+  if (appointment.status === "CANCELLED" || appointment.status === "NO_SHOW") {
+    return { ok: false, reason: "L'appuntamento è stato annullato: automazione fermata." };
+  }
+  // Una conferma con passi dopo il trattamento (es. "aspetta 3 giorni, chiedi
+  // la recensione") prosegue anche a trattamento completato; i promemoria no.
+  if (appointment.status === "COMPLETED" && trigger === "BEFORE_APPOINTMENT") {
+    return { ok: false, reason: "Il trattamento è già stato fatto: promemoria fermato." };
+  }
+  const bornFor = startFromTriggerKey(run.triggerKey, appointmentId);
+  const moved = bornFor !== null && bornFor !== appointment.startTime.getTime();
+  if (trigger === "BEFORE_APPOINTMENT") {
+    // Il promemoria per il nuovo orario lo crea il controllo a tempo.
+    if (moved) return { ok: false, reason: "L'appuntamento è stato spostato: promemoria fermato." };
+    if (appointment.startTime.getTime() <= Date.now()) return { ok: false, reason: "L'appuntamento è già iniziato: promemoria fermato." };
+  }
+  if (trigger === "APPOINTMENT_CONFIRMED" && moved) {
+    // Spostato e già riconfermato per il nuovo orario: questa corsa non serve più.
+    const newer = await prisma.automationRun.findUnique({
+      where: { automationId_triggerKey: { automationId: run.automationId, triggerKey: `appointment:${appointment.id}:${appointment.startTime.toISOString()}` } },
+      select: { id: true },
+    });
+    if (newer) return { ok: false, reason: "L'appuntamento è stato spostato e riconfermato: automazione fermata." };
+  }
+  return { ok: true, vars: appointmentVars(appointment) };
+}
+
 function formatWhen(date: Date) {
   return new Intl.DateTimeFormat("it-IT", { timeZone: TIME_ZONE, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(date);
 }
@@ -356,6 +421,22 @@ export async function stopRunsOnReply(tenantId: string, clientId: string) {
     where: { tenantId, clientId, status: "WAITING", automation: { stopOnReply: true } },
     data: { status: "STOPPED", resumeAt: null },
   });
+}
+
+/**
+ * Appuntamento annullato, eliminato o spostato: si fermano le sue corse in
+ * attesa (promemoria, conferme con passi successivi). Da chiamare prima di far
+ * partire la nuova conferma, se lo si sposta.
+ */
+export async function stopAppointmentRuns(appointmentId: string) {
+  try {
+    await prisma.automationRun.updateMany({
+      where: { status: { in: ["WAITING", "RUNNING"] }, context: { path: ["appointmentId"], equals: appointmentId } },
+      data: { status: "STOPPED", resumeAt: null, currentStepId: null },
+    });
+  } catch (err) {
+    console.error(`[automazioni] stop corse dell'appuntamento ${appointmentId} non riuscito:`, err);
+  }
 }
 
 /** Trigger a tempo: prima/dopo l'appuntamento, compleanno, cliente inattiva (ogni 15 minuti). */

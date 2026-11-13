@@ -56,7 +56,7 @@ export default async function PayPage({ params, searchParams }: Props) {
             <PayButton token={link.token} />
             <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
               <CreditCard className="size-3.5" />
-              Carta, Apple Pay, Google Pay o in 3 rate senza interessi con Klarna. Pagamento sicuro con Stripe.
+              Carta, Apple Pay, Google Pay o anche in 3 rate (se disponibile). Pagamento sicuro con Stripe.
             </p>
           </div>
         )}

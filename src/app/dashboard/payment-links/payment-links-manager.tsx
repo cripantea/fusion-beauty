@@ -47,7 +47,7 @@ export function PaymentLinksManager({ connected, links }: { connected: boolean; 
       <PageHeader
         eyebrow="Pagamenti online"
         title="Link di pagamento"
-        description="I link mandati alle clienti per pagare online (anche in 3 rate con Klarna). Si crea dall'appuntamento in agenda."
+        description="I link mandati alle clienti per pagare online (anche in 3 rate, se disponibile). Si manda dall'appuntamento in agenda o dalla scheda cliente."
       />
       {!connected ? (
         <p className="rounded-xl border border-amber-200 bg-amber-soft px-4 py-3 text-sm text-amber-ink">
@@ -69,7 +69,7 @@ export function PaymentLinksManager({ connected, links }: { connected: boolean; 
       </div>
       <Panel title="Link" icon={Receipt}>
         {links.length === 0 ? (
-          <EmptyState>Nessun link ancora. Apri un appuntamento in agenda → “Link di pagamento”.</EmptyState>
+          <EmptyState>Nessun link ancora. Apri un appuntamento in agenda → “Invia link di pagamento”.</EmptyState>
         ) : (
           <ul className="divide-y divide-mint-border/70">
             {links.map((l) => (

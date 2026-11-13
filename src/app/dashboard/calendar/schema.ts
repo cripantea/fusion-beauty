@@ -51,6 +51,8 @@ export const appointmentInputSchema = z.object({
   startTime: z.date(),
   durationMinutes: z.coerce.number().int().positive(),
   notes: z.string().trim().max(2000).optional(),
+  /** Salva anche se l'orario si accavalla (la cliente ha visto l'avviso e ha scelto "Salva comunque"). */
+  force: z.boolean().optional(),
 });
 
 export type AppointmentInput = z.infer<typeof appointmentInputSchema>;

@@ -40,6 +40,9 @@ export async function setWorkingHours(
 ): Promise<{ success: boolean; error?: string }> {
   const { tenantId } = await requireTenantAdmin();
 
+  const member = await prisma.user.findFirst({ where: { id: userId, tenantId }, select: { id: true } });
+  if (!member) return { success: false, error: "Operatrice non trovata." };
+
   try {
     await prisma.$transaction(async (tx) => {
       await tx.workingHours.deleteMany({ where: { userId, tenantId } });
@@ -84,6 +87,9 @@ export async function createStaffException(
   data: { date: string; startTime?: string; endTime?: string; note?: string }
 ): Promise<{ success: boolean; error?: string; exception?: StaffExceptionDTO }> {
   const { tenantId } = await requireTenantAdmin();
+
+  const member = await prisma.user.findFirst({ where: { id: userId, tenantId }, select: { id: true } });
+  if (!member) return { success: false, error: "Operatrice non trovata." };
 
   try {
     const row = await prisma.staffException.create({

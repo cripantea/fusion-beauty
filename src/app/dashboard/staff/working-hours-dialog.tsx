@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -444,9 +444,15 @@ export function WorkingHoursDialog({ staffId, staffName, onClose }: WorkingHours
         {tab === "exceptions" && (
           <>
             <div className="px-6 py-4 space-y-4 overflow-y-auto" style={{ maxHeight: "calc(80vh - 160px)" }}>
-              <p className="text-sm text-muted-foreground">
-                Aggiungi giorni o fasce orarie in cui l&apos;operatrice non sarà disponibile (ferie, visite, imprevisti).
-              </p>
+              <div className="space-y-1 text-sm text-muted-foreground">
+                <p>
+                  <strong className="text-foreground">Senza orario</strong>: l&apos;operatrice è assente tutto il giorno.
+                </p>
+                <p>
+                  <strong className="text-foreground">Con orario</strong>: quel giorno lavora solo in questo orario.
+                </p>
+                <p className="text-xs">Per una pausa o una visita usa &ldquo;Impegno&rdquo; in Agenda.</p>
+              </div>
 
               {/* Add form */}
               <div className="rounded-xl border border-mint-border bg-mint-soft/40 p-4 space-y-3">
@@ -457,7 +463,7 @@ export function WorkingHoursDialog({ staffId, staffName, onClose }: WorkingHours
                     <Input type="date" value={exDate} onChange={(e) => setExDate(e.target.value)} className="h-9" />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">Dalle</Label>
+                    <Label className="text-xs">Lavora dalle</Label>
                     <Input type="time" value={exStart} onChange={(e) => setExStart(e.target.value)} className="h-9" placeholder="Intera giornata" />
                   </div>
                   <div className="space-y-1">
@@ -467,7 +473,7 @@ export function WorkingHoursDialog({ staffId, staffName, onClose }: WorkingHours
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Note (opzionale)</Label>
-                  <Input value={exNote} onChange={(e) => setExNote(e.target.value)} placeholder="Es. Visita medica, ferie..." className="h-9" />
+                  <Input value={exNote} onChange={(e) => setExNote(e.target.value)} placeholder="Es. Ferie, orario ridotto..." className="h-9" />
                 </div>
                 <Button
                   onClick={handleAddException}
@@ -493,8 +499,8 @@ export function WorkingHoursDialog({ staffId, staffName, onClose }: WorkingHours
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {exc.startTime && exc.endTime
-                            ? `${exc.startTime} – ${exc.endTime}`
-                            : "Giornata intera"}
+                            ? `Lavora solo ${exc.startTime} – ${exc.endTime}`
+                            : "Assente tutto il giorno"}
                           {exc.note && ` · ${exc.note}`}
                         </div>
                       </div>

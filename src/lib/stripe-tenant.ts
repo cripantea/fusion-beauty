@@ -138,7 +138,53 @@ export async function disconnectStripe(tenantId: string): Promise<void> {
   await prisma.tenantIntegration.deleteMany({ where: { tenantId, type: "STRIPE" } });
 }
 
-/** Checkout Session per un link di pagamento (carta, Klarna in 3 rate… secondo i metodi attivi sullo Stripe del centro). */
+/**
+ * Pagina Stripe ancora aperta per questa sessione (stesso link riaperto più
+ * volte = stessa sessione, niente doppi pagamenti). "paid" se la sessione è già
+ * stata pagata e il webhook non è ancora arrivato.
+ */
+export async function reusableCheckoutUrl(tenantId: string, sessionId: string): Promise<{ url: string } | "paid" | null> {
+  const stripe = await stripeFor(tenantId);
+  if (!stripe) return null;
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (session.status === "complete") return "paid";
+    // Almeno 5 minuti di margine per completare il pagamento.
+    if (session.status === "open" && session.url && session.expires_at > Date.now() / 1000 + 5 * 60) return { url: session.url };
+  } catch {
+    // Sessione sparita o chiave cambiata: se ne crea una nuova.
+  }
+  return null;
+}
+
+/**
+ * Chiude su Stripe la pagina di pagamento di un link annullato o sostituito,
+ * così la cliente non può più pagarlo. "paid" se nel frattempo ha già pagato.
+ */
+export async function expireCheckoutSession(tenantId: string, sessionId: string | null): Promise<"expired" | "paid" | "none"> {
+  if (!sessionId) return "none";
+  const stripe = await stripeFor(tenantId);
+  if (!stripe) return "none";
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (session.status === "complete") return "paid";
+    if (session.status !== "open") return "none";
+    await stripe.checkout.sessions.expire(sessionId);
+    return "expired";
+  } catch (err) {
+    // Pagata proprio in questo istante: Stripe rifiuta la chiusura.
+    try {
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      if (session.status === "complete") return "paid";
+    } catch {
+      // ignorato
+    }
+    console.error("[stripe] expire checkout session", sessionId, err);
+    return "none";
+  }
+}
+
+/** Checkout Session per un link di pagamento (carta, rate con Klarna se attivo e disponibile sullo Stripe del centro). */
 export async function createCheckoutSession(link: {
   id: string;
   tenantId: string;
@@ -161,7 +207,7 @@ export async function createCheckoutSession(link: {
       customer_email: link.email ?? undefined,
       metadata: { paymentLinkId: link.id, tenantId: link.tenantId },
       payment_intent_data: { description: link.description, metadata: { paymentLinkId: link.id, tenantId: link.tenantId } },
-      // 2 ore: chi riapre il link dopo ottiene una sessione nuova.
+      // 2 ore: entro questo tempo chi riapre il link ritrova la stessa pagina; dopo, una nuova.
       expires_at: Math.floor(Date.now() / 1000) + 2 * 60 * 60,
     });
     if (!session.url) return { ok: false, error: "Stripe non ha restituito la pagina di pagamento." };

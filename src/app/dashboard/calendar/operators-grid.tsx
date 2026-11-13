@@ -1,26 +1,32 @@
 "use client";
 
-import { differenceInMinutes, isSameDay } from "date-fns";
-import { Plus } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { endOfDay, format, isSameDay, startOfDay } from "date-fns";
+import { CalendarPlus, Coffee, Plus } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 import { formatEuro } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import type { OperatorDTO } from "./actions";
+import type { StaffAbsenceDTO, StaffBlockDTO } from "./block-actions";
 import type { AppointmentDTO } from "./dto";
 
-const DAY_START_HOUR = 8;
-const DAY_END_HOUR = 20;
+/** Orario minimo mostrato; si allarga se gli orari di lavoro o gli appuntamenti escono da qui. */
+const DEFAULT_START_HOUR = 8;
+const DEFAULT_END_HOUR = 20;
 const HOUR_HEIGHT = 80;
 const MIN_BLOCK_MINUTES = 20;
+const SNAP_MINUTES = 15;
 
-const hours = Array.from(
-  { length: DAY_END_HOUR - DAY_START_HOUR },
-  (_, i) => DAY_START_HOUR + i
-);
-
-const GRID_HEIGHT = hours.length * HOUR_HEIGHT;
 const PX_PER_MINUTE = HOUR_HEIGHT / 60;
 
 const palettes = [
@@ -32,27 +38,50 @@ const palettes = [
 ];
 
 const timeFormatter = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" });
+const dayFormatter = new Intl.DateTimeFormat("it-IT", { weekday: "short", day: "numeric", month: "short" });
+
+type WorkingHour = { dayOfWeek: number; startTime: string; endTime: string };
+type Grid = { startHour: number; endHour: number };
 
 function timeToMinutes(t: string): number {
   const [h, m] = t.split(":").map(Number);
   return h * 60 + m;
 }
 
-// Returns pixel bands that are OUTSIDE working hours (unavailable time)
-function getUnavailableBands(
-  workingHours: { dayOfWeek: number; startTime: string; endTime: string }[],
-  date: Date
-): { top: number; height: number }[] {
-  const dow = ((date.getDay() + 6) % 7) + 1; // 1=Mon … 7=Sun
-  const blocks = workingHours
+function dayOfWeek(date: Date) {
+  return ((date.getDay() + 6) % 7) + 1; // 1=Mon … 7=Sun
+}
+
+function minutesOfDay(value: Date, date: Date) {
+  if (value < startOfDay(date)) return 0;
+  if (value >= endOfDay(date)) return 24 * 60;
+  return value.getHours() * 60 + value.getMinutes();
+}
+
+/**
+ * Orari di lavoro del giorno. Un imprevisto con orario li sostituisce
+ * (quel giorno lavora solo in quella fascia), come nella prenotazione online.
+ */
+function dayWorkingHours(workingHours: WorkingHour[], absence: StaffAbsenceDTO | undefined, date: Date) {
+  if (absence?.startTime && absence.endTime) {
+    return [{ start: timeToMinutes(absence.startTime), end: timeToMinutes(absence.endTime) }];
+  }
+  const dow = dayOfWeek(date);
+  return workingHours
     .filter((wh) => wh.dayOfWeek === dow)
     .map((wh) => ({ start: timeToMinutes(wh.startTime), end: timeToMinutes(wh.endTime) }))
     .sort((a, b) => a.start - b.start);
+}
 
+// Returns pixel bands that are OUTSIDE working hours (unavailable time)
+function getUnavailableBands(
+  blocks: { start: number; end: number }[],
+  grid: Grid
+): { top: number; height: number }[] {
   if (blocks.length === 0) return [];
 
-  const gridStart = DAY_START_HOUR * 60;
-  const gridEnd = DAY_END_HOUR * 60;
+  const gridStart = grid.startHour * 60;
+  const gridEnd = grid.endHour * 60;
   const bands: { top: number; height: number }[] = [];
   let cursor = gridStart;
 
@@ -76,69 +105,131 @@ function getUnavailableBands(
   return bands;
 }
 
-function getPosition(appointment: AppointmentDTO, date: Date) {
-  const gridStart = new Date(date);
-  gridStart.setHours(DAY_START_HOUR, 0, 0, 0);
-  const gridEnd = new Date(date);
-  gridEnd.setHours(DAY_END_HOUR, 0, 0, 0);
-
-  const clampedStart = appointment.startTime < gridStart ? gridStart : appointment.startTime;
-  const clampedEnd = appointment.endTime > gridEnd ? gridEnd : appointment.endTime;
-
-  const topMinutes = Math.max(differenceInMinutes(clampedStart, gridStart), 0);
-  const durationMinutes = Math.max(differenceInMinutes(clampedEnd, clampedStart), MIN_BLOCK_MINUTES);
+function getPosition(item: { startTime: Date; endTime: Date }, date: Date, grid: Grid) {
+  const gridStart = grid.startHour * 60;
+  const gridEnd = grid.endHour * 60;
+  const start = Math.min(Math.max(minutesOfDay(item.startTime, date), gridStart), gridEnd);
+  const end = Math.min(Math.max(minutesOfDay(item.endTime, date), gridStart), gridEnd);
 
   return {
-    top: topMinutes * PX_PER_MINUTE,
-    height: durationMinutes * PX_PER_MINUTE,
+    top: (start - gridStart) * PX_PER_MINUTE,
+    height: Math.max(end - start, MIN_BLOCK_MINUTES) * PX_PER_MINUTE,
   };
 }
 
-function getCurrentTimeTop(date: Date): number | null {
+function getCurrentTimeTop(date: Date, grid: Grid): number | null {
   const now = new Date();
   if (!isSameDay(now, date)) return null;
 
-  const gridStart = new Date(date);
-  gridStart.setHours(DAY_START_HOUR, 0, 0, 0);
-  const gridEnd = new Date(date);
-  gridEnd.setHours(DAY_END_HOUR, 0, 0, 0);
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  if (minutes < grid.startHour * 60 || minutes > grid.endHour * 60) return null;
 
-  if (now < gridStart || now > gridEnd) return null;
+  return (minutes - grid.startHour * 60) * PX_PER_MINUTE;
+}
 
-  return differenceInMinutes(now, gridStart) * PX_PER_MINUTE;
+/** 8–20 di base, allargato a orari di lavoro, imprevisti, appuntamenti e impegni del giorno. */
+function getGrid(
+  operators: OperatorDTO[],
+  absences: StaffAbsenceDTO[],
+  items: { startTime: Date; endTime: Date }[],
+  date: Date
+): Grid {
+  let min = DEFAULT_START_HOUR * 60;
+  let max = DEFAULT_END_HOUR * 60;
+  const ranges = [
+    ...operators.flatMap((operator) => dayWorkingHours(operator.workingHours, undefined, date)),
+    ...absences.filter((a) => a.startTime && a.endTime).map((a) => ({ start: timeToMinutes(a.startTime!), end: timeToMinutes(a.endTime!) })),
+    ...items.map((item) => ({ start: minutesOfDay(item.startTime, date), end: minutesOfDay(item.endTime, date) })),
+  ];
+  for (const range of ranges) {
+    // Impegni di tutto il giorno (00–24) non allargano la griglia.
+    if (range.start === 0 && range.end === 24 * 60) continue;
+    min = Math.min(min, range.start);
+    max = Math.max(max, range.end);
+  }
+  return { startHour: Math.max(Math.floor(min / 60), 0), endHour: Math.min(Math.ceil(max / 60), 24) };
 }
 
 type OperatorsGridProps = {
   appointments: AppointmentDTO[];
   operators: OperatorDTO[];
+  blocks: StaffBlockDTO[];
+  absences: StaffAbsenceDTO[];
   date: Date;
   onAppointmentClick: (appointment: AppointmentDTO) => void;
-  onCreate: (operatorId: string | null) => void;
+  onBlockClick: (block: StaffBlockDTO) => void;
+  onCreate: (operatorId: string | null, start?: Date) => void;
+  onCreateBlock: (operatorId: string, start: Date) => void;
   paymentsEnabled: boolean;
+};
+
+type Column = {
+  id: string | null;
+  label: string;
+  items: AppointmentDTO[];
+  blocks: StaffBlockDTO[];
+  operator?: OperatorDTO;
+  absence?: StaffAbsenceDTO;
 };
 
 export function OperatorsGrid({
   appointments,
   operators,
+  blocks,
+  absences,
   date,
   onAppointmentClick,
+  onBlockClick,
   onCreate,
+  onCreateBlock,
   paymentsEnabled,
 }: OperatorsGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [pick, setPick] = useState<{ operator: OperatorDTO; start: Date } | null>(null);
 
-  const columns = operators.map((operator) => ({
-    id: operator.id as string | null,
+  // La settimana caricata può contenere altri giorni: qui solo quello scelto.
+  const dayStart = startOfDay(date);
+  const dayEnd = endOfDay(date);
+  const dayAppointments = appointments.filter((a) => isSameDay(a.startTime, date));
+  const dayBlocks = blocks.filter((block) => block.startTime <= dayEnd && block.endTime > dayStart);
+  const dayKey = format(date, "yyyy-MM-dd");
+  const dayAbsences = absences.filter((a) => a.date === dayKey);
+
+  const columns: Column[] = operators.map((operator) => ({
+    id: operator.id,
     label: operator.firstName,
-    items: appointments.filter((a) => a.operator?.id === operator.id),
+    items: dayAppointments.filter((a) => a.operator?.id === operator.id),
+    blocks: dayBlocks.filter((block) => block.userId === operator.id),
+    operator,
+    absence: dayAbsences.find((a) => a.userId === operator.id),
   }));
 
-  const currentTimeTop = getCurrentTimeTop(date);
+  // Prenotazioni online senza operatrice: colonna a parte, solo se ce ne sono.
+  const unassigned = dayAppointments.filter((a) => !a.operator);
+  if (unassigned.length > 0) {
+    columns.push({ id: null, label: "Da assegnare", items: unassigned, blocks: [] });
+  }
+
+  const grid = getGrid(operators, dayAbsences, [...dayAppointments, ...dayBlocks], date);
+  const hours = Array.from({ length: grid.endHour - grid.startHour }, (_, i) => grid.startHour + i);
+  const gridHeight = hours.length * HOUR_HEIGHT;
+  const currentTimeTop = getCurrentTimeTop(date, grid);
 
   useEffect(() => {
     if (!scrollRef.current || currentTimeTop === null) return;
     scrollRef.current.scrollTop = Math.max(currentTimeTop - 120, 0);
   }, [currentTimeTop]);
+
+  function handleEmptyClick(column: Column, event: React.MouseEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const minutes = (event.clientY - rect.top) / PX_PER_MINUTE;
+    const snapped = grid.startHour * 60 + Math.floor(minutes / SNAP_MINUTES) * SNAP_MINUTES;
+    const start = new Date(date);
+    start.setHours(Math.floor(snapped / 60), snapped % 60, 0, 0);
+
+    if (column.operator) setPick({ operator: column.operator, start });
+    else onCreate(null, start);
+  }
 
   return (
     <div className="rounded-lg border" style={{ overflow: "hidden" }}>
@@ -148,15 +239,18 @@ export function OperatorsGrid({
         </div>
         {columns.map((column, index) => {
           const palette = palettes[index % palettes.length];
+          const absentAllDay = column.absence && !column.absence.startTime;
           return (
             <div key={column.id ?? "none"} className="min-w-[200px] flex-1 border-r last:border-r-0">
               <div
                 className={cn(
-                  "flex h-10 items-center justify-center border-b text-xs font-bold uppercase tracking-wider",
-                  palette.head
+                  "flex h-10 items-center justify-center gap-1.5 border-b text-xs font-bold uppercase tracking-wider",
+                  column.id ? palette.head : "border-amber-300 bg-amber-200 text-amber-950",
+                  absentAllDay && "bg-muted text-muted-foreground"
                 )}
               >
                 {column.label}
+                {absentAllDay ? <span className="font-medium normal-case tracking-normal">· assente</span> : null}
               </div>
             </div>
           );
@@ -169,12 +263,12 @@ export function OperatorsGrid({
         style={{ overflowY: "auto", overflowX: "auto", maxHeight: "calc(100vh - 300px)" }}
       >
         <div className="w-14 shrink-0 border-r">
-          <div className="relative" style={{ height: GRID_HEIGHT }}>
+          <div className="relative" style={{ height: gridHeight }}>
             {hours.map((hour) => (
               <div
                 key={hour}
                 className="absolute left-0 w-full -translate-y-1/2 pr-2 text-right text-xs text-muted-foreground"
-                style={{ top: (hour - DAY_START_HOUR) * HOUR_HEIGHT }}
+                style={{ top: (hour - grid.startHour) * HOUR_HEIGHT }}
               >
                 {String(hour).padStart(2, "0")}:00
               </div>
@@ -184,17 +278,26 @@ export function OperatorsGrid({
 
         {columns.map((column, index) => {
           const palette = palettes[index % palettes.length];
-          const operator = operators.find((o) => o.id === column.id);
-          const unavailBands = operator ? getUnavailableBands(operator.workingHours, date) : [];
+          const absentAllDay = Boolean(column.absence && !column.absence.startTime);
+          const unavailBands = absentAllDay
+            ? [{ top: 0, height: gridHeight }]
+            : column.operator
+              ? getUnavailableBands(dayWorkingHours(column.operator.workingHours, column.absence, date), grid)
+              : [];
 
           return (
             <div key={column.id ?? "none"} className="min-w-[200px] flex-1 border-r last:border-r-0">
-              <div className="relative" style={{ height: GRID_HEIGHT }}>
+              <div
+                className="relative cursor-pointer"
+                style={{ height: gridHeight }}
+                onClick={(event) => handleEmptyClick(column, event)}
+                title="Tocca per aggiungere"
+              >
                 {hours.map((hour) => (
                   <div
                     key={hour}
-                    className="absolute w-full border-t border-border/50"
-                    style={{ top: (hour - DAY_START_HOUR) * HOUR_HEIGHT }}
+                    className="pointer-events-none absolute w-full border-t border-border/50"
+                    style={{ top: (hour - grid.startHour) * HOUR_HEIGHT }}
                   />
                 ))}
 
@@ -207,27 +310,68 @@ export function OperatorsGrid({
                   />
                 ))}
 
+                {absentAllDay ? (
+                  <div className="pointer-events-none absolute inset-x-0 top-4 text-center text-xs font-semibold text-muted-foreground">
+                    Assente tutto il giorno
+                    {column.absence?.note ? ` · ${column.absence.note}` : ""}
+                  </div>
+                ) : null}
+
                 {currentTimeTop !== null && (
                   <div
-                    className="absolute inset-x-0 z-20 h-px bg-rose-500"
+                    className="pointer-events-none absolute inset-x-0 z-20 h-px bg-rose-500"
                     style={{ top: currentTimeTop }}
                   >
                     <div className="absolute -left-1 -top-1.5 size-3 rounded-full bg-rose-500" />
                   </div>
                 )}
 
+                {/* Impegni dello staff: grigio a righe */}
+                {column.blocks.map((block) => {
+                  const { top, height } = getPosition(block, date, grid);
+                  const allDay = block.endTime.getTime() - block.startTime.getTime() >= 24 * 3600000;
+                  return (
+                    <button
+                      key={block.id}
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onBlockClick(block);
+                      }}
+                      className="absolute inset-x-1 z-10 overflow-hidden rounded-lg border border-slate-300 px-2 py-1 text-left text-xs text-slate-700 transition hover:opacity-80"
+                      style={{
+                        top,
+                        height,
+                        backgroundColor: "rgb(241 245 249)",
+                        backgroundImage:
+                          "repeating-linear-gradient(135deg, rgb(203 213 225 / 0.55) 0 6px, transparent 6px 12px)",
+                      }}
+                    >
+                      <div className="truncate font-bold">{block.title}</div>
+                      <div className="truncate">
+                        {allDay
+                          ? "Tutto il giorno"
+                          : `${timeFormatter.format(block.startTime)} – ${timeFormatter.format(block.endTime)}`}
+                      </div>
+                    </button>
+                  );
+                })}
+
                 {column.items.map((appointment) => {
-                  const { top, height } = getPosition(appointment, date);
+                  const { top, height } = getPosition(appointment, date, grid);
                   const cancelled =
                     appointment.status === "CANCELLED" || appointment.status === "NO_SHOW";
                   return (
                     <button
                       key={appointment.id}
                       type="button"
-                      onClick={() => onAppointmentClick(appointment)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onAppointmentClick(appointment);
+                      }}
                       className={cn(
-                        "absolute inset-x-1 overflow-hidden rounded-lg border px-2 py-1 text-left text-xs shadow-sm transition hover:opacity-80",
-                        palette.card,
+                        "absolute inset-x-1 z-10 overflow-hidden rounded-lg border px-2 py-1 text-left text-xs shadow-sm transition hover:opacity-80",
+                        column.id ? palette.card : "border-amber-300 bg-amber-50 text-amber-950",
                         cancelled && "opacity-55"
                       )}
                       style={{ top, height }}
@@ -267,6 +411,44 @@ export function OperatorsGrid({
           );
         })}
       </div>
+
+      <Dialog open={Boolean(pick)} onOpenChange={(open) => !open && setPick(null)}>
+        <DialogContent className="sm:max-w-xs">
+          <DialogHeader>
+            <DialogTitle>Cosa vuoi aggiungere?</DialogTitle>
+            <DialogDescription>
+              {pick
+                ? `${pick.operator.firstName} · ${dayFormatter.format(pick.start)} alle ${timeFormatter.format(pick.start)}`
+                : null}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <Button
+              className="h-12 rounded-xl text-base"
+              onClick={() => {
+                if (!pick) return;
+                setPick(null);
+                onCreate(pick.operator.id, pick.start);
+              }}
+            >
+              <CalendarPlus className="size-5" />
+              Appuntamento
+            </Button>
+            <Button
+              variant="outline"
+              className="h-12 rounded-xl text-base"
+              onClick={() => {
+                if (!pick) return;
+                setPick(null);
+                onCreateBlock(pick.operator.id, pick.start);
+              }}
+            >
+              <Coffee className="size-5" />
+              Impegno (pausa, ferie...)
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

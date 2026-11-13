@@ -1,4 +1,5 @@
-import { triggerAppointmentAutomations } from "@/lib/automation-engine";
+import { stopAppointmentRuns, triggerAppointmentAutomations } from "@/lib/automation-engine";
+import { findClash } from "@/lib/availability";
 import { listTemplates } from "@/lib/fusion-wa";
 import { prisma } from "@/lib/prisma";
 import { appointmentVars, hasActiveWhatsapp, sendWhatsappTemplate, sendWhatsappText } from "@/lib/whatsapp";
@@ -31,21 +32,9 @@ export async function proposeNewTime(
   if (input.start.getTime() < Date.now()) return { ok: false, error: "L'orario proposto è già passato." };
   const end = new Date(input.start.getTime() + appointment.service.durationMinutes * 60_000);
 
-  // L'operatrice non deve avere altri appuntamenti in quell'orario.
-  if (input.operatorId) {
-    const clash = await prisma.appointment.findFirst({
-      where: {
-        tenantId,
-        operatorId: input.operatorId,
-        id: { not: appointment.id },
-        status: { in: ["BOOKED", "CONFIRMED"] },
-        startTime: { lt: end },
-        endTime: { gt: input.start },
-      },
-      select: { id: true },
-    });
-    if (clash) return { ok: false, error: "L'operatrice ha già un appuntamento in quell'orario." };
-  }
+  // Né altri appuntamenti né impegni in quell'orario (controllo unico dell'agenda).
+  const clash = await findClash(tenantId, { operatorId: input.operatorId, start: input.start, end, excludeAppointmentId: appointment.id });
+  if (clash) return { ok: false, error: clash };
 
   if (!(await hasActiveWhatsapp(tenantId))) return { ok: false, error: "WhatsApp non collegato: chiama la cliente per proporre l'orario." };
   const templates = await listTemplates(tenantId);
@@ -89,6 +78,25 @@ export async function handleProposalReply(tenantId: string, quotedWamid: string,
   if (!viaQuote && !ACCEPT.test(reply.trim())) return false;
 
   if (ACCEPT.test(reply.trim())) {
+    // Nel frattempo l'orario può essersi occupato (o la richiesta annullata):
+    // niente spostamento, la richiesta torna all'operatrice per un'altra proposta.
+    const operatorId = proposal.operatorId ?? appointment.operatorId;
+    const current = await prisma.appointment.findUnique({ where: { id: appointment.id }, select: { status: true } });
+    const stillOpen = current?.status === "BOOKED" || current?.status === "CONFIRMED";
+    const clash = stillOpen
+      ? await findClash(tenantId, { operatorId, start: proposal.proposedStart, end: proposal.proposedEnd, excludeAppointmentId: appointment.id })
+      : null;
+    if (!stillOpen || clash) {
+      const declined = await prisma.bookingProposal.updateMany({ where: { id: proposal.id, status: "PENDING" }, data: { status: "DECLINED", respondedAt: new Date() } });
+      if (declined.count !== 1) return true;
+      await sendWhatsappText(tenantId, {
+        phone: appointment.client.phone,
+        clientId: appointment.client.id,
+        body: "Ci dispiace, quell'orario nel frattempo è stato occupato: ti scriviamo a breve con un'altra proposta.",
+      });
+      return true;
+    }
+
     const claimed = await prisma.bookingProposal.updateMany({ where: { id: proposal.id, status: "PENDING" }, data: { status: "ACCEPTED", respondedAt: new Date() } });
     if (claimed.count !== 1) return true;
     await prisma.appointment.update({
@@ -96,7 +104,7 @@ export async function handleProposalReply(tenantId: string, quotedWamid: string,
       data: {
         startTime: proposal.proposedStart,
         endTime: proposal.proposedEnd,
-        operatorId: proposal.operatorId ?? appointment.operatorId,
+        operatorId,
         status: "CONFIRMED",
       },
     });
@@ -128,12 +136,19 @@ export async function latestPendingProposalWamid(tenantId: string, clientId: str
   return message?.wamid ?? null;
 }
 
+/** Appuntamento annullato o spostato a mano: le proposte in attesa non valgono più. */
+export async function cancelPendingProposals(appointmentId: string) {
+  await prisma.bookingProposal.updateMany({ where: { appointmentId, status: "PENDING" }, data: { status: "CANCELLED" } });
+}
+
 /**
  * Nuova prenotazione online della cliente: le sue richieste precedenti con una
  * proposta rifiutata sono superate e si chiudono (ha scelto lei l'orario).
+ * Solo se l'ultima proposta è quella rifiutata e l'appuntamento non è stato
+ * toccato dopo (es. spostato al telefono e confermato dal centro): quello resta.
  */
 export async function closeSupersededRequests(tenantId: string, clientId: string, newAppointmentId: string) {
-  await prisma.appointment.updateMany({
+  const candidates = await prisma.appointment.findMany({
     where: {
       tenantId,
       clientId,
@@ -142,8 +157,23 @@ export async function closeSupersededRequests(tenantId: string, clientId: string
       status: { in: ["BOOKED", "CONFIRMED"] },
       proposals: { some: { status: "DECLINED" }, none: { status: "PENDING" } },
     },
+    select: {
+      id: true,
+      updatedAt: true,
+      proposals: { orderBy: { createdAt: "desc" }, take: 1, select: { status: true, respondedAt: true } },
+    },
+  });
+  const superseded = candidates.filter((a) => {
+    const latest = a.proposals[0];
+    return latest?.status === "DECLINED" && latest.respondedAt && a.updatedAt.getTime() <= latest.respondedAt.getTime();
+  });
+  if (superseded.length === 0) return;
+  await prisma.appointment.updateMany({
+    where: { id: { in: superseded.map((a) => a.id) }, status: { in: ["BOOKED", "CONFIRMED"] } },
     data: { status: "CANCELLED" },
   });
+  // Niente promemoria per le richieste chiuse.
+  for (const { id } of superseded) await stopAppointmentRuns(id);
 }
 
 /**

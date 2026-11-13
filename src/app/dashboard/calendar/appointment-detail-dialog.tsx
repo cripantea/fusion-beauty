@@ -1,6 +1,6 @@
 "use client";
 
-import { CreditCard, Link2, MessageCircle, Phone } from "lucide-react";
+import { CalendarClock, CreditCard, Link2, MessageCircle, Phone } from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -18,6 +18,7 @@ import { Pill } from "@/components/boutique";
 import { formatEuro, whatsappUrl } from "@/lib/format";
 
 import { ConsentCollectDialog } from "@/app/dashboard/consents/consent-collect-dialog";
+import { sendPaymentLink } from "@/app/dashboard/payment-links/actions";
 
 import { updateAppointmentStatus } from "./actions";
 import type { AppointmentDTO } from "./dto";
@@ -57,13 +58,18 @@ type AppointmentDetailDialogProps = {
   onOpenChange: (open: boolean) => void;
   appointment: AppointmentDTO | null;
   onEdit: (appointment: AppointmentDTO) => void;
+  /** Apre la modifica direttamente su data e ora (senza: si apre la modifica normale). */
+  onMove?: (appointment: AppointmentDTO) => void;
   onStatusChanged: (appointment: AppointmentDTO) => void;
   onCollect: (appointment: AppointmentDTO) => void;
   /** Incassi in cassa attivi (Incassa, POS): spenti si mostra solo il prezzo di listino. */
   paymentsEnabled: boolean;
   /** Stripe collegato: link di pagamento online (anche in 3 rate con Klarna). */
   onlinePayments: boolean;
+  /** "Cambia importo": apre il dialog del link di pagamento. */
   onPaymentLink: (appointment: AppointmentDTO) => void;
+  /** Link mandato con un tocco: aggiorna l'appuntamento in lista. */
+  onPaymentLinkSent?: (appointment: AppointmentDTO) => void;
 };
 
 const PAID_WITH: Record<string, string> = { card: "carta", klarna: "Klarna", satispay: "Satispay", link: "Link", paypal: "PayPal" };
@@ -73,14 +79,19 @@ export function AppointmentDetailDialog({
   onOpenChange,
   appointment,
   onEdit,
+  onMove,
   onStatusChanged,
   onCollect,
   paymentsEnabled,
   onlinePayments,
   onPaymentLink,
+  onPaymentLinkSent,
 }: AppointmentDetailDialogProps) {
   const [isPending, startTransition] = useTransition();
+  const [isSendingLink, startSendingLink] = useTransition();
   const [consentOpen, setConsentOpen] = useState(false);
+  // Annullato/Assente chiedono conferma prima di salvare.
+  const [confirming, setConfirming] = useState<{ id: string; status: "CANCELLED" | "NO_SHOW" } | null>(null);
 
   if (!appointment) {
     return null;
@@ -102,17 +113,46 @@ export function AppointmentDetailDialog({
         return;
       }
 
+      setConfirming(null);
       toast.success(`Stato aggiornato a "${statusLabels[status]}".`);
       onStatusChanged(result.appointment);
     });
   }
 
-  const canCollect = paymentsEnabled && !appointment.payment && !["CANCELLED", "NO_SHOW"].includes(appointment.status);
   const link = appointment.paymentLink;
+  const canCollect = paymentsEnabled && !appointment.payment && link?.status !== "PAID" && !["CANCELLED", "NO_SHOW"].includes(appointment.status);
+  // Un tocco: link già da pagare (stesso importo, si rimanda) o prezzo del trattamento.
+  const linkAmount = link?.status === "PENDING" ? link.amountCents / 100 : appointment.service.price;
+
+  function handleSendLink() {
+    if (!appointment) return;
+    const current = appointment;
+    startSendingLink(async () => {
+      const result = await sendPaymentLink({ appointmentId: current.id, amount: linkAmount });
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+      onPaymentLinkSent?.({ ...current, paymentLink: { status: "PENDING", amountCents: result.amountCents, token: result.token, paidWith: null } });
+      if (result.sent) toast.success("Link inviato su WhatsApp.");
+      else if (result.fallbackUrl) {
+        // Senza "noopener" nelle opzioni: con quello window.open restituisce sempre null.
+        const opened = window.open(result.fallbackUrl, "_blank");
+        if (opened) opened.opener = null;
+        const fallbackUrl = result.fallbackUrl;
+        // Popup bloccato dal browser: si apre con un tocco dal messaggio.
+        if (!opened) toast("Link pronto", { action: { label: "Apri WhatsApp", onClick: () => window.open(fallbackUrl, "_blank", "noopener,noreferrer") } });
+      }
+    });
+  }
   const canSendLink = onlinePayments && link?.status !== "PAID" && !["CANCELLED", "NO_SHOW"].includes(appointment.status);
+  // "Assente" ha senso solo da quando l'appuntamento è iniziato.
+  const started = appointment.startTime <= new Date();
   const secondaryStatuses = (["CONFIRMED", "CANCELLED", "NO_SHOW"] as const).filter(
-    (status) => status !== appointment.status
+    (status) => status !== appointment.status && (status !== "NO_SHOW" || started)
   );
+  const pendingConfirm = confirming?.id === appointment.id ? confirming.status : null;
+  const canMove = appointment.status === "BOOKED" || appointment.status === "CONFIRMED";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -165,7 +205,7 @@ export function AppointmentDetailDialog({
               <span className="text-muted-foreground">Pagamento online</span>
               {link.status === "PAID" ? (
                 <Pill tone="forest">
-                  Pagato {formatEuro(link.amountCents / 100)}
+                  Pagato online {formatEuro(link.amountCents / 100)}
                   {link.paidWith ? ` · ${PAID_WITH[link.paidWith] ?? link.paidWith}` : ""}
                 </Pill>
               ) : (
@@ -192,20 +232,39 @@ export function AppointmentDetailDialog({
         ) : null}
 
         {canSendLink ? (
-          <Button
-            variant={canCollect ? "outline" : "default"}
-            className="h-11 w-full rounded-xl text-base"
-            onClick={() => onPaymentLink(appointment)}
-          >
-            <Link2 className="size-5" />
-            {link?.status === "PENDING" ? "Nuovo link di pagamento" : "Link di pagamento (anche in 3 rate)"}
-          </Button>
+          <div className="space-y-1">
+            <Button
+              variant={canCollect ? "outline" : "default"}
+              className="h-11 w-full rounded-xl text-base"
+              disabled={isSendingLink}
+              onClick={handleSendLink}
+            >
+              <Link2 className="size-5" />
+              {isSendingLink
+                ? "Invio in corso…"
+                : `${link?.status === "PENDING" ? "Rimanda link di pagamento" : "Invia link di pagamento"} · ${formatEuro(linkAmount)}`}
+            </Button>
+            <button
+              type="button"
+              className="w-full text-center text-xs text-muted-foreground underline-offset-2 hover:underline"
+              onClick={() => onPaymentLink(appointment)}
+            >
+              Cambia importo · anche in 3 rate (se disponibile)
+            </button>
+          </div>
         ) : null}
 
         <div className="flex flex-wrap gap-2">
+          {canMove ? (
+            <Button variant="outline" size="sm" className="h-10 sm:h-7" onClick={() => (onMove ?? onEdit)(appointment)}>
+              <CalendarClock className="size-3.5" />
+              Sposta
+            </Button>
+          ) : null}
           <Button
             variant="outline"
             size="sm"
+            className="h-10 sm:h-7"
             nativeButton={false}
             render={<a href={whatsappUrl(appointment.client.phone, reminderText)} target="_blank" rel="noopener noreferrer" />}
           >
@@ -215,6 +274,7 @@ export function AppointmentDetailDialog({
           <Button
             variant="outline"
             size="sm"
+            className="h-10 sm:h-7"
             nativeButton={false}
             render={<a href={`tel:${appointment.client.phone}`} />}
           >
@@ -226,13 +286,42 @@ export function AppointmentDetailDialog({
               key={status}
               variant="ghost"
               size="sm"
+              className="h-10 sm:h-7"
               disabled={isPending}
-              onClick={() => handleStatusChange(status)}
+              onClick={() =>
+                status === "CONFIRMED"
+                  ? handleStatusChange(status)
+                  : setConfirming({ id: appointment.id, status })
+              }
             >
               {status === "CONFIRMED" ? "Conferma" : statusLabels[status]}
             </Button>
           ))}
         </div>
+
+        {pendingConfirm ? (
+          <div className="space-y-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm">
+            <p className="font-medium">
+              {pendingConfirm === "CANCELLED"
+                ? "Annullare l'appuntamento? La cliente non riceve messaggi automatici."
+                : "Segnare la cliente come assente? La cliente non riceve messaggi automatici."}
+            </p>
+            <p className="text-xs text-muted-foreground">I promemoria già programmati vengono fermati.</p>
+            <div className="flex gap-2">
+              <Button
+                variant="destructive"
+                className="h-10"
+                disabled={isPending}
+                onClick={() => handleStatusChange(pendingConfirm)}
+              >
+                {pendingConfirm === "CANCELLED" ? "Sì, annulla" : "Sì, assente"}
+              </Button>
+              <Button variant="outline" className="h-10" onClick={() => setConfirming(null)}>
+                No
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setConsentOpen(true)}>

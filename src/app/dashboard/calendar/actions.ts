@@ -4,7 +4,9 @@ import { after } from "next/server";
 
 import { getTenantContext } from "@/lib/auth-context";
 import { prisma } from "@/lib/prisma";
-import { triggerAppointmentAutomations } from "@/lib/automation-engine";
+import { stopAppointmentRuns, triggerAppointmentAutomations } from "@/lib/automation-engine";
+import { findClash } from "@/lib/availability";
+import { cancelPendingProposals } from "@/lib/booking-proposals";
 
 import { appointmentInclude, toAppointmentDTO, type AppointmentDTO } from "./dto";
 
@@ -69,7 +71,14 @@ export async function getOperators(): Promise<OperatorDTO[]> {
 
 export type AppointmentActionResult =
   | { success: true; appointment: AppointmentDTO }
-  | { success: false; error: string };
+  /** clash: l'orario si accavalla, la UI può offrire "Salva comunque" (force). */
+  | { success: false; error: string; clash?: boolean };
+
+/** Ferma tutto ciò che riguarda il vecchio orario: proposte su WhatsApp in attesa e messaggi automatici programmati. */
+async function stopPendingForAppointment(appointmentId: string) {
+  await cancelPendingProposals(appointmentId);
+  await stopAppointmentRuns(appointmentId);
+}
 
 async function resolveOperatorId(
   tenantId: string,
@@ -130,6 +139,15 @@ export async function createAppointment(
     parsed.data.startTime.getTime() + parsed.data.durationMinutes * 60000
   );
 
+  if (!parsed.data.force) {
+    const clash = await findClash(tenantId, {
+      operatorId: operatorResult.operatorId,
+      start: parsed.data.startTime,
+      end: endTime,
+    });
+    if (clash) return { success: false, error: clash, clash: true };
+  }
+
   const appointment = await prisma.appointment.create({
     data: {
       tenantId,
@@ -184,6 +202,31 @@ export async function updateAppointment(
     parsed.data.startTime.getTime() + parsed.data.durationMinutes * 60000
   );
 
+  const previous = await prisma.appointment.findFirst({
+    where: { id, tenantId },
+    select: { startTime: true, endTime: true, operatorId: true, status: true },
+  });
+  if (!previous) {
+    return { success: false, error: "Appuntamento non trovato." };
+  }
+
+  const moved =
+    previous.startTime.getTime() !== parsed.data.startTime.getTime() ||
+    previous.operatorId !== operatorResult.operatorId;
+  const slotChanged = moved || previous.endTime.getTime() !== endTime.getTime();
+  const active = previous.status === "BOOKED" || previous.status === "CONFIRMED";
+
+  // Si controlla solo se cambia l'orario: salvare una nota non deve bloccare.
+  if (active && slotChanged && !parsed.data.force) {
+    const clash = await findClash(tenantId, {
+      operatorId: operatorResult.operatorId,
+      start: parsed.data.startTime,
+      end: endTime,
+      excludeAppointmentId: id,
+    });
+    if (clash) return { success: false, error: clash, clash: true };
+  }
+
   const result = await prisma.appointment.updateMany({
     where: { id, tenantId },
     data: {
@@ -205,6 +248,15 @@ export async function updateAppointment(
     include: appointmentInclude,
   });
 
+  // Spostato: le proposte e i promemoria del vecchio orario non valgono più;
+  // se era confermato la cliente riceve la conferma col nuovo orario.
+  if (moved) {
+    await stopPendingForAppointment(id);
+    if (appointment.status === "CONFIRMED" && appointment.startTime > new Date()) {
+      after(() => triggerAppointmentAutomations("APPOINTMENT_CONFIRMED", appointment.id));
+    }
+  }
+
   return { success: true, appointment: toAppointmentDTO(appointment) };
 }
 
@@ -218,7 +270,37 @@ export async function updateAppointmentStatus(
     return { success: false, error: "Stato non valido." };
   }
 
-  const previous = await prisma.appointment.findFirst({ where: { id, tenantId }, select: { status: true } });
+  const previous = await prisma.appointment.findFirst({
+    where: { id, tenantId },
+    select: {
+      status: true,
+      startTime: true,
+      endTime: true,
+      operatorId: true,
+      payment: { select: { id: true } },
+    },
+  });
+  if (!previous) {
+    return { success: false, error: "Appuntamento non trovato." };
+  }
+
+  if (previous.status === "COMPLETED" && previous.payment && status !== "COMPLETED") {
+    return { success: false, error: "Ha già un pagamento registrato." };
+  }
+  if (status === "NO_SHOW" && previous.startTime > new Date()) {
+    return { success: false, error: "L'appuntamento non è ancora iniziato." };
+  }
+  // Riattivare un appuntamento annullato: l'orario potrebbe essere stato preso nel frattempo.
+  const wasInactive = previous.status === "CANCELLED" || previous.status === "NO_SHOW";
+  if (wasInactive && (status === "CONFIRMED" || status === "BOOKED")) {
+    const clash = await findClash(tenantId, {
+      operatorId: previous.operatorId,
+      start: previous.startTime,
+      end: previous.endTime,
+      excludeAppointmentId: id,
+    });
+    if (clash) return { success: false, error: `${clash} Sposta l'appuntamento su un altro orario.` };
+  }
 
   const result = await prisma.appointment.updateMany({
     where: { id, tenantId },
@@ -234,8 +316,12 @@ export async function updateAppointmentStatus(
     include: appointmentInclude,
   });
 
+  if ((status === "CANCELLED" || status === "NO_SHOW") && previous.status !== status) {
+    await stopPendingForAppointment(id);
+  }
+
   // Conferma di una richiesta online: la cliente riceve la conferma su WhatsApp.
-  if (status === "CONFIRMED" && previous?.status !== "CONFIRMED" && appointment.startTime > new Date()) {
+  if (status === "CONFIRMED" && previous.status !== "CONFIRMED" && appointment.startTime > new Date()) {
     after(() => triggerAppointmentAutomations("APPOINTMENT_CONFIRMED", appointment.id));
   }
 

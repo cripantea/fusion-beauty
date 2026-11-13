@@ -76,6 +76,31 @@ export async function registerPayment(
   return { success: true, appointment: toAppointmentDTO(updated) };
 }
 
+const TIME_ZONE = "Europe/Rome";
+
+function romeParts(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  return { year: get("year"), month: get("month"), day: get("day"), hour: get("hour"), minute: get("minute") };
+}
+
+/** Istante della mezzanotte italiana di quel giorno (month 1-12; day può sforare, come Date.UTC). */
+function romeMidnight(year: number, month: number, day: number): Date {
+  const guess = new Date(Date.UTC(year, month - 1, day));
+  const got = romeParts(guess);
+  // A mezzanotte UTC a Roma è l'1 (CET) o le 2 (CEST): si torna indietro di quelle ore.
+  const offsetMinutes = got.hour * 60 + got.minute;
+  return new Date(guess.getTime() - offsetMinutes * 60_000);
+}
+
 export type PaymentRowDTO = {
   id: string;
   amount: number;
@@ -99,14 +124,13 @@ export async function getPaymentsOverview(): Promise<PaymentsOverview> {
   const isAdmin = user.role === "ADMIN";
   const privateFilter = isAdmin ? {} : { isPrivate: false };
 
+  // Giorno e mese nell'ora italiana (il server gira in UTC).
   const now = new Date();
-  const dayStart = new Date(now);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(now);
-  dayEnd.setHours(23, 59, 59, 999);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const lookback = new Date(dayStart);
-  lookback.setDate(lookback.getDate() - 30);
+  const today = romeParts(now);
+  const dayStart = romeMidnight(today.year, today.month, today.day);
+  const dayEnd = new Date(romeMidnight(today.year, today.month, today.day + 1).getTime() - 1);
+  const monthStart = romeMidnight(today.year, today.month, 1);
+  const lookback = romeMidnight(today.year, today.month, today.day - 30);
 
   const [todayGroups, monthSum, toCollect, recent] = await Promise.all([
     prisma.payment.groupBy({

@@ -52,8 +52,44 @@ async function markPaid(tenantId: string, session: Stripe.Checkout.Session) {
     }
   }
 
-  await prisma.paymentLink.updateMany({
-    where: { id: linkId, tenantId, status: { not: "PAID" } },
+  const link = await prisma.paymentLink.findFirst({
+    where: { id: linkId, tenantId },
+    select: { id: true, status: true, clientId: true, appointmentId: true, amountCents: true, description: true },
+  });
+  if (!link || link.status === "PAID") return;
+  if (link.status === "CANCELLED") {
+    // Non dovrebbe succedere (la pagina Stripe si chiude quando il link si annulla),
+    // ma i soldi sono arrivati: si registra comunque come pagato.
+    console.warn(`[stripe] link annullato ${link.id} pagato comunque (sessione ${session.id}): registrato come pagato.`);
+  }
+
+  const updated = await prisma.paymentLink.updateMany({
+    where: { id: link.id, tenantId, status: { not: "PAID" } },
     data: { status: "PAID", paidAt: new Date(), stripeSessionId: session.id, stripePaymentId: paymentIntentId, paidWith },
   });
+  if (updated.count === 0 || !link.appointmentId) return;
+
+  // Incasso dell'appuntamento: sparisce "Incassa" e il pagamento entra nelle statistiche.
+  // Se era già stato incassato in cassa non si tocca (si vede comunque il link pagato).
+  const existing = await prisma.payment.findUnique({ where: { appointmentId: link.appointmentId }, select: { id: true } });
+  if (existing) {
+    console.warn(`[stripe] appuntamento ${link.appointmentId} già incassato in cassa e pagato anche online (link ${link.id}).`);
+    return;
+  }
+  try {
+    await prisma.payment.create({
+      data: {
+        tenantId,
+        clientId: link.clientId,
+        appointmentId: link.appointmentId,
+        amount: link.amountCents / 100,
+        // Non c'è un metodo "online": carta è il più vicino (anche per Klarna e simili).
+        method: "CARD",
+        notes: `Pagato online con Stripe${paidWith ? ` (${paidWith})` : ""}`,
+      },
+    });
+  } catch (err) {
+    // Incasso registrato nello stesso istante dalla cassa (appointmentId univoco).
+    if ((err as { code?: string }).code !== "P2002") throw err;
+  }
 }

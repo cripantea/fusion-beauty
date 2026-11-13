@@ -8,22 +8,31 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatEuro, whatsappUrl } from "@/lib/format";
+import { formatEuro } from "@/lib/format";
 
-import { createPaymentLink, sendPaymentLinkWhatsapp } from "./actions";
+import { sendPaymentLink, sendPaymentLinkWhatsapp } from "./actions";
 
 export type PaymentLinkTarget = {
   clientId: string;
   clientFirstName: string;
   clientPhone: string;
   appointmentId?: string;
-  amount: number;
+  /** Vuoto (dalla scheda cliente): l'importo va scritto. */
+  amount?: number;
   description: string;
 };
 
+/** "1.200,50", "1200,5", "1200.50", "€ 80" → euro; NaN se non è un numero. */
+export function parseEuroInput(raw: string): number {
+  let value = raw.replace(/[€\s]/g, "");
+  if (value.includes(",")) value = value.replace(/\./g, "").replace(",", ".");
+  else if (/^\d{1,3}(\.\d{3})+$/.test(value)) value = value.replace(/\./g, "");
+  return value === "" ? Number.NaN : Number(value);
+}
+
 /**
- * Crea il link di pagamento (Stripe del centro) e lo manda su WhatsApp: la
- * cliente paga con carta, Apple/Google Pay o in 3 rate con Klarna.
+ * Crea (o riusa) il link di pagamento (Stripe del centro) e lo manda su
+ * WhatsApp: la cliente paga con carta, Apple/Google Pay o anche in 3 rate, se disponibile.
  */
 type Created = { token: string; amountCents: number; appointmentId?: string };
 
@@ -37,38 +46,34 @@ export function PaymentLinkDialog({ target, onClose, onCreated }: { target: Paym
   );
 }
 
+type Done = { url: string; token: string; sent: boolean; fallbackUrl?: string; reused: boolean };
+
 function Body({ target, onCreated }: { target: PaymentLinkTarget; onCreated?: (link: Created) => void }) {
-  const [amount, setAmount] = useState(String(target.amount.toFixed(2)).replace(".", ","));
+  const [amount, setAmount] = useState(target.amount !== undefined ? target.amount.toFixed(2).replace(".", ",") : "");
   const [description, setDescription] = useState(target.description);
-  const [url, setUrl] = useState<string | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [sent, setSent] = useState(false);
+  const [done, setDone] = useState<Done | null>(null);
   const [copied, setCopied] = useState(false);
   const [isPending, startTransition] = useTransition();
-  const value = Number(amount.replace(",", "."));
-
-  const message = url
-    ? `Ciao ${target.clientFirstName}, ecco il link per pagare ${description} (${formatEuro(value)}). Puoi pagare con carta o in 3 rate senza interessi con Klarna: ${url}`
-    : "";
+  const value = parseEuroInput(amount);
 
   return (
     <>
       <DialogHeader>
         <DialogTitle>Link di pagamento</DialogTitle>
         <DialogDescription>
-          La cliente paga online con carta, Apple Pay, Google Pay o in 3 rate con Klarna. Quando paga, qui lo vedi da solo.
+          La cliente paga online con carta, Apple Pay, Google Pay o anche in 3 rate (se disponibile). Quando paga, qui lo vedi da solo.
         </DialogDescription>
       </DialogHeader>
-      {url ? (
+      {done ? (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <Input readOnly value={url} className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
+            <Input readOnly value={done.url} className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
             <Button
               variant="outline"
               size="icon-sm"
               aria-label="Copia link"
               onClick={() => {
-                navigator.clipboard.writeText(url).then(() => {
+                navigator.clipboard.writeText(done.url).then(() => {
                   setCopied(true);
                   toast.success("Link copiato.");
                 });
@@ -77,30 +82,30 @@ function Body({ target, onCreated }: { target: PaymentLinkTarget; onCreated?: (l
               {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
             </Button>
           </div>
-          <Button
-            className="w-full"
-            disabled={isPending || sent || !token}
-            onClick={() =>
-              startTransition(async () => {
-                if (!token) return;
-                const result = await sendPaymentLinkWhatsapp(token);
-                if (!result.success) {
-                  toast.error(result.error);
-                  return;
-                }
-                setSent(true);
-                toast.success("Link inviato su WhatsApp dal numero del centro.");
-              })
-            }
-          >
-            <MessageCircle className="size-4" />
-            {sent ? "Inviato su WhatsApp" : "Invia su WhatsApp dal numero del centro"}
-          </Button>
-          <Button variant="outline" className="w-full" nativeButton={false} render={<a href={whatsappUrl(target.clientPhone, message)} target="_blank" rel="noopener noreferrer" />}>
-            Apri WhatsApp sul telefono
-          </Button>
+          {done.sent ? (
+            <Button
+              variant="outline"
+              className="w-full"
+              disabled={isPending}
+              onClick={() =>
+                startTransition(async () => {
+                  const result = await sendPaymentLinkWhatsapp(done.token);
+                  if (!result.success) toast.error(result.error);
+                  else toast.success("Link inviato di nuovo su WhatsApp.");
+                })
+              }
+            >
+              <Check className="size-4" />
+              Inviato su WhatsApp · rimanda
+            </Button>
+          ) : done.fallbackUrl ? (
+            <Button className="w-full" nativeButton={false} render={<a href={done.fallbackUrl} target="_blank" rel="noopener noreferrer" />}>
+              <MessageCircle className="size-4" />
+              Apri WhatsApp con il messaggio
+            </Button>
+          ) : null}
           <p className="text-xs text-muted-foreground">
-            Il link non scade. Klarna compare tra i metodi quando l&apos;importo e la cliente sono idonei.
+            Il link non scade. Le rate compaiono tra i metodi quando l&apos;importo e la cliente sono idonei.
           </p>
         </div>
       ) : (
@@ -111,7 +116,7 @@ function Body({ target, onCreated }: { target: PaymentLinkTarget; onCreated?: (l
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-muted-foreground">Importo (€)</Label>
-            <Input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <Input inputMode="decimal" placeholder="es. 120,00" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus={target.amount === undefined} />
             <p className="text-xs text-muted-foreground">Puoi cambiarlo per uno sconto o un pacchetto.</p>
           </div>
           <Button
@@ -119,7 +124,7 @@ function Body({ target, onCreated }: { target: PaymentLinkTarget; onCreated?: (l
             disabled={isPending || !(value >= 1) || !description.trim()}
             onClick={() =>
               startTransition(async () => {
-                const result = await createPaymentLink({
+                const result = await sendPaymentLink({
                   clientId: target.clientId,
                   appointmentId: target.appointmentId,
                   amount: value,
@@ -129,13 +134,15 @@ function Body({ target, onCreated }: { target: PaymentLinkTarget; onCreated?: (l
                   toast.error(result.error);
                   return;
                 }
-                setUrl(result.url);
-                setToken(result.token);
-                onCreated?.({ token: result.token, amountCents: Math.round(value * 100), appointmentId: target.appointmentId });
+                setDone({ url: result.url, token: result.token, sent: result.sent, fallbackUrl: result.fallbackUrl, reused: result.reused });
+                onCreated?.({ token: result.token, amountCents: result.amountCents, appointmentId: target.appointmentId });
+                if (result.sent) toast.success("Link inviato su WhatsApp.");
+                else if (result.fallbackUrl) window.open(result.fallbackUrl, "_blank", "noopener,noreferrer");
               })
             }
           >
-            Crea link da {Number.isFinite(value) ? formatEuro(value) : "—"}
+            <MessageCircle className="size-4" />
+            Invia link da {Number.isFinite(value) ? formatEuro(value) : "—"}
           </Button>
         </div>
       )}

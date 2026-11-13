@@ -1,8 +1,8 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus } from "lucide-react";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { AlertTriangle, Plus } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -51,7 +51,7 @@ import {
 
 type ClientOption = { value: string; label: string };
 
-function Chip({
+export function Chip({
   active,
   onClick,
   children,
@@ -95,6 +95,10 @@ type AppointmentFormDialogProps = {
   operators: OperatorDTO[];
   defaultDate?: Date;
   defaultOperatorId?: string;
+  /** Orario già scelto (tocco sulla griglia), "HH:mm". */
+  defaultTime?: string;
+  /** "Sposta": si apre col cursore su data e ora. */
+  focusWhen?: boolean;
   onSuccess: (appointment: AppointmentDTO) => void;
   /** Una cliente creata al volo dal dialog, da aggiungere all'elenco di chi lo ospita. */
   onClientCreated?: (client: ClientListItemDTO) => void;
@@ -122,6 +126,8 @@ export function AppointmentFormDialog({
   operators,
   defaultDate,
   defaultOperatorId,
+  defaultTime,
+  focusWhen,
   onSuccess,
   onClientCreated,
 }: AppointmentFormDialogProps) {
@@ -130,6 +136,9 @@ export function AppointmentFormDialog({
   const [quickClientOpen, setQuickClientOpen] = useState(false);
   const [createdClients, setCreatedClients] = useState<ClientListItemDTO[]>([]);
   const [notesOpen, setNotesOpen] = useState(false);
+  // Orario accavallato: si mostra l'avviso con "Salva comunque".
+  const [clash, setClash] = useState<string | null>(null);
+  const whenRef = useRef<HTMLDivElement>(null);
 
   const form = useForm<AppointmentFormInput, unknown, AppointmentFormValues>({
     resolver: zodResolver(appointmentFormSchema),
@@ -186,12 +195,23 @@ export function AppointmentFormDialog({
       form.reset({
         ...appointmentFormDefaultValues,
         date: toDateInputValue(base),
+        time: defaultTime ?? "",
         operatorId: defaultOperatorId ?? NO_OPERATOR_VALUE,
       });
     }
-  }, [open, appointment, defaultDate, defaultOperatorId, form]);
+  }, [open, appointment, defaultDate, defaultOperatorId, defaultTime, form]);
 
-  function onSubmit(values: AppointmentFormValues) {
+  // "Sposta": porta subito a data e ora (dopo l'animazione di apertura).
+  useEffect(() => {
+    if (!open || !focusWhen) return;
+    const timer = setTimeout(() => {
+      whenRef.current?.scrollIntoView({ block: "center" });
+      whenRef.current?.querySelector<HTMLInputElement>('input[type="date"]')?.focus();
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [open, focusWhen]);
+
+  function save(values: AppointmentFormValues, force: boolean) {
     startTransition(async () => {
       const startTime = new Date(`${values.date}T${values.time}:00`);
 
@@ -207,6 +227,7 @@ export function AppointmentFormDialog({
         startTime,
         durationMinutes: values.durationMinutes,
         notes: values.notes,
+        force,
       };
 
       const result =
@@ -215,26 +236,39 @@ export function AppointmentFormDialog({
           : await createAppointment(payload);
 
       if (!result.success) {
-        toast.error(result.error);
+        if (result.clash) setClash(result.error);
+        else toast.error(result.error);
         return;
       }
 
+      setClash(null);
       toast.success(isEditing ? "Appuntamento aggiornato." : "Appuntamento creato.");
       onSuccess(result.appointment);
-      onOpenChange(false);
+      handleOpenChange(false);
     });
   }
 
+  function handleOpenChange(next: boolean) {
+    if (!next) setClash(null);
+    onOpenChange(next);
+  }
+
+  function onSubmit(values: AppointmentFormValues) {
+    save(values, false);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-lg">
-            {isEditing ? "Modifica appuntamento" : "Nuovo appuntamento"}
+            {isEditing ? (focusWhen ? "Sposta appuntamento" : "Modifica appuntamento") : "Nuovo appuntamento"}
           </DialogTitle>
           <DialogDescription>
             {isEditing
-              ? "Aggiorna i dati dell'appuntamento."
+              ? focusWhen
+                ? "Scegli il nuovo giorno e il nuovo orario."
+                : "Aggiorna i dati dell'appuntamento."
               : "Scegli la cliente, il trattamento e l'orario: il resto è automatico."}
           </DialogDescription>
         </DialogHeader>
@@ -337,7 +371,7 @@ export function AppointmentFormDialog({
               )}
             />
 
-            <div className="space-y-2">
+            <div ref={whenRef} className="space-y-2">
               <FormLabel>Quando</FormLabel>
               <div className="flex flex-wrap items-center gap-2">
                 <Chip
@@ -459,8 +493,27 @@ export function AppointmentFormDialog({
               />
             ) : null}
 
+            {clash ? (
+              <div className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                <p className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                  {clash}
+                </p>
+                <p className="text-xs">Cambia orario o operatrice, oppure salva lo stesso.</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 border-amber-300"
+                  disabled={isPending}
+                  onClick={form.handleSubmit((values) => save(values, true))}
+                >
+                  Salva comunque
+                </Button>
+              </div>
+            ) : null}
+
             <DialogFooter>
-              <Button type="button" variant="outline" className="h-10" onClick={() => onOpenChange(false)}>
+              <Button type="button" variant="outline" className="h-10" onClick={() => handleOpenChange(false)}>
                 Annulla
               </Button>
               <Button type="submit" className="h-10 px-6" disabled={isPending}>

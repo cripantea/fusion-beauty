@@ -346,6 +346,7 @@ export function DashboardManager({
         }}
         paymentsEnabled={paymentsEnabled}
         onlinePayments={onlinePayments}
+        onPaymentLinkSent={() => refresh()}
         onPaymentLink={(appointment) => {
           setSelectedAppointment(null);
           setLinkTarget({

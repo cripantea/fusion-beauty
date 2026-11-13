@@ -12,7 +12,7 @@ import {
   subWeeks,
 } from "date-fns";
 import { it } from "date-fns/locale";
-import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, Coffee } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import type { ClientListItemDTO } from "@/app/dashboard/clients/actions";
@@ -25,6 +25,12 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 import { getAppointments, type OperatorDTO } from "./actions";
+import {
+  getStaffAbsences,
+  getStaffBlocks,
+  type StaffAbsenceDTO,
+  type StaffBlockDTO,
+} from "./block-actions";
 import type { AppointmentDTO } from "./dto";
 import { OperatorsGrid } from "./operators-grid";
 import { PaymentLinkDialog, type PaymentLinkTarget } from "@/app/dashboard/payment-links/payment-link-dialog";
@@ -32,27 +38,34 @@ import { PaymentLinkDialog, type PaymentLinkTarget } from "@/app/dashboard/payme
 import { AppointmentDetailDialog } from "./appointment-detail-dialog";
 import { AppointmentFormDialog } from "./appointment-form-dialog";
 import { CalendarGrid } from "./calendar-grid";
+import { StaffBlockDialog } from "./staff-block-dialog";
 
 type ViewMode = "operators" | "day" | "week";
 
 type CalendarManagerProps = {
   initialAppointments: AppointmentDTO[];
+  initialBlocks: StaffBlockDTO[];
+  initialAbsences: StaffAbsenceDTO[];
   initialDate: string;
   clients: ClientListItemDTO[];
   services: ServiceDTO[];
   operators: OperatorDTO[];
   isAdmin: boolean;
+  currentUserId: string;
   paymentsEnabled: boolean;
   onlinePayments: boolean;
 };
 
 export function CalendarManager({
   initialAppointments,
+  initialBlocks,
+  initialAbsences,
   initialDate,
   clients,
   services,
   operators,
   isAdmin,
+  currentUserId,
   paymentsEnabled,
   onlinePayments,
 }: CalendarManagerProps) {
@@ -60,12 +73,19 @@ export function CalendarManager({
   const [viewMode, setViewMode] = useState<ViewMode>("operators");
   const [currentDate, setCurrentDate] = useState(() => new Date(`${initialDate}T00:00:00`));
   const [appointments, setAppointments] = useState(initialAppointments);
+  const [blocks, setBlocks] = useState(initialBlocks);
+  const [absences, setAbsences] = useState(initialAbsences);
   const [isPending, startTransition] = useTransition();
   const [formDialogOpen, setFormDialogOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<AppointmentDTO | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentDTO | null>(null);
   const [payingAppointment, setPayingAppointment] = useState<AppointmentDTO | null>(null);
   const [defaultOperatorId, setDefaultOperatorId] = useState<string | undefined>();
+  // Giorno e ora toccati sulla griglia (vuoto = giorno visualizzato, ora da scegliere).
+  const [defaultStart, setDefaultStart] = useState<Date | undefined>();
+  const [focusWhen, setFocusWhen] = useState(false);
+  const [blockDialogOpen, setBlockDialogOpen] = useState(false);
+  const [editingBlock, setEditingBlock] = useState<StaffBlockDTO | null>(null);
   const [clientOptions, setClientOptions] = useState(clients);
   const isFirstRender = useRef(true);
 
@@ -82,8 +102,14 @@ export function CalendarManager({
 
   function refresh(start: Date, end: Date) {
     startTransition(async () => {
-      const results = await getAppointments({ start, end });
+      const [results, blockResults, absenceResults] = await Promise.all([
+        getAppointments({ start, end }),
+        getStaffBlocks({ start, end }),
+        getStaffAbsences({ start, end }),
+      ]);
       setAppointments(results);
+      setBlocks(blockResults);
+      setAbsences(absenceResults);
     });
   }
 
@@ -112,6 +138,21 @@ export function CalendarManager({
     refresh(range.start, range.end);
   }
 
+  function openNewAppointment(operatorId?: string, start?: Date) {
+    setEditingAppointment(null);
+    setFocusWhen(false);
+    setDefaultOperatorId(operatorId);
+    setDefaultStart(start);
+    setFormDialogOpen(true);
+  }
+
+  function openNewBlock(operatorId?: string, start?: Date) {
+    setEditingBlock(null);
+    setDefaultOperatorId(operatorId);
+    setDefaultStart(start);
+    setBlockDialogOpen(true);
+  }
+
   function handleStatusChanged(appointment: AppointmentDTO) {
     setSelectedAppointment(appointment);
     refresh(range.start, range.end);
@@ -124,16 +165,15 @@ export function CalendarManager({
         title="Un'agenda semplice per tutto il centro."
         description="Ogni operatrice vede i propri appuntamenti. Tu vedi tutto il centro in un'unica schermata."
         actions={
-          <Button
-            className="h-10 rounded-xl px-4"
-            onClick={() => {
-              setEditingAppointment(null);
-              setDefaultOperatorId(undefined);
-              setFormDialogOpen(true);
-            }}
-          >
-            Nuovo appuntamento
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" className="h-10 rounded-xl px-4" onClick={() => openNewBlock(isAdmin ? undefined : currentUserId)}>
+              <Coffee className="size-4" />
+              Impegno
+            </Button>
+            <Button className="h-10 rounded-xl px-4" onClick={() => openNewAppointment()}>
+              Nuovo appuntamento
+            </Button>
+          </div>
         }
       />
 
@@ -197,13 +237,16 @@ export function CalendarManager({
             <OperatorsGrid
               appointments={appointments}
               operators={operators}
+              blocks={blocks}
+              absences={absences}
               date={currentDate}
               onAppointmentClick={setSelectedAppointment}
-              onCreate={(operatorId) => {
-                setEditingAppointment(null);
-                setDefaultOperatorId(operatorId ?? undefined);
-                setFormDialogOpen(true);
+              onBlockClick={(block) => {
+                setEditingBlock(block);
+                setBlockDialogOpen(true);
               }}
+              onCreate={(operatorId, start) => openNewAppointment(operatorId ?? undefined, start)}
+              onCreateBlock={(operatorId, start) => openNewBlock(operatorId, start)}
               paymentsEnabled={paymentsEnabled}
             />
           ) : (
@@ -223,10 +266,24 @@ export function CalendarManager({
         clients={clientOptions}
         services={services}
         operators={operators}
-        defaultDate={currentDate}
+        defaultDate={defaultStart ?? currentDate}
+        defaultTime={defaultStart ? format(defaultStart, "HH:mm") : undefined}
         defaultOperatorId={defaultOperatorId}
+        focusWhen={focusWhen}
         onSuccess={handleAppointmentSaved}
         onClientCreated={(client) => setClientOptions((current) => [...current, client])}
+      />
+
+      <StaffBlockDialog
+        open={blockDialogOpen}
+        onOpenChange={setBlockDialogOpen}
+        block={editingBlock}
+        operators={operators}
+        defaultOperatorId={defaultOperatorId}
+        defaultStart={defaultStart ?? (editingBlock ? undefined : currentDate)}
+        isAdmin={isAdmin}
+        currentUserId={currentUserId}
+        onChanged={handleAppointmentSaved}
       />
 
       <AppointmentDetailDialog
@@ -237,6 +294,13 @@ export function CalendarManager({
         appointment={selectedAppointment}
         onEdit={(appointment) => {
           setSelectedAppointment(null);
+          setFocusWhen(false);
+          setEditingAppointment(appointment);
+          setFormDialogOpen(true);
+        }}
+        onMove={(appointment) => {
+          setSelectedAppointment(null);
+          setFocusWhen(true);
           setEditingAppointment(appointment);
           setFormDialogOpen(true);
         }}
@@ -247,6 +311,10 @@ export function CalendarManager({
         }}
         paymentsEnabled={paymentsEnabled}
         onlinePayments={onlinePayments}
+        onPaymentLinkSent={(appointment) => {
+          setSelectedAppointment(appointment);
+          setAppointments((current) => current.map((a) => (a.id === appointment.id ? appointment : a)));
+        }}
         onPaymentLink={(appointment) => {
           setSelectedAppointment(null);
           setLinkTarget({
