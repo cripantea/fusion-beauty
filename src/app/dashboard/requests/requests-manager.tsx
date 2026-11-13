@@ -4,6 +4,8 @@ import { CalendarClock, Check, MessageCircle, Phone } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { cn } from "@/lib/utils";
+
 import { updateAppointmentStatus, type OperatorDTO } from "@/app/dashboard/calendar/actions";
 import type { AppointmentDTO } from "@/app/dashboard/calendar/dto";
 import { getAvailableSlots } from "@/app/embed/[slug]/actions";
@@ -43,6 +45,8 @@ export function RequestsManager({ tenantSlug, autoConfirm: initialAutoConfirm, i
   const [requests, setRequests] = useState(initialRequests);
   const [autoConfirm, setAutoConfirm] = useState(initialAutoConfirm);
   const [editing, setEditing] = useState<RequestDTO | null>(null);
+  // Ora di apertura della pagina: basta per capire quali prenotazioni sono già passate.
+  const [now] = useState(() => Date.now());
   const [isPending, startTransition] = useTransition();
 
   function refresh() {
@@ -106,8 +110,12 @@ export function RequestsManager({ tenantSlug, autoConfirm: initialAutoConfirm, i
           <EmptyState>Nessuna prenotazione recente. Quando una cliente prenota dal sito la vedi qui.</EmptyState>
         ) : (
           <ul className="space-y-3 p-3">
-            {requests.map((request) => (
-              <li key={request.id} className="rounded-xl border border-mint-border p-4">
+            {requests.map((request) => {
+              // Già passata o non più attiva: si vede, ma non c'è più niente da confermare o spostare.
+              const closed =
+                request.status === "CANCELLED" || request.status === "NO_SHOW" || request.status === "COMPLETED" || request.endTime.getTime() < now;
+              return (
+              <li key={request.id} className={cn("rounded-xl border border-mint-border p-4", closed && "opacity-60")}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-xs font-semibold uppercase tracking-wide text-mint-ink">
@@ -123,8 +131,16 @@ export function RequestsManager({ tenantSlug, autoConfirm: initialAutoConfirm, i
                       <div className="mt-1 text-sm text-muted-foreground">“{request.notes}”</div>
                     ) : null}
                   </div>
-                  <Pill tone={request.autoConfirmed && !request.proposal ? "forest" : "amber"}>
-                    {request.proposal?.status === "DECLINED"
+                  <Pill tone={closed ? "slate" : request.autoConfirmed && !request.proposal ? "forest" : "amber"}>
+                    {request.status === "CANCELLED"
+                      ? "Annullata"
+                      : request.status === "NO_SHOW"
+                        ? "Non si è presentata"
+                        : request.status === "COMPLETED"
+                          ? "Fatta"
+                          : closed
+                            ? "Passata"
+                            : request.proposal?.status === "DECLINED"
                       ? "Proponi un altro orario"
                       : request.proposal?.status === "PENDING"
                         ? "Attende la cliente"
@@ -146,6 +162,7 @@ export function RequestsManager({ tenantSlug, autoConfirm: initialAutoConfirm, i
                     </span>
                   </div>
                 ) : null}
+                {closed ? null : (
                 <div className="mt-4 flex flex-wrap gap-2">
                   {request.autoConfirmed ? null : (
                     <Button className="h-9 rounded-xl" disabled={isPending} onClick={() => confirm(request)}>
@@ -184,8 +201,10 @@ export function RequestsManager({ tenantSlug, autoConfirm: initialAutoConfirm, i
                     WhatsApp
                   </Button>
                 </div>
+                )}
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </Panel>

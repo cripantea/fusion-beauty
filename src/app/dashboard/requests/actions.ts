@@ -28,12 +28,11 @@ export async function getOnlineRequests(): Promise<RequestDTO[]> {
     where: {
       tenantId,
       source: "ONLINE",
-      OR: [
-        { status: "BOOKED", OR: [{ startTime: { gte: new Date(now - 24 * 60 * 60_000) } }, openProposal] },
-        { status: "CONFIRMED", startTime: { gte: new Date(now) }, OR: [{ createdAt: { gte: new Date(now - 2 * 86_400_000) } }, openProposal] },
-      ],
+      // Tutte le prenotazioni dal sito degli ultimi 7 giorni (anche già iniziate o annullate),
+      // più quelle con una proposta di orario ancora aperta.
+      OR: [{ createdAt: { gte: new Date(now - 7 * 86_400_000) } }, { status: { in: ["BOOKED", "CONFIRMED"] }, ...openProposal }],
     },
-    orderBy: { startTime: "asc" },
+    orderBy: { createdAt: "desc" },
     include: { ...appointmentInclude, proposals: { orderBy: { createdAt: "desc" }, take: 1 } },
   });
 
