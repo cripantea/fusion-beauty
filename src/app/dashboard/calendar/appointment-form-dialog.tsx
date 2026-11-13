@@ -51,6 +51,15 @@ import {
 
 type ClientOption = { value: string; label: string };
 
+/** Nome o telefono, comunque sia scritto il numero ("333 000…", "+39333…", "333000…"). */
+function matchesClient(item: ClientOption, query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  if (item.label.toLowerCase().includes(q)) return true;
+  const digits = q.replace(/\D/g, "");
+  return digits.length >= 3 && item.label.replace(/\D/g, "").includes(digits);
+}
+
 export function Chip({
   active,
   onClick,
@@ -351,6 +360,7 @@ export function AppointmentFormDialog({
                     isItemEqualToValue={(itemValue: ClientOption, value: ClientOption) =>
                       itemValue.value === value.value
                     }
+                    filter={matchesClient}
                   >
                     <FormControl>
                       <ComboboxInput

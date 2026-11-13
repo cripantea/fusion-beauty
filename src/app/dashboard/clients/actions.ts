@@ -100,6 +100,16 @@ export async function getClients(input?: {
   const { tenantId } = await getTenantContext();
   const search = input?.search?.trim();
 
+  // Telefono: si confrontano solo le cifre ("333 000 0001" trova "+39 333 0000001").
+  const digits = search?.replace(/\D/g, "") ?? "";
+  const phoneIds =
+    digits.length >= 3
+      ? (
+          await prisma.$queryRaw<{ id: string }[]>`
+            SELECT id FROM clients WHERE "tenantId" = ${tenantId} AND regexp_replace(phone, '[^0-9]', '', 'g') LIKE ${`%${digits}%`}`
+        ).map((row) => row.id)
+      : [];
+
   const clients = await prisma.client.findMany({
     where: {
       tenantId,
@@ -108,6 +118,7 @@ export async function getClients(input?: {
           { firstName: { contains: search, mode: "insensitive" as const } },
           { lastName: { contains: search, mode: "insensitive" as const } },
           { phone: { contains: search } },
+          ...(phoneIds.length ? [{ id: { in: phoneIds } }] : []),
         ],
       }),
     },

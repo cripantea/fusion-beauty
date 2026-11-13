@@ -273,11 +273,15 @@ export function OperatorsGrid({
         {columns.map((column, index) => {
           const palette = palettes[index % palettes.length];
           const absentAllDay = Boolean(column.absence && !column.absence.startTime);
-          const unavailBands = absentAllDay
-            ? [{ top: 0, height: gridHeight }]
-            : column.operator
-              ? getUnavailableBands(dayWorkingHours(column.operator.workingHours, column.absence, date), grid)
-              : [];
+          const todayHours = column.operator ? dayWorkingHours(column.operator.workingHours, column.absence, date) : [];
+          // Ha orari impostati ma oggi nessuno (es. mercoledì): tutta la colonna grigia.
+          const dayOff = Boolean(column.operator && column.operator.workingHours.length > 0 && todayHours.length === 0);
+          const unavailBands =
+            absentAllDay || dayOff
+              ? [{ top: 0, height: gridHeight }]
+              : column.operator
+                ? getUnavailableBands(todayHours, grid)
+                : [];
 
           return (
             <div key={column.id ?? "none"} className="min-w-[200px] flex-1 border-r last:border-r-0">
@@ -370,13 +374,14 @@ export function OperatorsGrid({
                       )}
                       style={{ top, height }}
                     >
-                      <div className="truncate font-bold">
-                        {timeFormatter.format(appointment.startTime)} – {timeFormatter.format(appointment.endTime)}
+                      {/* Prima il nome (si legge anche negli appuntamenti brevi), poi ora e trattamento. */}
+                      <div className="truncate leading-tight">
+                        <span className={cn("font-bold", cancelled && "line-through")}>
+                          {appointment.client.firstName} {appointment.client.lastName}
+                        </span>{" "}
+                        <span className="opacity-75">{timeFormatter.format(appointment.startTime)}</span>
                       </div>
-                      <div className={cn("truncate font-semibold", cancelled && "line-through")}>
-                        {appointment.client.firstName} {appointment.client.lastName}
-                      </div>
-                      <div className="truncate opacity-75">{appointment.service.name}</div>
+                      <div className="truncate opacity-75 leading-tight">{appointment.service.name}</div>
                       {appointment.consentMissing ? (
                         <span className="mt-0.5 inline-block rounded border border-amber-300 bg-amber-100 px-1 text-[10px] font-semibold text-amber-900">
                           Consenso
