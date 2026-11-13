@@ -240,9 +240,11 @@ export function WidgetBookingFlow({ slug, services, initialServiceId, prefill }:
   useEffect(() => {
     if (!selectedService) return;
     let cancelled = false;
-    getOpenDays({ slug, serviceId: selectedService.id }).then((result) => {
-      if (!cancelled) setOpenDays(result.success ? { weekdays: result.weekdays, extraDates: result.extraDates } : null);
-    });
+    getOpenDays({ slug, serviceId: selectedService.id })
+      .then((result) => {
+        if (!cancelled) setOpenDays(result.success ? { weekdays: result.weekdays, extraDates: result.extraDates } : null);
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -266,7 +268,7 @@ export function WidgetBookingFlow({ slug, services, initialServiceId, prefill }:
         slug,
         serviceId: service.id,
         date: format(date, "yyyy-MM-dd"),
-      });
+      }).catch(() => ({ success: false as const, error: "Orari non disponibili in questo momento: riprova tra qualche secondo." }));
       setSlotsLoading(false);
 
       if (!result.success) {
@@ -312,12 +314,19 @@ export function WidgetBookingFlow({ slug, services, initialServiceId, prefill }:
     setPrivacyError("");
 
     startTransition(async () => {
+      // Server non raggiungibile (es. aggiornamento in corso): niente pagina d'errore,
+      // i dati restano e si riprova.
       const result = await createPublicBooking({
         slug,
         serviceId: selectedService.id,
         startTime: selectedSlot,
         ...values,
-      });
+      }).catch(() => null);
+
+      if (!result) {
+        toast.error("Non siamo riusciti a confermare la prenotazione. Riprova tra qualche secondo; se non va, ricarica la pagina. Nessun appuntamento è stato preso.", { duration: 10000 });
+        return;
+      }
 
       if (!result.success) {
         toast.error(result.error);
