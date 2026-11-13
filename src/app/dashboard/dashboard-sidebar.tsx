@@ -5,7 +5,6 @@ import {
   Calendar,
   ChevronDown,
   CreditCard,
-  Download,
   FileSignature,
   FileInput,
   FileText,
@@ -29,7 +28,7 @@ import { FusionsoftBadge } from "@/components/fusionsoft-badge";
 import { BeautyLogo } from "@/components/beauty-logo";
 import { sidebarHeadClass, sidebarItemClass, sidebarShellClass } from "@/components/fusionsoft-ui";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useSyncExternalStore } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -74,8 +73,37 @@ const ADMIN_SETTINGS_ITEMS: NavItem[] = [
   { href: "/dashboard/integrations/stripe", label: "Stripe", icon: CreditCard },
   { href: "/dashboard/integrations/calendar", label: "Calendario Google", icon: Link2 },
   { href: "/dashboard/consents", label: "Modelli consenso", icon: FileSignature },
-  { href: "/dashboard/integrations/ghl", label: "Importa da GHL", icon: Download },
 ];
+
+// Preferenza aperto/chiuso nel browser; null = mai toccata.
+const FLAG_EVENT = "sidebar-flag";
+function readFlag(key: string): boolean | null {
+  try {
+    const value = localStorage.getItem(key);
+    return value === null ? null : value === "1";
+  } catch {
+    return null;
+  }
+}
+function setStoredFlag(key: string, value: boolean) {
+  try {
+    localStorage.setItem(key, value ? "1" : "0");
+  } catch {
+    // Senza memoria del browser non si ricorda.
+  }
+  window.dispatchEvent(new Event(FLAG_EVENT));
+}
+function subscribeFlags(callback: () => void) {
+  window.addEventListener(FLAG_EVENT, callback);
+  window.addEventListener("storage", callback);
+  return () => {
+    window.removeEventListener(FLAG_EVENT, callback);
+    window.removeEventListener("storage", callback);
+  };
+}
+function useStoredFlag(key: string): boolean | null {
+  return useSyncExternalStore(subscribeFlags, () => readFlag(key), () => null);
+}
 
 type DashboardSidebarProps = {
   hasTenant: boolean;
@@ -97,8 +125,6 @@ export function DashboardSidebar({
   onlinePayments,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   function isActive(href: string, exact?: boolean) {
     return exact ? pathname === href : pathname.startsWith(href);
@@ -124,9 +150,12 @@ export function DashboardSidebar({
     : [];
   const settingsItems: NavItem[] = hasTenant && isAdmin ? ADMIN_SETTINGS_ITEMS : [];
 
-  // Su una pagina di una sezione chiusa la sezione resta aperta: si vede dove si è.
-  const showMore = moreOpen || moreItems.some((item) => isActive(item.href, item.exact));
-  const showSettings = settingsOpen || settingsItems.some((item) => isActive(item.href, item.exact));
+  // Aperte o chiuse restano come le lascia l'operatrice, su tutte le pagine (anche dopo un ricaricamento).
+  // Finché non le tocca, si apre da sola la sezione della pagina in cui si trova.
+  const storedMore = useStoredFlag("sidebar:more");
+  const storedSettings = useStoredFlag("sidebar:settings");
+  const showMore = storedMore ?? moreItems.some((item) => isActive(item.href, item.exact));
+  const showSettings = storedSettings ?? settingsItems.some((item) => isActive(item.href, item.exact));
 
   const mobileItems = mainItems.slice(0, 5);
 
@@ -196,7 +225,7 @@ export function DashboardSidebar({
         {moreItems.length > 0 ? (
           <div>
             <button
-              onClick={() => setMoreOpen((o) => !o)}
+              onClick={() => setStoredFlag("sidebar:more", !showMore)}
               className="flex w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground/80 transition-colors hover:bg-muted/60"
             >
               <span>Altro</span>
@@ -210,7 +239,7 @@ export function DashboardSidebar({
       {settingsItems.length > 0 && (
         <div className="border-t px-3 py-3">
           <button
-            onClick={() => setSettingsOpen((o) => !o)}
+            onClick={() => setStoredFlag("sidebar:settings", !showSettings)}
             className="flex w-full items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60 transition-colors hover:bg-muted/60 hover:text-muted-foreground"
           >
             <Settings className="size-3" />

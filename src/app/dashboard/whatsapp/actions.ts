@@ -43,8 +43,9 @@ export async function disconnectWhatsapp(): Promise<Result> {
   const connection = await prisma.whatsappConnection.findUnique({ where: { tenantId } });
   if (!connection) return { success: true };
   const reset = await resetConnection(tenantId, connection.phoneNumberId);
-  if (!reset.ok) return { success: false, error: reset.error };
-  await prisma.whatsappConnection.delete({ where: { tenantId } });
+  // Già scollegato su Fusion WA: si toglie anche qui, altrimenti il cambio numero resta bloccato.
+  if (!reset.ok && !reset.notFound) return { success: false, error: reset.error };
+  await prisma.whatsappConnection.deleteMany({ where: { tenantId } });
   revalidatePath("/dashboard/whatsapp");
   return { success: true };
 }

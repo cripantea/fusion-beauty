@@ -352,7 +352,9 @@ export function WhatsappSettings({
             <DialogTitle>Scollegare WhatsApp?</DialogTitle>
             <DialogDescription>
               Automazioni e campagne smettono di partire e non ricevi più le risposte in Messaggi. Il numero resta tuo e continua
-              a funzionare nell&apos;app WhatsApp Business. Potrai ricollegarlo quando vuoi.
+              a funzionare nell&apos;app WhatsApp Business. Potrai ricollegarlo quando vuoi. Per cambiare numero: scollega, poi
+              collega il nuovo. Se il nuovo numero è su un altro account Meta, i messaggi pronti (template) vanno rimandati in
+              approvazione.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2">

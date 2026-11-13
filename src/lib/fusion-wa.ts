@@ -156,10 +156,21 @@ export async function getConnectionState(tenantId: string): Promise<{ ok: true; 
   return { ok: true, state: res.data as unknown as FusionWaConnectionState };
 }
 
-export async function resetConnection(tenantId: string, phoneNumberId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+/**
+ * Scollega il numero su Fusion WA (come "Scollega per collegare un altro numero" nel CRM).
+ * notFound: Fusion WA non ha più quel numero attivo per il centro (già scollegato o
+ * cambiato): in locale si può togliere lo stesso.
+ */
+export async function resetConnection(
+  tenantId: string,
+  phoneNumberId: string
+): Promise<{ ok: true } | { ok: false; error: string; notFound?: boolean }> {
   const res = await request("/api/v1/connections/reset", { body: { externalCustomerId: tenantId, expectedPhoneNumberId: phoneNumberId } });
   if (!res.ok) return res;
-  if (res.status >= 400) return { ok: false, error: errorOf(res.data, res.status) };
+  if (res.status >= 400) {
+    const error = errorOf(res.data, res.status);
+    return { ok: false, error, notFound: res.status === 409 && /not found/i.test(error) };
+  }
   return { ok: true };
 }
 
