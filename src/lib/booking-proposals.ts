@@ -9,8 +9,10 @@ import { appointmentVars, hasActiveWhatsapp, sendWhatsappTemplate, sendWhatsappT
  * orario". La risposta arriva dal webhook citando il messaggio (context.id):
  * - conferma → l'appuntamento si sposta all'orario proposto, diventa
  *   confermato e parte la conferma WhatsApp (automazione "appuntamento confermato");
- * - altro orario → la cliente riceve il link per scegliere da sola e la
- *   richiesta resta da gestire.
+ * - altro orario → come su Treatwell/Fresha la richiesta non si chiude: torna
+ *   all'operatrice per una nuova proposta; alla cliente arriva un messaggio che
+ *   la avvisa e il link per scegliere da sola, se preferisce (la nuova
+ *   prenotazione chiude quella vecchia).
  * Importato anche dal webhook/worker: niente "server-only".
  */
 
@@ -109,7 +111,7 @@ export async function handleProposalReply(tenantId: string, quotedWamid: string,
   await sendWhatsappText(tenantId, {
     phone: appointment.client.phone,
     clientId: appointment.client.id,
-    body: `Nessun problema! Scegli tu il giorno e l'orario che preferisci qui: ${base}/embed/${appointment.tenant.slug} Oppure rispondi a questo messaggio e ti aiutiamo noi.`,
+    body: `Nessun problema! Ti scriviamo a breve con un altro orario. Se preferisci, puoi anche sceglierlo tu qui: ${base}/embed/${appointment.tenant.slug} oppure dirci qui quando ti è più comodo.`,
   });
   return true;
 }
@@ -124,4 +126,22 @@ export async function latestPendingProposalWamid(tenantId: string, clientId: str
   if (!proposal?.messageId) return null;
   const message = await prisma.whatsappMessage.findUnique({ where: { id: proposal.messageId }, select: { wamid: true } });
   return message?.wamid ?? null;
+}
+
+/**
+ * Nuova prenotazione online della cliente: le sue richieste precedenti con una
+ * proposta rifiutata sono superate e si chiudono (ha scelto lei l'orario).
+ */
+export async function closeSupersededRequests(tenantId: string, clientId: string, newAppointmentId: string) {
+  await prisma.appointment.updateMany({
+    where: {
+      tenantId,
+      clientId,
+      id: { not: newAppointmentId },
+      source: "ONLINE",
+      status: "BOOKED",
+      proposals: { some: { status: "DECLINED" }, none: { status: "PENDING" } },
+    },
+    data: { status: "CANCELLED" },
+  });
 }

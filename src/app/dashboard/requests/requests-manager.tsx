@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, Check, MessageCircle, Phone, X } from "lucide-react";
+import { CalendarClock, Check, MessageCircle, Phone } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -45,14 +45,15 @@ export function RequestsManager({ tenantSlug, initialRequests, operators }: Requ
     startTransition(async () => setRequests(await getOnlineRequests()));
   }
 
-  function resolve(request: AppointmentDTO, status: "CONFIRMED" | "CANCELLED") {
+  // Come Treatwell e Fresha: una richiesta non si rifiuta, si conferma o si sposta.
+  function confirm(request: AppointmentDTO) {
     startTransition(async () => {
-      const result = await updateAppointmentStatus(request.id, status);
+      const result = await updateAppointmentStatus(request.id, "CONFIRMED");
       if (!result.success) {
         toast.error(result.error);
         return;
       }
-      toast.success(status === "CONFIRMED" ? "Confermata: è in agenda e alla cliente arriva la conferma su WhatsApp." : "Richiesta rifiutata.");
+      toast.success("Confermata: è in agenda e alla cliente arriva la conferma su WhatsApp.");
       setRequests(await getOnlineRequests());
     });
   }
@@ -62,7 +63,7 @@ export function RequestsManager({ tenantSlug, initialRequests, operators }: Requ
       <PageHeader
         eyebrow="Dal sito"
         title="Le richieste del sito arrivano qui."
-        description="Conferma o proponi un altro orario: la cliente riceve tutto su WhatsApp e, se accetta la proposta, l'appuntamento si conferma da solo."
+        description="Conferma, oppure se l'orario non va bene proponine un altro: la cliente riceve tutto su WhatsApp e, se accetta, l'appuntamento si conferma da solo. Se dice di no, la richiesta torna qui per un'altra proposta."
       />
 
       <Panel title={`Richieste da confermare${requests.length ? ` · ${requests.length}` : ""}`}>
@@ -87,7 +88,13 @@ export function RequestsManager({ tenantSlug, initialRequests, operators }: Requ
                       <div className="mt-1 text-sm text-muted-foreground">“{request.notes}”</div>
                     ) : null}
                   </div>
-                  <Pill tone="amber">Da confermare</Pill>
+                  <Pill tone="amber">
+                    {request.proposal?.status === "DECLINED"
+                      ? "Proponi un altro orario"
+                      : request.proposal?.status === "PENDING"
+                        ? "Attende la cliente"
+                        : "Da confermare"}
+                  </Pill>
                 </div>
                 {request.proposal ? (
                   <div className="mt-3 flex items-start gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm">
@@ -97,7 +104,7 @@ export function RequestsManager({ tenantSlug, initialRequests, operators }: Requ
                       {request.proposal.status === "PENDING"
                         ? "in attesa di risposta su WhatsApp"
                         : request.proposal.status === "DECLINED"
-                          ? "la cliente vuole un altro orario: le è arrivato il link per sceglierlo, oppure chiamala"
+                          ? "la cliente non può: proponile un altro orario (le abbiamo scritto che arriva a breve) o chiamala"
                           : "accettato"}
                     </span>
                   </div>
@@ -106,7 +113,7 @@ export function RequestsManager({ tenantSlug, initialRequests, operators }: Requ
                   <Button
                     className="h-9 rounded-xl"
                     disabled={isPending}
-                    onClick={() => resolve(request, "CONFIRMED")}
+                    onClick={() => confirm(request)}
                   >
                     <Check className="size-4" />
                     Conferma
@@ -132,15 +139,6 @@ export function RequestsManager({ tenantSlug, initialRequests, operators }: Requ
                   >
                     <MessageCircle className="size-4" />
                     WhatsApp
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="h-9 rounded-xl text-wine hover:bg-wine-soft hover:text-wine"
-                    disabled={isPending}
-                    onClick={() => resolve(request, "CANCELLED")}
-                  >
-                    <X className="size-4" />
-                    Rifiuta
                   </Button>
                 </div>
               </li>

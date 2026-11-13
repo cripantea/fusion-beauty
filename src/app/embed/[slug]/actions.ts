@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { triggerAppointmentAutomations, triggerClientCreated } from "@/lib/automation-engine";
+import { closeSupersededRequests } from "@/lib/booking-proposals";
 
 import { createBookingSchema, getSlotsSchema } from "./schema";
 
@@ -227,6 +228,7 @@ export async function createPublicBooking(values: unknown): Promise<CreateBookin
 
     after(async () => {
       if (isNewClient) await triggerClientCreated(result.client.tenantId, result.client.id);
+      else await closeSupersededRequests(result.client.tenantId, result.client.id, result.appointment.id);
       await triggerAppointmentAutomations("BOOKING_REQUESTED", result.appointment.id);
     });
 

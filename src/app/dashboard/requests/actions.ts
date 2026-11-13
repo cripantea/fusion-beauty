@@ -17,7 +17,16 @@ export async function getOnlineRequests(): Promise<RequestDTO[]> {
   const { tenantId } = await getTenantContext();
 
   const requests = await prisma.appointment.findMany({
-    where: { tenantId, source: "ONLINE", status: "BOOKED", startTime: { gte: new Date(Date.now() - 24 * 60 * 60_000) } },
+    where: {
+      tenantId,
+      source: "ONLINE",
+      status: "BOOKED",
+      // Restano in lista anche se l'orario chiesto è passato, finché c'è una proposta aperta o rifiutata.
+      OR: [
+        { startTime: { gte: new Date(Date.now() - 24 * 60 * 60_000) } },
+        { proposals: { some: { status: { in: ["PENDING", "DECLINED"] }, createdAt: { gte: new Date(Date.now() - 14 * 86_400_000) } } } },
+      ],
+    },
     orderBy: { startTime: "asc" },
     include: { ...appointmentInclude, proposals: { orderBy: { createdAt: "desc" }, take: 1 } },
   });
