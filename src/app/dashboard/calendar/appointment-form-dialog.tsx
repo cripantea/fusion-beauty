@@ -138,6 +138,8 @@ export function AppointmentFormDialog({
   const [notesOpen, setNotesOpen] = useState(false);
   // Orario accavallato: si mostra l'avviso con "Salva comunque".
   const [clash, setClash] = useState<string | null>(null);
+  // Modifica di cliente, trattamento, operatrice o orario: prima si mostra cosa cambia e si conferma.
+  const [pendingChange, setPendingChange] = useState<{ values: AppointmentFormValues; lines: string[]; notifies: boolean } | null>(null);
   const whenRef = useRef<HTMLDivElement>(null);
 
   const form = useForm<AppointmentFormInput, unknown, AppointmentFormValues>({
@@ -253,11 +255,48 @@ export function AppointmentFormDialog({
   }
 
   function handleOpenChange(next: boolean) {
-    if (!next) setClash(null);
+    if (!next) {
+      setClash(null);
+      setPendingChange(null);
+    }
     onOpenChange(next);
   }
 
+  /** Cosa cambia rispetto all'appuntamento salvato (vuoto = solo note o durata). */
+  function describeChanges(values: AppointmentFormValues) {
+    if (!appointment) return { lines: [], notifies: false };
+    const lines: string[] = [];
+    const clientName = (id: string) => {
+      const c = allClients.find((client) => client.id === id);
+      return c ? `${c.firstName} ${c.lastName}`.trim() : "altra cliente";
+    };
+    const operatorName = (id: string | null) =>
+      id === null || id === NO_OPERATOR_VALUE ? "nessuna" : (operators.find((o) => o.id === id)?.firstName ?? "altra operatrice");
+    if (values.clientId !== appointment.client.id) lines.push(`Cliente: ${clientName(appointment.client.id)} → ${clientName(values.clientId)}`);
+    if (values.serviceId !== appointment.service.id) {
+      lines.push(`Trattamento: ${appointment.service.name} → ${services.find((s) => s.id === values.serviceId)?.name ?? "altro"}`);
+    }
+    const oldOperator = appointment.operator?.id ?? NO_OPERATOR_VALUE;
+    if (values.operatorId !== oldOperator) lines.push(`Operatrice: ${operatorName(oldOperator)} → ${operatorName(values.operatorId)}`);
+    const oldWhen = `${toDateInputValue(appointment.startTime)} ${toTimeInputValue(appointment.startTime)}`;
+    const newWhen = `${values.date} ${values.time}`;
+    const timeChanged = oldWhen !== newWhen;
+    if (timeChanged) {
+      const fmt = (d: Date) =>
+        new Intl.DateTimeFormat("it-IT", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(d);
+      lines.push(`Orario: ${fmt(appointment.startTime)} → ${fmt(new Date(`${values.date}T${values.time}:00`))}`);
+    }
+    // Solo un nuovo orario fa partire un messaggio (la conferma con il nuovo orario).
+    const notifies = timeChanged && appointment.status === "CONFIRMED";
+    return { lines, notifies };
+  }
+
   function onSubmit(values: AppointmentFormValues) {
+    const change = describeChanges(values);
+    if (change.lines.length > 0) {
+      setPendingChange({ values, ...change });
+      return;
+    }
     save(values, false);
   }
 
@@ -491,6 +530,39 @@ export function AppointmentFormDialog({
               />
             ) : null}
 
+            {pendingChange ? (
+              <div className="space-y-2 rounded-xl border border-forest/30 bg-mint-soft p-3 text-sm">
+                <p className="font-semibold">Confermi queste modifiche?</p>
+                <ul className="space-y-1">
+                  {pendingChange.lines.map((line) => (
+                    <li key={line}>• {line}</li>
+                  ))}
+                </ul>
+                <p className="text-xs text-muted-foreground">
+                  {pendingChange.notifies
+                    ? "La cliente riceverà su WhatsApp la conferma con il nuovo orario."
+                    : "La cliente non riceve nessun messaggio."}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    className="h-10"
+                    disabled={isPending}
+                    onClick={() => {
+                      const values = pendingChange.values;
+                      setPendingChange(null);
+                      save(values, false);
+                    }}
+                  >
+                    Sì, conferma
+                  </Button>
+                  <Button type="button" variant="outline" className="h-10" onClick={() => setPendingChange(null)}>
+                    No, torna indietro
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
             {clash ? (
               <div className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
                 <p className="flex items-start gap-2">
@@ -514,7 +586,7 @@ export function AppointmentFormDialog({
               <Button type="button" variant="outline" className="h-10" onClick={() => handleOpenChange(false)}>
                 Annulla
               </Button>
-              <Button type="submit" className="h-10 px-6" disabled={isPending}>
+              <Button type="submit" className="h-10 px-6" disabled={isPending || pendingChange !== null}>
                 {isPending ? "Salvataggio..." : "Salva appuntamento"}
               </Button>
             </DialogFooter>

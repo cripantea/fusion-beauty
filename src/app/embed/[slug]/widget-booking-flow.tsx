@@ -31,6 +31,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   createPublicBooking,
   getAvailableSlots,
+  getOpenDays,
   type BookingConfirmation,
 } from "./actions";
 import type { PublicServiceDTO } from "./data";
@@ -233,6 +234,25 @@ export function WidgetBookingFlow({ slug, services, initialServiceId, prefill }:
     defaultValues: { ...contactFormDefaultValues, ...prefill },
   });
 
+  // Giorni di lavoro per il trattamento scelto (null = ancora da sapere: tutto cliccabile).
+  const [openDays, setOpenDays] = useState<{ weekdays: number[]; extraDates: string[] } | null>(null);
+  useEffect(() => {
+    if (!selectedService) return;
+    let cancelled = false;
+    getOpenDays({ slug, serviceId: selectedService.id }).then((result) => {
+      if (!cancelled) setOpenDays(result.success ? { weekdays: result.weekdays, extraDates: result.extraDates } : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, selectedService]);
+
+  function isClosedDay(date: Date) {
+    if (!openDays) return false;
+    const weekday = ((date.getDay() + 6) % 7) + 1; // 1=lun … 7=dom
+    return !openDays.weekdays.includes(weekday) && !openDays.extraDates.includes(format(date, "yyyy-MM-dd"));
+  }
+
   function fetchSlots(service: PublicServiceDTO, date: Date) {
     setSlotsLoading(true);
     setSelectedSlot(null);
@@ -389,7 +409,7 @@ export function WidgetBookingFlow({ slug, services, initialServiceId, prefill }:
                 selected={selectedDate}
                 onSelect={handleSelectDate}
                 locale={it}
-                disabled={(date) => isBefore(date, startOfDay(new Date()))}
+                disabled={(date) => isBefore(date, startOfDay(new Date())) || isClosedDay(date)}
               />
             </CardContent>
           </Card>

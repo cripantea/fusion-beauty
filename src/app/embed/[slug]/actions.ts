@@ -195,6 +195,36 @@ export async function getAvailableSlots(input: {
   return { success: true, slots: slots.map((slot) => slot.toISOString()) };
 }
 
+/**
+ * Giorni in cui almeno un'operatrice che fa il trattamento lavora: gli altri
+ * (es. mercoledì e domenica) nel calendario si vedono grigi e non si cliccano.
+ * Anche i giorni aperti in via eccezionale con un "imprevisto" restano cliccabili.
+ */
+export async function getOpenDays(input: {
+  slug: string;
+  serviceId: string;
+}): Promise<{ success: true; weekdays: number[]; extraDates: string[] } | { success: false }> {
+  const tenant = await findActiveTenantBySlug(input.slug);
+  if (!tenant) return { success: false };
+  const service = await findBookableService(tenant.id, input.serviceId);
+  if (!service) return { success: false };
+
+  const hoursConfigured = (await prisma.workingHours.count({ where: { tenantId: tenant.id, isActive: true } })) > 0;
+  if (!hoursConfigured) return { success: true, weekdays: DEFAULT_HOURS.days, extraDates: [] };
+
+  const today = romeDay(new Date());
+  const operators = await prisma.user.findMany({
+    where: { tenantId: tenant.id, isActive: true, role: { in: ["ADMIN", "OPERATOR"] }, excludedServices: { none: { id: service.id } } },
+    select: {
+      workingHours: { where: { isActive: true }, select: { dayOfWeek: true } },
+      staffExceptions: { where: { date: { gte: new Date(`${today}T00:00:00Z`) }, startTime: { not: null } }, select: { date: true } },
+    },
+  });
+  const weekdays = [...new Set(operators.flatMap((op) => op.workingHours.map((h) => h.dayOfWeek)))].sort();
+  const extraDates = [...new Set(operators.flatMap((op) => op.staffExceptions.map((e) => e.date.toISOString().slice(0, 10))))];
+  return { success: true, weekdays, extraDates };
+}
+
 export type BookingConfirmation = {
   clientName: string;
   serviceName: string;
