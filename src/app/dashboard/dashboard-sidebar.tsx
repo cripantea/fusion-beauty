@@ -58,15 +58,15 @@ const MORE_ITEMS: NavItem[] = [
 ];
 
 const ADMIN_MORE_ITEMS: NavItem[] = [
+  { href: "/dashboard/staff", label: "Staff e orari", icon: ShieldCheck },
   { href: "/dashboard/stats", label: "Statistiche", icon: BarChart3 },
   { href: "/dashboard/reports", label: "Report mensile", icon: FileText },
-  { href: "/dashboard/automations", label: "Automazioni", icon: Zap },
   { href: "/dashboard/campaigns", label: "Campagne", icon: Megaphone },
 ];
 
 // Configurazione del centro: solo per l'amministratrice.
 const ADMIN_SETTINGS_ITEMS: NavItem[] = [
-  { href: "/dashboard/staff", label: "Staff e orari", icon: ShieldCheck },
+  { href: "/dashboard/automations", label: "Automazioni", icon: Zap },
   { href: "/dashboard/whatsapp", label: "WhatsApp", icon: Smartphone },
   { href: "/dashboard/widget", label: "Prenotazione online", icon: Wand2 },
   { href: "/dashboard/forms", label: "Form del sito", icon: FileInput },
