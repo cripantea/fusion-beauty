@@ -139,9 +139,28 @@ export async function closeSupersededRequests(tenantId: string, clientId: string
       clientId,
       id: { not: newAppointmentId },
       source: "ONLINE",
-      status: "BOOKED",
+      status: { in: ["BOOKED", "CONFIRMED"] },
       proposals: { some: { status: "DECLINED" }, none: { status: "PENDING" } },
     },
     data: { status: "CANCELLED" },
   });
+}
+
+/**
+ * Prenotazioni online su cui il centro deve agire (badge "Richieste"): quelle
+ * da confermare e quelle in cui la cliente ha detto no allo spostamento.
+ */
+export function actionableRequestsWhere(tenantId: string) {
+  const now = new Date();
+  return {
+    tenantId,
+    source: "ONLINE" as const,
+    OR: [
+      { status: "BOOKED" as const, startTime: { gte: now } },
+      {
+        status: { in: ["BOOKED" as const, "CONFIRMED" as const] },
+        proposals: { some: { status: "DECLINED" as const, createdAt: { gte: new Date(now.getTime() - 14 * 86_400_000) } }, none: { status: "PENDING" as const } },
+      },
+    ],
+  };
 }

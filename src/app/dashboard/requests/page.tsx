@@ -8,8 +8,8 @@ import { getOnlineRequests } from "./actions";
 import { RequestsManager } from "./requests-manager";
 
 export default async function RequestsPage() {
-  const { tenantId } = await getTenantContext();
-  const tenant = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { slug: true } });
+  const { tenantId, user } = await getTenantContext();
+  const tenant = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { slug: true, autoConfirmOnline: true } });
 
   const [requests, clients, services, operators] = await Promise.all([
     getOnlineRequests(),
@@ -25,6 +25,8 @@ export default async function RequestsPage() {
       services={services}
       operators={operators}
       tenantSlug={tenant.slug}
+      autoConfirm={tenant.autoConfirmOnline}
+      isAdmin={user.role === "ADMIN"}
     />
   );
 }

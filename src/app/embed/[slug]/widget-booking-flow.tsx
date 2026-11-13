@@ -324,9 +324,9 @@ export function WidgetBookingFlow({ slug, services, initialServiceId, prefill }:
           <div className="mx-auto mb-3 flex size-14 items-center justify-center rounded-full bg-primary/10">
             <Check className="size-7 text-primary" />
           </div>
-          <CardTitle className="text-xl">Richiesta inviata!</CardTitle>
+          <CardTitle className="text-xl">{confirmation.confirmed ? "Prenotazione confermata!" : "Richiesta inviata!"}</CardTitle>
           <CardDescription className="text-base">
-            Hai chiesto {dateTimeFormatter.format(new Date(confirmation.startTime))}.
+            {confirmation.confirmed ? "Ti aspettiamo" : "Hai chiesto"} {dateTimeFormatter.format(new Date(confirmation.startTime))}.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm pt-2">
@@ -341,7 +341,9 @@ export function WidgetBookingFlow({ slug, services, initialServiceId, prefill }:
             </div>
           </div>
           <p className="text-center text-xs text-muted-foreground pt-1">
-            Ti confermiamo l&apos;appuntamento su WhatsApp a breve. A presto!
+            {confirmation.confirmed
+              ? "Ti arriva il riepilogo su WhatsApp e il promemoria il giorno prima. A presto!"
+              : "Ti confermiamo l'appuntamento su WhatsApp a breve. A presto!"}
           </p>
         </CardContent>
       </Card>

@@ -4,27 +4,33 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { appointmentInclude, toAppointmentDTO, type AppointmentDTO } from "@/app/dashboard/calendar/dto";
-import { getTenantContext } from "@/lib/auth-context";
+import { getTenantContext, requireTenantAdmin } from "@/lib/auth-context";
 import { proposeNewTime } from "@/lib/booking-proposals";
 import { prisma } from "@/lib/prisma";
 
 export type RequestDTO = AppointmentDTO & {
+  /** Già confermata in automatico (prenotazione online su un orario libero). */
+  autoConfirmed: boolean;
   proposal: { status: "PENDING" | "ACCEPTED" | "DECLINED" | "CANCELLED"; start: Date; createdAt: Date; respondedAt: Date | null } | null;
 };
 
-/** Richieste arrivate dal sito ancora da confermare, con l'eventuale proposta di un altro orario. */
+/**
+ * Prenotazioni dal sito da guardare: quelle ancora da confermare (conferma
+ * automatica spenta), quelle confermate da sole negli ultimi 2 giorni e quelle
+ * con uno spostamento in corso o rifiutato dalla cliente.
+ */
 export async function getOnlineRequests(): Promise<RequestDTO[]> {
   const { tenantId } = await getTenantContext();
+  const now = Date.now();
+  const openProposal = { proposals: { some: { status: { in: ["PENDING" as const, "DECLINED" as const] }, createdAt: { gte: new Date(now - 14 * 86_400_000) } } } };
 
   const requests = await prisma.appointment.findMany({
     where: {
       tenantId,
       source: "ONLINE",
-      status: "BOOKED",
-      // Restano in lista anche se l'orario chiesto è passato, finché c'è una proposta aperta o rifiutata.
       OR: [
-        { startTime: { gte: new Date(Date.now() - 24 * 60 * 60_000) } },
-        { proposals: { some: { status: { in: ["PENDING", "DECLINED"] }, createdAt: { gte: new Date(Date.now() - 14 * 86_400_000) } } } },
+        { status: "BOOKED", OR: [{ startTime: { gte: new Date(now - 24 * 60 * 60_000) } }, openProposal] },
+        { status: "CONFIRMED", startTime: { gte: new Date(now) }, OR: [{ createdAt: { gte: new Date(now - 2 * 86_400_000) } }, openProposal] },
       ],
     },
     orderBy: { startTime: "asc" },
@@ -35,11 +41,20 @@ export async function getOnlineRequests(): Promise<RequestDTO[]> {
     const last = request.proposals[0];
     return {
       ...toAppointmentDTO(request),
+      autoConfirmed: request.status === "CONFIRMED",
       proposal: last && last.status !== "CANCELLED"
         ? { status: last.status, start: last.proposedStart, createdAt: last.createdAt, respondedAt: last.respondedAt }
         : null,
     };
   });
+}
+
+/** Conferma automatica delle prenotazioni online (solo admin). */
+export async function setAutoConfirmOnline(enabled: boolean): Promise<{ success: true } | { success: false; error: string }> {
+  const { tenantId } = await requireTenantAdmin();
+  await prisma.tenant.update({ where: { id: tenantId }, data: { autoConfirmOnline: enabled } });
+  revalidatePath("/dashboard/requests");
+  return { success: true };
 }
 
 const proposeSchema = z.object({

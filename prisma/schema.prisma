@@ -146,6 +146,9 @@ model Tenant {
   /// Incassi in cassa (Incassa, POS, contanti). Spento: niente sezione Pagamenti,
   /// incasso stimato dai trattamenti e appuntamenti passati completati da soli.
   paymentsEnabled Boolean  @default(false)
+  /// Prenotazioni online confermate subito (come Treatwell/Fresha): l'agenda
+  /// mostra solo orari liberi negli orari di lavoro. Spento: le conferma il centro.
+  autoConfirmOnline Boolean @default(true)
   icsFeedToken    String?  @unique
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

@@ -3,6 +3,7 @@
 import { appointmentInclude, toAppointmentDTO, type AppointmentDTO } from "@/app/dashboard/calendar/dto";
 import { getTenantContext } from "@/lib/auth-context";
 import { getInactiveClients, getUpcomingBirthdays } from "@/lib/insights";
+import { actionableRequestsWhere } from "@/lib/booking-proposals";
 import { prisma } from "@/lib/prisma";
 
 function getTodayRange() {
@@ -68,9 +69,7 @@ export async function getDashboardData(): Promise<DashboardData> {
         status: { in: ["BOOKED", "CONFIRMED"] },
       },
     }),
-    prisma.appointment.count({
-      where: { tenantId, source: "ONLINE", status: "BOOKED", startTime: { gte: new Date() } },
-    }),
+    prisma.appointment.count({ where: actionableRequestsWhere(tenantId) }),
   ]);
 
   const dtos = appointments.map(toAppointmentDTO);

@@ -14,9 +14,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { whatsappUrl } from "@/lib/format";
 
-import { getOnlineRequests, proposeAlternative, type RequestDTO } from "./actions";
+import { getOnlineRequests, proposeAlternative, setAutoConfirmOnline, type RequestDTO } from "./actions";
 
 const whenFormatter = new Intl.DateTimeFormat("it-IT", {
   weekday: "long",
@@ -30,14 +31,17 @@ const timeFormatter = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute
 
 type RequestsManagerProps = {
   tenantSlug: string;
+  autoConfirm: boolean;
+  isAdmin: boolean;
   initialRequests: RequestDTO[];
   clients: ClientListItemDTO[];
   services: ServiceDTO[];
   operators: OperatorDTO[];
 };
 
-export function RequestsManager({ tenantSlug, initialRequests, operators }: RequestsManagerProps) {
+export function RequestsManager({ tenantSlug, autoConfirm: initialAutoConfirm, isAdmin, initialRequests, operators }: RequestsManagerProps) {
   const [requests, setRequests] = useState(initialRequests);
+  const [autoConfirm, setAutoConfirm] = useState(initialAutoConfirm);
   const [editing, setEditing] = useState<RequestDTO | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -58,17 +62,48 @@ export function RequestsManager({ tenantSlug, initialRequests, operators }: Requ
     });
   }
 
+  function toggleAutoConfirm(enabled: boolean) {
+    setAutoConfirm(enabled);
+    startTransition(async () => {
+      const result = await setAutoConfirmOnline(enabled);
+      if (!result.success) {
+        setAutoConfirm(!enabled);
+        toast.error(result.error);
+        return;
+      }
+      toast.success(enabled ? "Le prenotazioni dal sito si confermano da sole." : "Le prenotazioni dal sito le confermi tu.");
+    });
+  }
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader
         eyebrow="Dal sito"
-        title="Le richieste del sito arrivano qui."
-        description="Conferma, oppure se l'orario non va bene proponine un altro: la cliente riceve tutto su WhatsApp e, se accetta, l'appuntamento si conferma da solo. Se dice di no, la richiesta torna qui per un'altra proposta."
+        title="Le prenotazioni del sito arrivano qui."
+        description={
+          autoConfirm
+            ? "Come su Treatwell: la cliente sceglie solo orari liberi negli orari di lavoro e la prenotazione è subito confermata, con il riepilogo su WhatsApp. Se devi spostarla, proponi un altro orario: se la cliente accetta si sposta da sola, se dice di no torna qui."
+            : "Conferma, oppure se l'orario non va bene proponine un altro: la cliente riceve tutto su WhatsApp e, se accetta, l'appuntamento si conferma da solo. Se dice di no, la richiesta torna qui per un'altra proposta."
+        }
       />
 
-      <Panel title={`Richieste da confermare${requests.length ? ` · ${requests.length}` : ""}`}>
+      {isAdmin ? (
+        <label className="flex items-start gap-3 rounded-xl border border-mint-border bg-white p-4 text-sm">
+          <Switch checked={autoConfirm} disabled={isPending} onCheckedChange={toggleAutoConfirm} />
+          <span>
+            <span className="font-semibold">Conferma automatica</span>
+            <span className="block text-muted-foreground">
+              {autoConfirm
+                ? "Attiva: l'agenda online mostra solo gli orari liberi dentro gli orari di lavoro dello staff (Staff → Orari)."
+                : "Spenta: ogni prenotazione dal sito resta da confermare qui."}
+            </span>
+          </span>
+        </label>
+      ) : null}
+
+      <Panel title={`Prenotazioni dal sito${requests.length ? ` · ${requests.length}` : ""}`}>
         {requests.length === 0 ? (
-          <EmptyState>Nessuna richiesta in attesa. Quando una cliente prenota dal widget la vedi qui.</EmptyState>
+          <EmptyState>Nessuna prenotazione recente. Quando una cliente prenota dal sito la vedi qui.</EmptyState>
         ) : (
           <ul className="space-y-3 p-3">
             {requests.map((request) => (
@@ -76,7 +111,7 @@ export function RequestsManager({ tenantSlug, initialRequests, operators }: Requ
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-xs font-semibold uppercase tracking-wide text-mint-ink">
-                      Nuova richiesta dal sito
+                      {request.autoConfirmed ? "Prenotata dal sito" : "Nuova richiesta dal sito"}
                     </div>
                     <div className="mt-1 text-lg font-bold">
                       {request.client.firstName} {request.client.lastName}
@@ -88,12 +123,14 @@ export function RequestsManager({ tenantSlug, initialRequests, operators }: Requ
                       <div className="mt-1 text-sm text-muted-foreground">“{request.notes}”</div>
                     ) : null}
                   </div>
-                  <Pill tone="amber">
+                  <Pill tone={request.autoConfirmed && !request.proposal ? "forest" : "amber"}>
                     {request.proposal?.status === "DECLINED"
                       ? "Proponi un altro orario"
                       : request.proposal?.status === "PENDING"
                         ? "Attende la cliente"
-                        : "Da confermare"}
+                        : request.autoConfirmed
+                          ? "Confermata"
+                          : "Da confermare"}
                   </Pill>
                 </div>
                 {request.proposal ? (
@@ -110,17 +147,23 @@ export function RequestsManager({ tenantSlug, initialRequests, operators }: Requ
                   </div>
                 ) : null}
                 <div className="mt-4 flex flex-wrap gap-2">
+                  {request.autoConfirmed ? null : (
+                    <Button className="h-9 rounded-xl" disabled={isPending} onClick={() => confirm(request)}>
+                      <Check className="size-4" />
+                      Conferma
+                    </Button>
+                  )}
                   <Button
+                    variant={request.proposal?.status === "DECLINED" ? "default" : "outline"}
                     className="h-9 rounded-xl"
-                    disabled={isPending}
-                    onClick={() => confirm(request)}
+                    onClick={() => setEditing(request)}
                   >
-                    <Check className="size-4" />
-                    Conferma
-                  </Button>
-                  <Button variant="outline" className="h-9 rounded-xl" onClick={() => setEditing(request)}>
                     <CalendarClock className="size-4" />
-                    {request.proposal?.status === "PENDING" ? "Proponi un altro orario ancora" : "Proponi un altro orario"}
+                    {request.proposal?.status === "PENDING"
+                      ? "Proponi un altro orario ancora"
+                      : request.autoConfirmed && !request.proposal
+                        ? "Sposta"
+                        : "Proponi un altro orario"}
                   </Button>
                   <Button
                     variant="outline"

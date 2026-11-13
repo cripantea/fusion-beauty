@@ -1,6 +1,7 @@
 import { PageTransition } from "@/components/ui/page-transition";
 import { getAuthContext } from "@/lib/auth-context";
 import { FusionSupport } from "@/lib/fusion-kit";
+import { actionableRequestsWhere } from "@/lib/booking-proposals";
 import { prisma } from "@/lib/prisma";
 
 import { DashboardSidebar } from "./dashboard-sidebar";
@@ -12,14 +13,7 @@ export default async function DashboardLayout({ children }: LayoutProps<"/dashbo
   const [tenant, pendingRequests, unreadMessages, stripe] = user.tenantId
     ? await Promise.all([
         prisma.tenant.findUnique({ where: { id: user.tenantId }, select: { name: true, paymentsEnabled: true } }),
-        prisma.appointment.count({
-          where: {
-            tenantId: user.tenantId,
-            source: "ONLINE",
-            status: "BOOKED",
-            startTime: { gte: new Date() },
-          },
-        }),
+        prisma.appointment.count({ where: actionableRequestsWhere(user.tenantId) }),
         prisma.whatsappMessage.count({
           where: { tenantId: user.tenantId, direction: "INBOUND", readAt: null },
         }),
