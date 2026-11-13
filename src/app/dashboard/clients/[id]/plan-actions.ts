@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getTenantContext } from "@/lib/auth-context";
+import { isPaymentsEnabled } from "@/lib/payments-mode";
 import { prisma } from "@/lib/prisma";
 
 export type ClientPlanSessionDTO = {
@@ -200,6 +201,7 @@ export async function addPlanPayment(
 ): Promise<{ success: boolean; plan?: ClientPlanDTO; error?: string }> {
   const { tenantId, user } = await getTenantContext();
 
+  if (!(await isPaymentsEnabled(tenantId))) return { success: false, error: "La cassa non è attiva per questo centro." };
   if (!Number.isFinite(amount) || amount <= 0) return { success: false, error: "Importo non valido." };
   if (!METHODS.includes(method)) return { success: false, error: "Metodo non valido." };
   const cents = Math.round(amount * 100);
