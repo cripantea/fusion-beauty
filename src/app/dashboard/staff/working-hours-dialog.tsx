@@ -1,13 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
+import { Copy, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -26,111 +27,79 @@ import {
   type StaffExceptionDTO,
 } from "./working-hours-actions";
 
-// ── constants ─────────────────────────────────────────────────────────────────
-
-const DAY_START = 7;
-const DAY_END = 22;
-const SLOT_MINS = 30;
-const TOTAL_SLOTS = ((DAY_END - DAY_START) * 60) / SLOT_MINS;
-const CELL_H = 22;
+// Orari semplici: una riga per giorno (Lavora / Riposo, dalle–alle, pausa facoltativa)
+// e "Un giorno diverso" per ferie o orari cambiati in una data sola. Tutto con menu a
+// tendina, niente da trascinare: si usa bene anche dal telefono.
 
 const DAYS = [
-  { label: "Lun", iso: 1 },
-  { label: "Mar", iso: 2 },
-  { label: "Mer", iso: 3 },
-  { label: "Gio", iso: 4 },
-  { label: "Ven", iso: 5 },
-  { label: "Sab", iso: 6 },
-  { label: "Dom", iso: 7 },
+  { label: "Lunedì", iso: 1 },
+  { label: "Martedì", iso: 2 },
+  { label: "Mercoledì", iso: 3 },
+  { label: "Giovedì", iso: 4 },
+  { label: "Venerdì", iso: 5 },
+  { label: "Sabato", iso: 6 },
+  { label: "Domenica", iso: 7 },
 ] as const;
 
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-function slotToTime(slot: number): string {
-  const mins = DAY_START * 60 + slot * SLOT_MINS;
+// Dalle 7:00 alle 22:00 ogni 15 minuti.
+const TIMES = Array.from({ length: ((22 - 7) * 60) / 15 + 1 }, (_, i) => {
+  const mins = 7 * 60 + i * 15;
   return `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+});
+
+type Range = { start: string; end: string };
+type DayState = { on: boolean; ranges: Range[] };
+type Week = Record<number, DayState>;
+
+const DEFAULT_RANGE: Range = { start: "09:30", end: "19:00" };
+
+function emptyWeek(): Week {
+  const week: Week = {};
+  for (const { iso } of DAYS) week[iso] = { on: false, ranges: [{ ...DEFAULT_RANGE }] };
+  return week;
 }
 
-function timeToSlot(time: string): number {
-  const [h, m] = time.split(":").map(Number);
-  return ((h - DAY_START) * 60 + m) / SLOT_MINS;
-}
-
-function overlaps(a: Block, b: Block): boolean {
-  return a.startSlot < b.endSlot && b.startSlot < a.endSlot;
-}
-
-// ── types ─────────────────────────────────────────────────────────────────────
-
-type Block = { startSlot: number; endSlot: number };
-type DayMap = Record<number, Block[]>;
-
-type DragState = {
-  dayOfWeek: number;
-  anchorSlot: number;
-  currentSlot: number;
-};
-
-// ── presets ───────────────────────────────────────────────────────────────────
-
-const PRESETS: { label: string; fn: () => DayMap }[] = [
-  {
-    label: "Standard (9-13 / 15-19)",
-    fn: () => {
-      const out: DayMap = {};
-      for (let d = 1; d <= 7; d++) {
-        if (d <= 5) out[d] = [{ startSlot: 2, endSlot: 10 }, { startSlot: 14, endSlot: 22 }];
-        else if (d === 6) out[d] = [{ startSlot: 2, endSlot: 10 }];
-        else out[d] = [];
-      }
-      return out;
-    },
-  },
-  {
-    label: "Solo mattine (9-13)",
-    fn: () => {
-      const out: DayMap = {};
-      for (let d = 1; d <= 7; d++) {
-        out[d] = d <= 6 ? [{ startSlot: 2, endSlot: 10 }] : [];
-      }
-      return out;
-    },
-  },
-  {
-    label: "Piena giornata (9-19)",
-    fn: () => {
-      const out: DayMap = {};
-      for (let d = 1; d <= 7; d++) {
-        out[d] = d <= 5 ? [{ startSlot: 2, endSlot: 22 }] : [];
-      }
-      return out;
-    },
-  },
-];
-
-// ── init helpers ──────────────────────────────────────────────────────────────
-
-function emptyDays(): DayMap {
-  const out: DayMap = {};
-  for (let d = 1; d <= 7; d++) out[d] = [];
-  return out;
-}
-
-function dtosToDays(dtos: WorkingHourDTO[]): DayMap {
-  const out = emptyDays();
-  for (const dto of dtos) {
-    out[dto.dayOfWeek].push({
-      startSlot: timeToSlot(dto.startTime),
-      endSlot: timeToSlot(dto.endTime),
-    });
+function weekFromDtos(dtos: WorkingHourDTO[]): Week {
+  const week = emptyWeek();
+  for (const { iso } of DAYS) {
+    const ranges = dtos
+      .filter((dto) => dto.dayOfWeek === iso)
+      .sort((a, b) => a.startTime.localeCompare(b.startTime))
+      .map((dto) => ({ start: dto.startTime, end: dto.endTime }));
+    if (ranges.length > 0) week[iso] = { on: true, ranges };
   }
-  for (const d of Object.keys(out)) {
-    out[Number(d)].sort((a, b) => a.startSlot - b.startSlot);
-  }
-  return out;
+  return week;
 }
 
-// ── component ─────────────────────────────────────────────────────────────────
+/** Errore da mostrare sotto il giorno, o null se va bene. */
+function rangeError(ranges: Range[]): string | null {
+  for (const range of ranges) {
+    if (range.end <= range.start) return "L'orario di fine deve essere dopo l'inizio.";
+  }
+  for (let i = 1; i < ranges.length; i++) {
+    if (ranges[i].start < ranges[i - 1].end) return "Il secondo orario deve iniziare dopo la fine del primo.";
+  }
+  return null;
+}
+
+function TimeSelect({ value, onChange, label }: { value: string; onChange: (value: string) => void; label: string }) {
+  // Un orario salvato fuori dai quarti d'ora (es. 10:10) resta selezionabile.
+  const options = TIMES.includes(value) ? TIMES : [...TIMES, value].sort();
+  return (
+    <select
+      aria-label={label}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-10 rounded-lg border border-input bg-background px-2 text-base font-medium tabular-nums focus:outline-none focus:ring-2 focus:ring-ring sm:text-sm"
+    >
+      {options.map((time) => (
+        <option key={time} value={time}>
+          {time}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 export type WorkingHoursDialogProps = {
   staffId: string | null;
@@ -140,383 +109,310 @@ export type WorkingHoursDialogProps = {
 
 export function WorkingHoursDialog({ staffId, staffName, onClose }: WorkingHoursDialogProps) {
   const open = staffId !== null;
-  const [tab, setTab] = useState<"schedule" | "exceptions">("schedule");
-  const [days, setDays] = useState<DayMap>(emptyDays);
-  const [drag, setDrag] = useState<DragState | null>(null);
+  const [tab, setTab] = useState<"week" | "day">("week");
+  const [week, setWeek] = useState<Week>(emptyWeek);
+  const [loaded, setLoaded] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  // Exceptions state
+  // Un giorno diverso
   const [exceptions, setExceptions] = useState<StaffExceptionDTO[]>([]);
   const [exDate, setExDate] = useState("");
-  const [exStart, setExStart] = useState("");
-  const [exEnd, setExEnd] = useState("");
+  const [exWorks, setExWorks] = useState(false);
+  const [exRange, setExRange] = useState<Range>({ ...DEFAULT_RANGE });
   const [exNote, setExNote] = useState("");
   const [exPending, startExTransition] = useTransition();
 
   useEffect(() => {
     if (!staffId) return;
     startTransition(async () => {
-      const [saved, excs] = await Promise.all([
-        getWorkingHours(staffId),
-        getStaffExceptions(staffId),
-      ]);
-      // Nessun orario salvato (es. in standby): griglia vuota, non un esempio che si salverebbe per sbaglio.
-      setDays(saved.length > 0 ? dtosToDays(saved) : emptyDays());
+      const [saved, excs] = await Promise.all([getWorkingHours(staffId), getStaffExceptions(staffId)]);
+      setWeek(weekFromDtos(saved));
       setExceptions(excs);
+      setLoaded(true);
     });
   }, [staffId]);
 
-  // Commit drag on mouseup — global so releasing outside grid still commits
-  const commitDrag = useCallback(() => {
-    if (!drag) return;
-    const start = Math.min(drag.anchorSlot, drag.currentSlot);
-    const end = Math.max(drag.anchorSlot, drag.currentSlot) + 1;
-    const newBlock: Block = { startSlot: start, endSlot: end };
-    setDays((prev) => {
-      const existing = prev[drag.dayOfWeek] ?? [];
-      if (existing.some((b) => overlaps(b, newBlock))) return prev;
-      return {
-        ...prev,
-        [drag.dayOfWeek]: [...existing, newBlock].sort((a, b) => a.startSlot - b.startSlot),
-      };
+  function updateDay(iso: number, change: (day: DayState) => DayState) {
+    setWeek((prev) => ({ ...prev, [iso]: change(prev[iso]) }));
+  }
+
+  function setRange(iso: number, index: number, patch: Partial<Range>) {
+    updateDay(iso, (day) => ({ ...day, ranges: day.ranges.map((r, i) => (i === index ? { ...r, ...patch } : r)) }));
+  }
+
+  function addPause(iso: number) {
+    // Pausa pranzo: il primo orario finisce alle 13, il secondo va dalle 14 alla fine di prima.
+    updateDay(iso, (day) => {
+      const first = day.ranges[0];
+      const end = first.end > "14:00" ? first.end : "19:00";
+      return { ...day, ranges: [{ start: first.start, end: "13:00" }, { start: "14:00", end }] };
     });
-    setDrag(null);
-  }, [drag]);
-
-  useEffect(() => {
-    window.addEventListener("mouseup", commitDrag);
-    return () => window.removeEventListener("mouseup", commitDrag);
-  }, [commitDrag]);
-
-  function handleCellDown(dayOfWeek: number, slot: number) {
-    const existing = days[dayOfWeek] ?? [];
-    const blockIdx = existing.findIndex((b) => slot >= b.startSlot && slot < b.endSlot);
-    if (blockIdx !== -1) {
-      setDays((prev) => ({
-        ...prev,
-        [dayOfWeek]: prev[dayOfWeek].filter((_, i) => i !== blockIdx),
-      }));
-    } else {
-      setDrag({ dayOfWeek, anchorSlot: slot, currentSlot: slot });
-    }
   }
 
-  function handleCellEnter(dayOfWeek: number, slot: number) {
-    if (!drag || drag.dayOfWeek !== dayOfWeek) return;
-    setDrag((prev) => (prev ? { ...prev, currentSlot: slot } : null));
+  function removePause(iso: number) {
+    updateDay(iso, (day) => ({ ...day, ranges: [{ start: day.ranges[0].start, end: day.ranges[day.ranges.length - 1].end }] }));
   }
+
+  function copyToAll(iso: number) {
+    const source = week[iso];
+    setWeek((prev) => {
+      const next = { ...prev };
+      for (const { iso: other } of DAYS) {
+        if (other !== iso && prev[other].on) next[other] = { on: true, ranges: source.ranges.map((r) => ({ ...r })) };
+      }
+      return next;
+    });
+    toast.success("Stesso orario copiato su tutti i giorni in cui lavora.");
+  }
+
+  const errors = Object.fromEntries(DAYS.map(({ iso }) => [iso, week[iso].on ? rangeError(week[iso].ranges) : null]));
+  const hasErrors = Object.values(errors).some(Boolean);
+  const workingDays = DAYS.filter(({ iso }) => week[iso].on).length;
 
   function handleSave() {
-    if (!staffId) return;
+    if (!staffId || hasErrors) return;
     startTransition(async () => {
-      const hours: { dayOfWeek: number; startTime: string; endTime: string }[] = [];
-      for (let d = 1; d <= 7; d++) {
-        for (const block of days[d] ?? []) {
-          hours.push({ dayOfWeek: d, startTime: slotToTime(block.startSlot), endTime: slotToTime(block.endSlot) });
-        }
-      }
+      const hours = DAYS.flatMap(({ iso }) =>
+        week[iso].on ? week[iso].ranges.map((r) => ({ dayOfWeek: iso, startTime: r.start, endTime: r.end })) : []
+      );
       const result = await setWorkingHours(staffId, hours);
-      if (!result.success) { toast.error(result.error); return; }
-      toast.success("Disponibilità salvata.");
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Orari salvati.");
       onClose();
     });
   }
 
+  const exError = exWorks && exRange.end <= exRange.start ? "L'orario di fine deve essere dopo l'inizio." : null;
+
   function handleAddException() {
-    if (!staffId || !exDate) return;
+    if (!staffId || !exDate || exError) return;
     startExTransition(async () => {
       const result = await createStaffException(staffId, {
         date: exDate,
-        startTime: exStart || undefined,
-        endTime: exEnd || undefined,
+        startTime: exWorks ? exRange.start : undefined,
+        endTime: exWorks ? exRange.end : undefined,
         note: exNote || undefined,
       });
-      if (!result.success || !result.exception) { toast.error(result.error); return; }
+      if (!result.success || !result.exception) {
+        toast.error(result.error);
+        return;
+      }
       setExceptions((prev) => [...prev, result.exception!].sort((a, b) => a.date.localeCompare(b.date)));
-      setExDate(""); setExStart(""); setExEnd(""); setExNote("");
-      toast.success("Imprevisto aggiunto.");
+      setExDate("");
+      setExWorks(false);
+      setExNote("");
+      toast.success("Giorno salvato.");
     });
   }
 
   function handleDeleteException(id: string) {
     startExTransition(async () => {
       const result = await deleteStaffException(id);
-      if (!result.success) { toast.error(result.error); return; }
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
       setExceptions((prev) => prev.filter((e) => e.id !== id));
     });
   }
 
-  const hourLabels = Array.from({ length: DAY_END - DAY_START + 1 }, (_, i) => ({
-    slot: i * 2,
-    label: `${String(DAY_START + i).padStart(2, "0")}:00`,
-  }));
-
-  const dateFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "long", year: "numeric" });
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome" }).format(new Date());
+  const upcoming = exceptions.filter((exc) => exc.date >= today);
+  const dateFormatter = new Intl.DateTimeFormat("it-IT", { weekday: "long", day: "numeric", month: "long" });
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-3xl p-0 overflow-hidden">
-        <DialogHeader className="px-6 pt-5 pb-3 border-b">
-          <DialogTitle>Disponibilità — {staffName}</DialogTitle>
-
-          {/* Tabs */}
-          <div className="flex gap-1 mt-2">
-            <button
-              type="button"
-              onClick={() => setTab("schedule")}
-              className={cn(
-                "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-                tab === "schedule" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-              )}
-            >
-              Orari settimanali
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("exceptions")}
-              className={cn(
-                "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-                tab === "exceptions" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-              )}
-            >
-              Imprevisti
-              {exceptions.length > 0 && (
-                <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
-                  {exceptions.length}
-                </span>
-              )}
-            </button>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
+      <DialogContent className="flex max-h-[92dvh] flex-col sm:max-w-xl gap-0 overflow-hidden p-0">
+        <DialogHeader className="shrink-0 border-b px-5 pb-3 pt-5">
+          <DialogTitle>Orari di {staffName}</DialogTitle>
+          <DialogDescription>Online si possono prenotare solo gli orari in cui lavora.</DialogDescription>
+          <div className="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+            {(
+              [
+                { key: "week", label: "Ogni settimana" },
+                { key: "day", label: "Un giorno diverso" },
+              ] as const
+            ).map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setTab(item.key)}
+                className={cn(
+                  "rounded-lg px-3 py-2 text-sm font-semibold transition-colors",
+                  tab === item.key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
+                )}
+              >
+                {item.label}
+                {item.key === "day" && upcoming.length > 0 ? (
+                  <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                    {upcoming.length}
+                  </span>
+                ) : null}
+              </button>
+            ))}
           </div>
         </DialogHeader>
 
-        {/* ── Tab: schedule ── */}
-        {tab === "schedule" && (
+        {tab === "week" ? (
           <>
-            {Object.values(days).every((blocks) => blocks.length === 0) && (
-              <p className="mx-6 mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                Nessun orario fisso: online non è prenotabile. Puoi assegnarle appuntamenti dall&apos;agenda o aprire
-                singoli giorni da Imprevisti.
-              </p>
-            )}
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-5 py-4">
+              {loaded && workingDays === 0 ? (
+                <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Nessun giorno di lavoro: online non è prenotabile. Tocca &ldquo;Riposo&rdquo; per far diventare un giorno &ldquo;Lavora&rdquo;.
+                </p>
+              ) : null}
 
-            {/* Presets */}
-            <div className="flex flex-wrap gap-1.5 px-6 pt-3 pb-0">
-              <span className="self-center text-xs text-muted-foreground mr-1">Preset:</span>
-              {PRESETS.map((preset) => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  onClick={() => setDays(preset.fn())}
-                  className="rounded-full border border-mint-border bg-mint-soft px-3 py-1 text-xs font-medium text-forest hover:bg-mint-border/60 transition-colors"
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-
-            <p className="px-6 pt-2 pb-0 text-xs text-muted-foreground">
-              Trascina per aggiungere un blocco · Click su un blocco per rimuoverlo
-            </p>
-
-            {/* Calendar grid */}
-            <div className="px-4 py-3 overflow-y-auto" style={{ maxHeight: "calc(80vh - 200px)" }}>
-              <div className="flex gap-1 select-none" onMouseLeave={commitDrag}>
-                {/* Time axis */}
-                <div className="w-11 shrink-0 relative" style={{ marginTop: 28 }}>
-                  {hourLabels.map(({ slot, label }) => (
-                    <div
-                      key={slot}
-                      className="absolute right-2 text-[10px] leading-none text-muted-foreground"
-                      style={{ top: slot * CELL_H - 5 }}
-                    >
-                      {label}
-                    </div>
-                  ))}
+              {DAYS.map(({ label, iso }) => {
+                const day = week[iso];
+                return (
                   <div
-                    className="absolute right-2 text-[10px] leading-none text-muted-foreground"
-                    style={{ top: TOTAL_SLOTS * CELL_H - 5 }}
+                    key={iso}
+                    className={cn("rounded-xl border px-3 py-2.5", day.on ? "border-mint-border bg-mint-soft/40" : "bg-muted/40")}
                   >
-                    {`${String(DAY_END).padStart(2, "0")}:00`}
-                  </div>
-                </div>
-
-                {/* Day columns */}
-                {DAYS.map(({ label, iso }) => {
-                  const blocks = days[iso] ?? [];
-                  const isDragging = drag?.dayOfWeek === iso;
-                  const dStart = drag ? Math.min(drag.anchorSlot, drag.currentSlot) : 0;
-                  const dEnd = drag ? Math.max(drag.anchorSlot, drag.currentSlot) + 1 : 0;
-                  const hasBlocks = blocks.length > 0;
-
-                  return (
-                    <div key={iso} className="flex-1 min-w-0">
-                      {/* Day header */}
-                      <div
+                    <div className="flex items-center gap-3">
+                      <span className="w-24 shrink-0 text-sm font-semibold">{label}</span>
+                      <button
+                        type="button"
+                        onClick={() => updateDay(iso, (d) => ({ ...d, on: !d.on }))}
                         className={cn(
-                          "h-7 flex items-center justify-center text-[11px] font-bold tracking-wide",
-                          hasBlocks ? "text-primary" : "text-muted-foreground/50"
+                          "rounded-full px-3 py-1.5 text-xs font-bold transition-colors",
+                          day.on ? "bg-primary text-primary-foreground" : "border bg-background text-muted-foreground"
                         )}
                       >
-                        {label}
-                      </div>
-
-                      {/* Slot column */}
-                      <div
-                        className="relative rounded-lg border border-border/40 overflow-hidden cursor-crosshair"
-                        style={{ height: TOTAL_SLOTS * CELL_H, background: "var(--muted)" }}
-                      >
-                        {/* Grid lines */}
-                        {Array.from({ length: TOTAL_SLOTS }, (_, i) => (
-                          <div
-                            key={i}
-                            className={cn(
-                              "absolute inset-x-0",
-                              i % 2 === 0 ? "border-t border-border/50" : "border-t border-border/20"
-                            )}
-                            style={{ top: i * CELL_H, height: CELL_H }}
-                          />
-                        ))}
-
-                        {/* Existing blocks */}
-                        {blocks.map((block, idx) => (
-                          <div
-                            key={idx}
-                            className="absolute inset-x-0.5 rounded bg-primary/25 border border-primary/40 z-10 hover:bg-primary/35 transition-colors"
-                            style={{
-                              top: block.startSlot * CELL_H + 1,
-                              height: (block.endSlot - block.startSlot) * CELL_H - 2,
-                            }}
-                          >
-                            <div className="absolute inset-0 flex flex-col justify-between px-1 py-0.5 pointer-events-none">
-                              <span className="text-[9px] font-bold text-primary leading-tight">
-                                {slotToTime(block.startSlot)}
-                              </span>
-                              {(block.endSlot - block.startSlot) >= 3 && (
-                                <span className="text-[9px] text-primary/70 leading-tight">
-                                  {slotToTime(block.endSlot)}
-                                </span>
-                              )}
-                            </div>
-                            <div className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l bg-primary" />
-                          </div>
-                        ))}
-
-                        {/* Drag preview */}
-                        {isDragging && (
-                          <div
-                            className="absolute inset-x-0.5 rounded bg-primary/35 border border-primary/60 z-10 pointer-events-none"
-                            style={{
-                              top: dStart * CELL_H + 1,
-                              height: (dEnd - dStart) * CELL_H - 2,
-                            }}
-                          >
-                            <div className="absolute inset-0 flex flex-col justify-between px-1 py-0.5">
-                              <span className="text-[9px] font-bold text-primary leading-tight">
-                                {slotToTime(dStart)}
-                              </span>
-                              <span className="text-[9px] text-primary/70 leading-tight">
-                                {slotToTime(dEnd)}
-                              </span>
-                            </div>
-                            <div className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l bg-primary" />
-                          </div>
-                        )}
-
-                        {/* Interaction cells (on top) */}
-                        {Array.from({ length: TOTAL_SLOTS }, (_, slot) => (
-                          <div
-                            key={slot}
-                            className="absolute inset-x-0 z-20"
-                            style={{ top: slot * CELL_H, height: CELL_H }}
-                            onMouseDown={() => handleCellDown(iso, slot)}
-                            onMouseEnter={() => handleCellEnter(iso, slot)}
-                          />
-                        ))}
-                      </div>
+                        {day.on ? "Lavora" : "Riposo"}
+                      </button>
+                      {day.on && workingDays > 1 ? (
+                        <button
+                          type="button"
+                          onClick={() => copyToAll(iso)}
+                          className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          <Copy className="size-3.5" />
+                          Uguale per tutti
+                        </button>
+                      ) : null}
                     </div>
-                  );
-                })}
-              </div>
+
+                    {day.on ? (
+                      <div className="mt-2 space-y-2">
+                        {day.ranges.map((range, index) => (
+                          <div key={index} className="flex flex-wrap items-center gap-2 text-sm">
+                            <span className="w-10 text-muted-foreground">{index === 0 ? "dalle" : "poi"}</span>
+                            <TimeSelect label={`${label}: inizio`} value={range.start} onChange={(start) => setRange(iso, index, { start })} />
+                            <span className="text-muted-foreground">alle</span>
+                            <TimeSelect label={`${label}: fine`} value={range.end} onChange={(end) => setRange(iso, index, { end })} />
+                            {index === 1 ? (
+                              <button
+                                type="button"
+                                onClick={() => removePause(iso)}
+                                className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                aria-label="Togli la pausa"
+                              >
+                                <X className="size-4" />
+                              </button>
+                            ) : null}
+                          </div>
+                        ))}
+                        {day.ranges.length === 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => addPause(iso)}
+                            className="inline-flex items-center gap-1 pl-12 text-xs font-medium text-primary hover:underline"
+                          >
+                            <Plus className="size-3.5" />
+                            Aggiungi pausa pranzo
+                          </button>
+                        ) : null}
+                        {errors[iso] ? <p className="pl-12 text-xs text-destructive">{errors[iso]}</p> : null}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+
+              <p className="pt-1 text-xs text-muted-foreground">
+                Ferie o un orario cambiato solo per una data? Usa &ldquo;Un giorno diverso&rdquo;. Una pausa di un&apos;ora? &ldquo;Impegno&rdquo; in Agenda.
+              </p>
             </div>
 
-            <DialogFooter className="px-6 py-4 border-t">
-              <Button variant="outline" onClick={onClose}>Annulla</Button>
-              <Button onClick={handleSave} disabled={isPending}>
-                {isPending ? "Salvataggio..." : "Salva disponibilità"}
+            <DialogFooter className="shrink-0 border-t px-5 py-3">
+              <Button variant="outline" onClick={onClose}>
+                Annulla
+              </Button>
+              <Button onClick={handleSave} disabled={isPending || !loaded || hasErrors}>
+                {isPending ? "Salvataggio..." : "Salva orari"}
               </Button>
             </DialogFooter>
           </>
-        )}
-
-        {/* ── Tab: exceptions ── */}
-        {tab === "exceptions" && (
+        ) : (
           <>
-            <div className="px-6 py-4 space-y-4 overflow-y-auto" style={{ maxHeight: "calc(80vh - 160px)" }}>
-              <div className="space-y-1 text-sm text-muted-foreground">
-                <p>
-                  <strong className="text-foreground">Senza orario</strong>: l&apos;operatrice è assente tutto il giorno.
-                </p>
-                <p>
-                  <strong className="text-foreground">Con orario</strong>: quel giorno lavora solo in questo orario.
-                </p>
-                <p className="text-xs">Per una pausa o una visita usa &ldquo;Impegno&rdquo; in Agenda.</p>
-              </div>
-
-              {/* Add form */}
-              <div className="rounded-xl border border-mint-border bg-mint-soft/40 p-4 space-y-3">
-                <p className="text-xs font-semibold text-forest uppercase tracking-wide">Nuovo imprevisto</p>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Data *</Label>
-                    <Input type="date" value={exDate} onChange={(e) => setExDate(e.target.value)} className="h-9" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Lavora dalle</Label>
-                    <Input type="time" value={exStart} onChange={(e) => setExStart(e.target.value)} className="h-9" placeholder="Intera giornata" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Alle</Label>
-                    <Input type="time" value={exEnd} onChange={(e) => setExEnd(e.target.value)} className="h-9" />
-                  </div>
-                </div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+              <div className="space-y-3 rounded-xl border border-mint-border bg-mint-soft/40 p-4">
                 <div className="space-y-1">
-                  <Label className="text-xs">Note (opzionale)</Label>
-                  <Input value={exNote} onChange={(e) => setExNote(e.target.value)} placeholder="Es. Ferie, orario ridotto..." className="h-9" />
+                  <Label htmlFor="ex-date">Che giorno?</Label>
+                  <Input id="ex-date" type="date" min={today} value={exDate} onChange={(e) => setExDate(e.target.value)} className="h-10" />
                 </div>
-                <Button
-                  onClick={handleAddException}
-                  disabled={!exDate || exPending}
-                  size="sm"
-                  className="gap-1.5"
-                >
-                  <Plus className="size-3.5" />
-                  Aggiungi
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { works: false, label: "Non lavora" },
+                    { works: true, label: "Orario diverso" },
+                  ].map((option) => (
+                    <button
+                      key={option.label}
+                      type="button"
+                      onClick={() => setExWorks(option.works)}
+                      className={cn(
+                        "rounded-lg border px-3 py-2 text-sm font-semibold transition-colors",
+                        exWorks === option.works ? "border-primary bg-primary text-primary-foreground" : "bg-background hover:bg-muted"
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                {exWorks ? (
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">dalle</span>
+                    <TimeSelect label="Inizio" value={exRange.start} onChange={(start) => setExRange((r) => ({ ...r, start }))} />
+                    <span className="text-muted-foreground">alle</span>
+                    <TimeSelect label="Fine" value={exRange.end} onChange={(end) => setExRange((r) => ({ ...r, end }))} />
+                  </div>
+                ) : null}
+                {exError ? <p className="text-xs text-destructive">{exError}</p> : null}
+                <Input value={exNote} onChange={(e) => setExNote(e.target.value)} placeholder="Nota (facoltativa): ferie, corso…" className="h-10" />
+                <Button onClick={handleAddException} disabled={!exDate || exPending || Boolean(exError)} className="w-full gap-1.5">
+                  <Plus className="size-4" />
+                  Salva questo giorno
                 </Button>
               </div>
 
-              {/* List */}
-              {exceptions.length === 0 ? (
-                <p className="text-center text-sm text-muted-foreground py-6">Nessun imprevisto registrato.</p>
+              {upcoming.length === 0 ? (
+                <p className="py-4 text-center text-sm text-muted-foreground">Nessun giorno diverso in programma.</p>
               ) : (
                 <ul className="space-y-2">
-                  {exceptions.map((exc) => (
-                    <li key={exc.id} className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-sm">
-                          {dateFormatter.format(new Date(exc.date + "T00:00:00"))}
-                        </div>
+                  {upcoming.map((exc) => (
+                    <li key={exc.id} className="flex items-center gap-3 rounded-xl border bg-card px-4 py-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold capitalize">{dateFormatter.format(new Date(`${exc.date}T12:00:00`))}</div>
                         <div className="text-xs text-muted-foreground">
-                          {exc.startTime && exc.endTime
-                            ? `Lavora solo ${exc.startTime} – ${exc.endTime}`
-                            : "Assente tutto il giorno"}
-                          {exc.note && ` · ${exc.note}`}
+                          {exc.startTime && exc.endTime ? `Lavora ${exc.startTime} – ${exc.endTime}` : "Non lavora"}
+                          {exc.note ? ` · ${exc.note}` : ""}
                         </div>
                       </div>
                       <button
                         type="button"
                         onClick={() => handleDeleteException(exc.id)}
-                        className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-                        aria-label="Elimina imprevisto"
+                        disabled={exPending}
+                        className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                        aria-label="Togli questo giorno"
                       >
                         <Trash2 className="size-4" />
                       </button>
@@ -526,8 +422,10 @@ export function WorkingHoursDialog({ staffId, staffName, onClose }: WorkingHours
               )}
             </div>
 
-            <DialogFooter className="px-6 py-4 border-t">
-              <Button variant="outline" onClick={onClose}>Chiudi</Button>
+            <DialogFooter className="shrink-0 border-t px-5 py-3">
+              <Button variant="outline" onClick={onClose}>
+                Chiudi
+              </Button>
             </DialogFooter>
           </>
         )}
