@@ -28,10 +28,10 @@ import {
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
-const DAY_START = 8;
-const DAY_END = 20;
+const DAY_START = 7;
+const DAY_END = 22;
 const SLOT_MINS = 30;
-const TOTAL_SLOTS = ((DAY_END - DAY_START) * 60) / SLOT_MINS; // 24
+const TOTAL_SLOTS = ((DAY_END - DAY_START) * 60) / SLOT_MINS;
 const CELL_H = 22;
 
 const DAYS = [

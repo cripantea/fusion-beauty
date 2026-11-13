@@ -9,7 +9,7 @@ import type { AppointmentDTO } from "./dto";
 import type { AppointmentStatusValue } from "./schema";
 
 const DAY_START_HOUR = 8;
-const DAY_END_HOUR = 20;
+const DAY_END_HOUR = 22;
 const HOUR_HEIGHT = 64;
 const MIN_BLOCK_MINUTES = 20;
 
