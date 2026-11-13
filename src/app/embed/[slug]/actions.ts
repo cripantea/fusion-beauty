@@ -6,6 +6,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { triggerAppointmentAutomations, triggerClientCreated } from "@/lib/automation-engine";
 import { closeSupersededRequests } from "@/lib/booking-proposals";
+import { findClientIdByPhone } from "@/lib/client-phone";
 import { prepareConsentLinks } from "@/lib/consents";
 
 import { createBookingSchema, getSlotsSchema } from "./schema";
@@ -248,19 +249,14 @@ export async function createPublicBooking(values: unknown): Promise<CreateBookin
         // Va all'operatrice libera meno impegnata quel giorno.
         const operatorId = free[0];
 
-        let client = await tx.client.findFirst({
-          where: { tenantId: tenant.id, phone: parsed.data.phone },
-        });
+        // Stessa cliente anche se il numero è scritto diverso (+39, spazi…): nome e cognome in scheda restano.
+        const existingId = await findClientIdByPhone(tenant.id, parsed.data.phone, tx);
+        let client = existingId ? await tx.client.findUnique({ where: { id: existingId } }) : null;
 
         if (client) {
-          client = await tx.client.update({
-            where: { id: client.id },
-            data: {
-              firstName: parsed.data.firstName,
-              lastName: parsed.data.lastName,
-              email: normalizedEmail ?? client.email,
-            },
-          });
+          if (!client.email && normalizedEmail) {
+            client = await tx.client.update({ where: { id: client.id }, data: { email: normalizedEmail } });
+          }
         } else {
           isNewClient = true;
           client = await tx.client.create({

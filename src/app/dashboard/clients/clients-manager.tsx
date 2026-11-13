@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 import { getClients, type ClientListItemDTO } from "./actions";
+import type { DuplicateGroupDTO } from "./duplicate-actions";
+import { DuplicatesBanner } from "./duplicates-banner";
 import { toNewClientListItem } from "./list-item";
 import { QuickClientDialog } from "./quick-client-dialog";
 
@@ -27,9 +29,10 @@ type Filter = "all" | "inactive";
 type ClientsManagerProps = {
   initialClients: ClientListItemDTO[];
   tenantSlug: string | null;
+  duplicates: DuplicateGroupDTO[];
 };
 
-export function ClientsManager({ initialClients, tenantSlug }: ClientsManagerProps) {
+export function ClientsManager({ initialClients, tenantSlug, duplicates }: ClientsManagerProps) {
   const [clients, setClients] = useState(initialClients);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -93,6 +96,8 @@ export function ClientsManager({ initialClients, tenantSlug }: ClientsManagerPro
           </div>
         }
       />
+
+      <DuplicatesBanner groups={duplicates} />
 
       <Panel
         title={

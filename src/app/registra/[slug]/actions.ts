@@ -3,6 +3,7 @@
 import { after } from "next/server";
 
 import { triggerClientCreated } from "@/lib/automation-engine";
+import { findClientIdByPhone } from "@/lib/client-phone";
 import { prisma } from "@/lib/prisma";
 
 export type RegisterClientResult =
@@ -27,18 +28,16 @@ export async function registerClient(
   const phone = data.phone.trim();
   if (!phone) return { success: false, error: "Il numero di telefono è obbligatorio." };
 
-  const existing = await prisma.client.findFirst({
-    where: { tenantId: tenant.id, phone },
-  });
+  // Stessa cliente anche se il numero è scritto diverso: nome e cognome in scheda restano.
+  const existingId = await findClientIdByPhone(tenant.id, phone);
+  const existing = existingId ? await prisma.client.findUnique({ where: { id: existingId } }) : null;
 
   if (existing) {
     await prisma.client.update({
       where: { id: existing.id },
       data: {
-        firstName: data.firstName.trim(),
-        lastName: data.lastName.trim(),
-        email: data.email?.trim() || existing.email,
-        notes: data.notes?.trim() || existing.notes,
+        email: existing.email || data.email?.trim() || null,
+        notes: data.notes?.trim() ? [existing.notes, data.notes.trim()].filter(Boolean).join("\n") : existing.notes,
       },
     });
   } else {

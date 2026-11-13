@@ -6,6 +6,7 @@ import { getBaseUrl } from "@/lib/app-url";
 import { getTenantContext } from "@/lib/auth-context";
 import { whatsappUrl } from "@/lib/format";
 import { emptyStats, getClientStatsMap, INACTIVE_MONTHS, monthsAgoDate } from "@/lib/insights";
+import { findClientIdByPhone } from "@/lib/client-phone";
 import { prisma } from "@/lib/prisma";
 import { triggerAutomations, triggerClientCreated } from "@/lib/automation-engine";
 import { randomBytes } from "node:crypto";
@@ -166,6 +167,14 @@ export async function getClientById(id: string): Promise<ClientDTO | null> {
   return client ? toClientDTO(client) : null;
 }
 
+/** Un numero = una cliente: se c'è già (anche scritto diverso), si dice chi è invece di crearne un'altra. */
+async function duplicateByPhone(tenantId: string, phone: string): Promise<string | null> {
+  const existingId = await findClientIdByPhone(tenantId, phone);
+  if (!existingId) return null;
+  const existing = await prisma.client.findUnique({ where: { id: existingId }, select: { firstName: true, lastName: true } });
+  return `Questo numero è già di ${`${existing?.firstName ?? ""} ${existing?.lastName ?? ""}`.trim()}: cercala in Clienti.`;
+}
+
 export type ClientActionResult =
   | { success: true; client: ClientDTO }
   | { success: false; error: string };
@@ -179,6 +188,9 @@ export async function createClient(
   if (!parsed.success) {
     return { success: false, error: "Controlla i dati inseriti." };
   }
+
+  const duplicate = await duplicateByPhone(tenantId, parsed.data.phone);
+  if (duplicate) return { success: false, error: duplicate };
 
   const client = await prisma.client.create({
     data: {
@@ -277,6 +289,9 @@ export async function createQuickClient(values: QuickClientValues): Promise<Quic
   if (!parsed.success) {
     return { success: false, error: "Controlla nome, cognome e telefono." };
   }
+
+  const duplicate = await duplicateByPhone(tenantId, parsed.data.phone);
+  if (duplicate) return { success: false, error: duplicate };
 
   const client = await prisma.client.create({
     data: {
