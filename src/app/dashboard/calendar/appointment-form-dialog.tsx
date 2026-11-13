@@ -141,6 +141,7 @@ export function AppointmentFormDialog({
   // Modifica di cliente, trattamento, operatrice o orario: prima si mostra cosa cambia e si conferma.
   const [pendingChange, setPendingChange] = useState<{ values: AppointmentFormValues; lines: string[]; notifies: boolean } | null>(null);
   const whenRef = useRef<HTMLDivElement>(null);
+  const confirmRef = useRef<HTMLDivElement>(null);
 
   const form = useForm<AppointmentFormInput, unknown, AppointmentFormValues>({
     resolver: zodResolver(appointmentFormSchema),
@@ -202,6 +203,11 @@ export function AppointmentFormDialog({
       });
     }
   }, [open, appointment, defaultDate, defaultOperatorId, defaultTime, form]);
+
+  // La richiesta di conferma compare in fondo: si porta in vista da sola.
+  useEffect(() => {
+    if (pendingChange) confirmRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [pendingChange]);
 
   // "Sposta": porta subito a data e ora (dopo l'animazione di apertura).
   useEffect(() => {
@@ -531,7 +537,7 @@ export function AppointmentFormDialog({
             ) : null}
 
             {pendingChange ? (
-              <div className="space-y-2 rounded-xl border border-forest/30 bg-mint-soft p-3 text-sm">
+              <div ref={confirmRef} className="space-y-2 rounded-xl border-2 border-forest/40 bg-mint-soft p-3 text-sm">
                 <p className="font-semibold">Confermi queste modifiche?</p>
                 <ul className="space-y-1">
                   {pendingChange.lines.map((line) => (
