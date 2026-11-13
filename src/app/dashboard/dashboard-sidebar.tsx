@@ -18,6 +18,7 @@ import {
   Scissors,
   Settings,
   ShieldCheck,
+  Smartphone,
   UserRoundCheck,
   Users,
   Wand2,
@@ -35,74 +36,45 @@ import { cn } from "@/lib/utils";
 type NavItem = {
   href: string;
   label: string;
+  /** Etichetta corta per la barra in basso del telefono. */
+  short?: string;
   icon: React.ElementType;
   exact?: boolean;
   badgeKey?: "requests" | "messages";
 };
 
-type NavGroup = {
-  label: string;
-  items: NavItem[];
-};
-
-const NAV_GROUPS: NavGroup[] = [
-  {
-    label: "Ogni giorno",
-    items: [
-      { href: "/dashboard", label: "Panoramica", icon: LayoutDashboard, exact: true },
-      { href: "/dashboard/calendar", label: "Agenda", icon: Calendar },
-      { href: "/dashboard/clients", label: "Clienti", icon: Users },
-      { href: "/dashboard/payments", label: "Pagamenti", icon: CreditCard },
-    ],
-  },
-  {
-    label: "Da fare",
-    items: [
-      { href: "/dashboard/requests", label: "Richieste online", icon: Inbox, badgeKey: "requests" },
-      { href: "/dashboard/followup", label: "Da ricontattare", icon: UserRoundCheck },
-      { href: "/dashboard/messages", label: "Messaggi", icon: MessageCircle, badgeKey: "messages" },
-    ],
-  },
-  {
-    label: "Andamento",
-    items: [
-      { href: "/dashboard/stats", label: "Statistiche", icon: BarChart3 },
-      { href: "/dashboard/reports", label: "Report mensile", icon: FileText },
-    ],
-  },
-  {
-    label: "Servizi",
-    items: [
-      { href: "/dashboard/services", label: "Trattamenti", icon: Scissors },
-    ],
-  },
+// Le cose di ogni giorno: poche, sempre in vista.
+const MAIN_ITEMS: NavItem[] = [
+  { href: "/dashboard", label: "Oggi", icon: LayoutDashboard, exact: true },
+  { href: "/dashboard/calendar", label: "Agenda", icon: Calendar },
+  { href: "/dashboard/requests", label: "Richieste", icon: Inbox, badgeKey: "requests" },
+  { href: "/dashboard/clients", label: "Clienti", icon: Users },
+  { href: "/dashboard/messages", label: "Messaggi", icon: MessageCircle, badgeKey: "messages" },
 ];
 
-// Messaggi automatici e campagne WhatsApp: solo per l'amministratrice.
-const MARKETING_GROUP: NavGroup = {
-  label: "Marketing",
-  items: [
-    { href: "/dashboard/automations", label: "Automazioni", icon: Zap },
-    { href: "/dashboard/campaigns", label: "Campagne", icon: Megaphone },
-  ],
-};
-
-const SETTINGS_ITEMS: NavItem[] = [
-  { href: "/dashboard/widget", label: "Widget prenotazione", icon: Wand2 },
-  { href: "/dashboard/integrations/calendar", label: "Integrazioni", icon: Link2 },
+// Il resto, chiuso sotto "Altro".
+const MORE_ITEMS: NavItem[] = [
+  { href: "/dashboard/followup", label: "Da ricontattare", icon: UserRoundCheck },
+  { href: "/dashboard/services", label: "Trattamenti", icon: Scissors },
 ];
 
-// Configurazione del centro (form, WhatsApp): solo per l'amministratrice, in cima alle impostazioni.
-const ADMIN_SETUP_ITEMS: NavItem[] = [
+const ADMIN_MORE_ITEMS: NavItem[] = [
+  { href: "/dashboard/stats", label: "Statistiche", icon: BarChart3 },
+  { href: "/dashboard/reports", label: "Report mensile", icon: FileText },
+  { href: "/dashboard/automations", label: "Automazioni", icon: Zap },
+  { href: "/dashboard/campaigns", label: "Campagne", icon: Megaphone },
+];
+
+// Configurazione del centro: solo per l'amministratrice.
+const ADMIN_SETTINGS_ITEMS: NavItem[] = [
+  { href: "/dashboard/staff", label: "Staff e orari", icon: ShieldCheck },
+  { href: "/dashboard/whatsapp", label: "WhatsApp", icon: Smartphone },
+  { href: "/dashboard/widget", label: "Prenotazione online", icon: Wand2 },
   { href: "/dashboard/forms", label: "Form del sito", icon: FileInput },
-  { href: "/dashboard/whatsapp", label: "WhatsApp", icon: MessageCircle },
-  { href: "/dashboard/integrations/stripe", label: "Pagamenti online", icon: CreditCard },
-  { href: "/dashboard/integrations/ghl", label: "Importa da GHL", icon: Download },
-];
-
-const ADMIN_ITEMS: NavItem[] = [
+  { href: "/dashboard/integrations/stripe", label: "Stripe", icon: CreditCard },
+  { href: "/dashboard/integrations/calendar", label: "Calendario Google", icon: Link2 },
   { href: "/dashboard/consents", label: "Modelli consenso", icon: FileSignature },
-  { href: "/dashboard/staff", label: "Staff", icon: ShieldCheck },
+  { href: "/dashboard/integrations/ghl", label: "Importa da GHL", icon: Download },
 ];
 
 type DashboardSidebarProps = {
@@ -127,56 +99,47 @@ export function DashboardSidebar({
   onlinePayments,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
+  const [moreOpen, setMoreOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   function isActive(href: string, exact?: boolean) {
     return exact ? pathname === href : pathname.startsWith(href);
   }
 
-  // Senza incassi in cassa la voce Pagamenti sparisce; con Stripe c'è "Link di pagamento".
-  const baseGroups = NAV_GROUPS.map((group) => ({
-    ...group,
-    items: group.items.flatMap((item) =>
-      item.href !== "/dashboard/payments"
-        ? [item]
-        : [
-            ...(paymentsEnabled ? [item] : []),
-            ...(onlinePayments ? [{ href: "/dashboard/payment-links", label: "Link di pagamento", icon: Receipt }] : []),
-          ]
-    ),
-  }));
-  const groups: NavGroup[] = hasTenant
-    ? isAdmin
-      ? [...baseGroups.slice(0, 2), MARKETING_GROUP, ...baseGroups.slice(2)]
-      : baseGroups
-    : [
-        {
-          label: "Ogni giorno",
-          items: [{ href: "/dashboard", label: "Panoramica", icon: LayoutDashboard, exact: true }],
-        },
-      ];
-
-  const settingsItems: NavItem[] = hasTenant
-    ? isAdmin
-      ? [...ADMIN_SETUP_ITEMS, ...SETTINGS_ITEMS, ...ADMIN_ITEMS]
-      : SETTINGS_ITEMS
+  // Incassi: i link di pagamento (Stripe) in vista; la cassa, se attiva, sotto "Altro".
+  const mainItems: NavItem[] = hasTenant
+    ? [
+        ...MAIN_ITEMS,
+        ...(onlinePayments
+          ? [{ href: "/dashboard/payment-links", label: "Link di pagamento", short: "Pagamenti", icon: Receipt }]
+          : paymentsEnabled
+            ? [{ href: "/dashboard/payments", label: "Pagamenti", icon: CreditCard }]
+            : []),
+      ]
+    : [MAIN_ITEMS[0]];
+  const moreItems: NavItem[] = hasTenant
+    ? [
+        ...MORE_ITEMS,
+        ...(onlinePayments && paymentsEnabled ? [{ href: "/dashboard/payments", label: "Cassa", icon: CreditCard }] : []),
+        ...(isAdmin ? ADMIN_MORE_ITEMS : []),
+      ]
     : [];
+  const settingsItems: NavItem[] = hasTenant && isAdmin ? ADMIN_SETTINGS_ITEMS : [];
 
-  // Su una pagina delle impostazioni il menu resta aperto: si vede dove si è.
+  // Su una pagina di una sezione chiusa la sezione resta aperta: si vede dove si è.
+  const showMore = moreOpen || moreItems.some((item) => isActive(item.href, item.exact));
   const showSettings = settingsOpen || settingsItems.some((item) => isActive(item.href, item.exact));
 
-  const mobileItems = groups
-    .flatMap((group) => group.items)
-    .filter((item) =>
-      ["/dashboard", "/dashboard/calendar", "/dashboard/clients", "/dashboard/payments", "/dashboard/followup"].includes(
-        item.href
-      )
-    );
+  const mobileItems = mainItems.slice(0, 5);
+
+  function badgeFor(item: NavItem) {
+    return item.badgeKey === "requests" ? pendingRequests : item.badgeKey === "messages" ? unreadMessages : 0;
+  }
 
   function renderNavItem(item: NavItem) {
     const active = isActive(item.href, item.exact);
     const Icon = item.icon;
-    const badge = item.badgeKey === "requests" ? pendingRequests : item.badgeKey === "messages" ? unreadMessages : 0;
+    const badge = badgeFor(item);
     return (
       <Link
         key={item.href}
@@ -209,8 +172,15 @@ export function DashboardSidebar({
               active ? "text-forest" : "text-muted-foreground"
             )}
           >
-            <Icon className={cn("size-5", active && "text-mint-ink")} />
-            {item.label.split(" ")[0]}
+            <span className="relative">
+              <Icon className={cn("size-5", active && "text-mint-ink")} />
+              {badgeFor(item) > 0 ? (
+                <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-wine px-1 text-[10px] font-bold text-white">
+                  {badgeFor(item)}
+                </span>
+              ) : null}
+            </span>
+            {item.short ?? item.label}
           </Link>
         );
       })}
@@ -226,16 +196,20 @@ export function DashboardSidebar({
         <div className="truncate px-2.5 font-mono text-xs text-muted-foreground">
           {tenantName ?? "Gestionale centri estetici"}
         </div>
-        {groups.map((group) => (
-          <div key={group.label}>
-            <div className="mb-1.5 px-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground/80">
-              {group.label}
-            </div>
-            <div className="flex flex-col gap-0.5">
-              {group.items.map(renderNavItem)}
-            </div>
+        <div className="flex flex-col gap-0.5">{mainItems.map(renderNavItem)}</div>
+
+        {moreItems.length > 0 ? (
+          <div>
+            <button
+              onClick={() => setMoreOpen((o) => !o)}
+              className="flex w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground/80 transition-colors hover:bg-muted/60"
+            >
+              <span>Altro</span>
+              <ChevronDown className={cn("ml-auto size-3 transition-transform duration-200", showMore && "rotate-180")} />
+            </button>
+            {showMore ? <div className="mt-1 flex flex-col gap-0.5">{moreItems.map(renderNavItem)}</div> : null}
           </div>
-        ))}
+        ) : null}
       </nav>
 
       {settingsItems.length > 0 && (

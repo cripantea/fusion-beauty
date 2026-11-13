@@ -165,6 +165,7 @@ model Tenant {
   questionnaires         ClientQuestionnaire[]
   workingHours           WorkingHours[]
   staffExceptions        StaffException[]
+  staffBlocks            StaffBlock[]
   clientPlans            ClientPlan[]
   forms                  Form[]
   formSubmissions        FormSubmission[]
@@ -241,6 +242,7 @@ model User {
   payments          Payment[]        @relation("PaymentCreatedBy")
   workingHours      WorkingHours[]
   staffExceptions   StaffException[]
+  staffBlocks       StaffBlock[]
   // Trattamenti che l'operatrice NON esegue (di default li fa tutti).
   excludedServices  Service[]        @relation("OperatorExcludedServices")
 
@@ -800,4 +802,26 @@ model PaymentLink {
   @@index([tenantId, createdAt])
   @@index([appointmentId])
   @@map("payment_links")
+}
+
+// ── Impegni dello staff ──────────────────────────────────────────────────────
+// Pausa, ferie, visita medica, corso: in agenda come blocco grigio, e in quelle
+// ore l'operatrice non è prenotabile (online e da agenda).
+model StaffBlock {
+  id          String   @id @default(cuid())
+  tenantId    String
+  userId      String
+  startTime   DateTime
+  endTime     DateTime
+  title       String
+  note        String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, startTime])
+  @@index([userId, startTime])
+  @@map("staff_blocks")
 }
