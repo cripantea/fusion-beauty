@@ -14,7 +14,7 @@ import type { FusionWaNumberStatus, FusionWaSyncState, FusionWaTemplate } from "
 import { cn } from "@/lib/utils";
 import { TEMPLATE_STATUS } from "@/lib/whatsapp-templates";
 
-import { disconnectWhatsapp, fetchTemplates, removeTemplate, syncAppContacts } from "./actions";
+import { disconnectWhatsapp, fetchTemplates, reactivateNumber, removeTemplate, syncAppContacts } from "./actions";
 import { FusionWaSignupWidget } from "./signup-widget";
 
 export type WhatsappTab = "numero" | "template" | "rubrica";
@@ -63,6 +63,8 @@ export function WhatsappSettings({
   const [templatesError, setTemplatesError] = useState<string | null>(null);
   const [draft, setDraft] = useState<TemplateDraft | null>(null);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [pin, setPin] = useState("");
+  const [askPin, setAskPin] = useState(false);
 
   const loadTemplates = useCallback(() => {
     startTransition(async () => {
@@ -182,6 +184,51 @@ export function WhatsappSettings({
                 </div>
                 {connection.billingStatus && BILLING_LABELS[connection.billingStatus] ? (
                   <p className="text-destructive sm:col-span-3">{BILLING_LABELS[connection.billingStatus]}</p>
+                ) : null}
+                {meta && meta.number.status && meta.number.status !== "CONNECTED" && !meta.number.isOnBizApp ? (
+                  <div className="space-y-2 rounded-lg bg-amber-50 p-3 text-amber-900 sm:col-span-3">
+                    <p className="font-semibold">Il numero non è attivo su Meta: i messaggi non partono e non arrivano.</p>
+                    <p className="text-xs">
+                      Succede se un altro gestionale (es. GoHighLevel) lo scollega. Riattivalo qui: resta lo stesso numero, con gli stessi
+                      messaggi approvati.
+                    </p>
+                    {askPin ? (
+                      <input
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={pin}
+                        onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+                        placeholder="PIN verifica in due passaggi (6 cifre)"
+                        className="h-9 w-64 rounded-md border bg-white px-3 text-sm"
+                      />
+                    ) : null}
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        disabled={isPending || (askPin && pin.length !== 6)}
+                        onClick={() =>
+                          startTransition(async () => {
+                            const result = await reactivateNumber(askPin ? pin : undefined);
+                            if (!result.success) {
+                              toast.error(result.error);
+                              if (/PIN/i.test(result.error)) setAskPin(true);
+                              return;
+                            }
+                            toast.success("Numero riattivato.");
+                            router.refresh();
+                          })
+                        }
+                      >
+                        <RefreshCw className="size-4" />
+                        Riattiva numero
+                      </Button>
+                      {!askPin ? (
+                        <Button size="sm" variant="outline" onClick={() => setAskPin(true)}>
+                          Ho un PIN
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
                 ) : null}
                 <p className="text-xs text-muted-foreground sm:col-span-3">Collegato il {formatDate(connection.connectedAt)}.</p>
               </dl>

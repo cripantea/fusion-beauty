@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { requireTenantAdmin } from "@/lib/auth-context";
-import { createTemplate, deleteTemplate, getConnectionState, listTemplates, requestContactsSync, resetConnection, type FusionWaTemplate } from "@/lib/fusion-wa";
+import { createTemplate, deleteTemplate, getConnectionState, listTemplates, registerNumber, requestContactsSync, resetConnection, type FusionWaTemplate } from "@/lib/fusion-wa";
 import { parseStoredSteps, walkSteps } from "@/lib/automations";
 import { prisma } from "@/lib/prisma";
 
@@ -114,5 +114,16 @@ export async function syncAppContacts(kind: "contacts" | "history" = "contacts")
   const { tenantId } = await requireTenantAdmin();
   const result = await requestContactsSync(tenantId, kind === "history" ? "history" : "smb_app_state_sync");
   if (!result.ok) return { success: false, error: result.error };
+  return { success: true };
+}
+
+/** Riattiva il numero su Meta quando risulta scollegato (i messaggi non partono). */
+export async function reactivateNumber(pin?: string): Promise<Result> {
+  const { tenantId } = await requireTenantAdmin();
+  const clean = pin?.trim();
+  if (clean && !/^\d{6}$/.test(clean)) return { success: false, error: "Il PIN è di 6 cifre." };
+  const result = await registerNumber(tenantId, clean || undefined);
+  if (!result.ok) return { success: false, error: result.error };
+  revalidatePath("/dashboard/whatsapp");
   return { success: true };
 }

@@ -210,6 +210,18 @@ export async function getNumberStatus(
   return { ok: true, number: res.data.number as FusionWaNumberStatus, sync: (res.data.sync as FusionWaSyncState | undefined) ?? null };
 }
 
+/**
+ * Riattiva (registra) il numero sulla Cloud API, es. dopo che un altro gestionale
+ * l'ha scollegato. Senza PIN Fusion WA usa il suo predefinito; se il numero ha già
+ * un PIN di verifica in due passaggi diverso, Meta chiede quello.
+ */
+export async function registerNumber(tenantId: string, pin?: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await request("/api/v1/connections/register", { body: { externalCustomerId: tenantId, ...(pin ? { pin } : {}) } });
+  if (!res.ok) return res;
+  if (res.status >= 400) return { ok: false, error: errorOf(res.data, res.status) };
+  return { ok: true };
+}
+
 /** Richiede di nuovo a Meta la rubrica dell'app Business (possibile solo entro 24 ore dal collegamento). */
 export async function requestContactsSync(tenantId: string, syncType: "smb_app_state_sync" | "history" = "smb_app_state_sync"): Promise<{ ok: true } | { ok: false; error: string }> {
   const res = await request("/api/v1/connections/request-history-sync", {
