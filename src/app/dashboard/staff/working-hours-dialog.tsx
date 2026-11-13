@@ -160,7 +160,8 @@ export function WorkingHoursDialog({ staffId, staffName, onClose }: WorkingHours
         getWorkingHours(staffId),
         getStaffExceptions(staffId),
       ]);
-      setDays(saved.length > 0 ? dtosToDays(saved) : PRESETS[0].fn());
+      // Nessun orario salvato (es. in standby): griglia vuota, non un esempio che si salverebbe per sbaglio.
+      setDays(saved.length > 0 ? dtosToDays(saved) : emptyDays());
       setExceptions(excs);
     });
   }, [staffId]);
@@ -291,6 +292,13 @@ export function WorkingHoursDialog({ staffId, staffName, onClose }: WorkingHours
         {/* ── Tab: schedule ── */}
         {tab === "schedule" && (
           <>
+            {Object.values(days).every((blocks) => blocks.length === 0) && (
+              <p className="mx-6 mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                Nessun orario fisso: online non è prenotabile. Puoi assegnarle appuntamenti dall&apos;agenda o aprire
+                singoli giorni da Imprevisti.
+              </p>
+            )}
+
             {/* Presets */}
             <div className="flex flex-wrap gap-1.5 px-6 pt-3 pb-0">
               <span className="self-center text-xs text-muted-foreground mr-1">Preset:</span>
