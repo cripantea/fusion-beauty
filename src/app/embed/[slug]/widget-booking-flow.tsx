@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { format, isBefore, startOfDay } from "date-fns";
+import { addDays, format, isBefore, startOfDay } from "date-fns";
 import { it } from "date-fns/locale";
 import { Check } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
@@ -220,7 +220,8 @@ export function WidgetBookingFlow({ slug, services, initialServiceId, prefill }:
   const initialService = services.find((service) => service.id === initialServiceId) ?? null;
   const [step, setStep] = useState<Step>(initialService ? "datetime" : "service");
   const [selectedService, setSelectedService] = useState<PublicServiceDTO | null>(initialService);
-  const [selectedDate, setSelectedDate] = useState<Date>(() => startOfDay(new Date()));
+  // Online si prenota con 24 ore di anticipo: oggi non c'è mai posto, si parte da domani.
+  const [selectedDate, setSelectedDate] = useState<Date>(() => startOfDay(addDays(new Date(), 1)));
   const [slots, setSlots] = useState<string[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [slotsLoading, setSlotsLoading] = useState(initialService !== null);
@@ -409,7 +410,7 @@ export function WidgetBookingFlow({ slug, services, initialServiceId, prefill }:
                 selected={selectedDate}
                 onSelect={handleSelectDate}
                 locale={it}
-                disabled={(date) => isBefore(date, startOfDay(new Date())) || isClosedDay(date)}
+                disabled={(date) => isBefore(date, startOfDay(addDays(new Date(), 1))) || isClosedDay(date)}
               />
             </CardContent>
           </Card>
@@ -421,7 +422,7 @@ export function WidgetBookingFlow({ slug, services, initialServiceId, prefill }:
               </p>
             ) : slots.length === 0 ? (
               <p className="text-center text-sm text-muted-foreground py-4">
-                Nessun orario disponibile per questa data. Prova un&apos;altra data.
+                Nessun orario disponibile per questa data. Prova un&apos;altra data (online si prenota con almeno 24 ore di anticipo).
               </p>
             ) : (
               <div className="grid grid-cols-3 gap-2">

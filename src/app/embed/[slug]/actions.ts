@@ -13,6 +13,8 @@ import { createBookingSchema, getSlotsSchema } from "./schema";
 
 // Senza orari di lavoro impostati per lo staff: lun–sab 8–19.
 const DEFAULT_HOURS = { start: "08:00", end: "19:00", days: [1, 2, 3, 4, 5, 6] };
+// Online si prenota con almeno 24 ore di anticipo: per prima, il centro la sente al telefono.
+const MIN_NOTICE_MS = 24 * 60 * 60 * 1000;
 const SLOT_STEP_MINUTES = 30;
 const TIME_ZONE = "Europe/Rome";
 
@@ -136,13 +138,13 @@ function slotsOf(plan: DayPlan, durationMinutes: number): Date[] {
   const dayStart = Math.min(...ranges.map((r) => r.start));
   const dayEnd = Math.max(...ranges.map((r) => r.end));
 
-  const now = Date.now();
+  const earliest = Date.now() + MIN_NOTICE_MS;
   const durationMs = durationMinutes * 60000;
   const stepMs = SLOT_STEP_MINUTES * 60000;
   const slots: Date[] = [];
 
   for (let candidateStart = dayStart; candidateStart + durationMs <= dayEnd; candidateStart += stepMs) {
-    if (candidateStart < now) continue;
+    if (candidateStart < earliest) continue;
     // Tutto il trattamento negli orari di un'operatrice libera.
     if (freeOperatorsAt(plan, candidateStart, candidateStart + durationMs)) slots.push(new Date(candidateStart));
   }
@@ -256,6 +258,9 @@ export async function createPublicBooking(values: unknown): Promise<CreateBookin
   const startTime = new Date(parsed.data.startTime);
   if (Number.isNaN(startTime.getTime()) || startTime < new Date()) {
     return { success: false, error: "Orario non valido." };
+  }
+  if (startTime.getTime() < Date.now() + MIN_NOTICE_MS) {
+    return { success: false, error: "Online si prenota con almeno 24 ore di anticipo: per prima chiamaci." };
   }
 
   const endTime = new Date(startTime.getTime() + service.durationMinutes * 60000);
