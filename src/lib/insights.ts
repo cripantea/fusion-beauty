@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma } from "@/generated/prisma/client";
 import { isPaymentsEnabled } from "@/lib/payments-mode";
+import { romeParts } from "@/lib/rome-time";
 import { prisma } from "@/lib/prisma";
 
 export const LOYAL_MIN_VISITS = 5;
@@ -159,16 +160,18 @@ export async function getUpcomingBirthdays(tenantId: string, withinDays = 7): Pr
     select: { id: true, firstName: true, lastName: true, phone: true, dateOfBirth: true },
   });
 
-  const today = new Date();
-  const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  // "Oggi" in ora italiana (il server gira in UTC).
+  const rome = romeParts(new Date());
+  const today = new Date(Date.UTC(rome.year, rome.month - 1, rome.day));
+  const todayUtc = today.getTime();
 
   const result: BirthdayClient[] = [];
   for (const client of clients) {
     const dob = client.dateOfBirth!;
     const month = dob.getUTCMonth();
     const day = dob.getUTCDate();
-    let next = Date.UTC(today.getFullYear(), month, day);
-    if (next < todayUtc) next = Date.UTC(today.getFullYear() + 1, month, day);
+    let next = Date.UTC(today.getUTCFullYear(), month, day);
+    if (next < todayUtc) next = Date.UTC(today.getUTCFullYear() + 1, month, day);
     const inDays = Math.round((next - todayUtc) / 86_400_000);
     if (inDays <= withinDays) {
       result.push({

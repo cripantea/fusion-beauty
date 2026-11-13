@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { getTenantContext } from "@/lib/auth-context";
 import { isPaymentsEnabled } from "@/lib/payments-mode";
+import { expireCheckoutSession } from "@/lib/stripe-tenant";
 import { prisma } from "@/lib/prisma";
 
 export type ClientPlanSessionDTO = {
@@ -232,6 +233,14 @@ export async function addPlanPayment(
     }),
     prisma.clientPlan.update({ where: { id: plan.id }, data: { paidAmount: { increment: cents / 100 } } }),
   ]);
+
+  // I link di pagamento ancora aperti per questo percorso non devono più potersi pagare
+  // (altrimenti la cliente pagherebbe due volte).
+  const openLinks = await prisma.paymentLink.findMany({ where: { tenantId, planId: plan.id, status: "PENDING" }, select: { id: true, stripeSessionId: true } });
+  for (const link of openLinks) {
+    if ((await expireCheckoutSession(tenantId, link.stripeSessionId)) === "paid") continue;
+    await prisma.paymentLink.updateMany({ where: { id: link.id, status: "PENDING" }, data: { status: "CANCELLED" } });
+  }
 
   revalidatePath("/dashboard/payments");
   return { success: true, plan: toPlanDTO(await prisma.clientPlan.findUniqueOrThrow({ where: { id: plan.id }, include: planInclude })) };

@@ -293,7 +293,10 @@ export function AppointmentFormDialog({
       lines.push(`Orario: ${fmt(appointment.startTime)} → ${fmt(new Date(`${values.date}T${values.time}:00`))}`);
     }
     // Solo un nuovo orario fa partire un messaggio (la conferma con il nuovo orario).
-    const notifies = timeChanged && appointment.status === "CONFIRMED";
+    // Come sul server: riceve la conferma col nuovo orario se l'aveva già avuta e il nuovo orario è futuro.
+    const alreadyConfirmed =
+      appointment.status === "CONFIRMED" || (appointment.status === "BOOKED" && appointment.source === "INTERNAL");
+    const notifies = timeChanged && alreadyConfirmed && new Date(`${values.date}T${values.time}:00`).getTime() > Date.now();
     return { lines, notifies };
   }
 

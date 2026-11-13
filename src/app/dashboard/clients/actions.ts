@@ -238,7 +238,6 @@ export async function updateClient(
       healthNotes: normalizeOptional(parsed.data.healthNotes),
     },
   });
-  after(() => triggerClientCreated(tenantId, client.id));
 
   if (result.count === 0) {
     return { success: false, error: "Cliente non trovato." };
@@ -305,7 +304,7 @@ export async function createQuickClient(values: QuickClientValues): Promise<Quic
   const questionnaire = await buildQuestionnaireLink(tenantId, client);
   const sent = await triggerAutomations(tenantId, "QUESTIONNAIRE", {
     clientId: client.id,
-    triggerKey: "questionnaire",
+    triggerKey: `questionnaire:${client.id}`,
     context: { vars: { link: questionnaire.url } },
   });
   after(() => triggerClientCreated(tenantId, client.id));

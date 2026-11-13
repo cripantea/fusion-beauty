@@ -505,7 +505,7 @@ export async function runAutomationScans(now = new Date()) {
             AND EXTRACT(MONTH FROM "dateOfBirth") = ${month}
             AND EXTRACT(DAY FROM "dateOfBirth") = ${day}`;
         for (const client of clients) {
-          await startRun(automation, { clientId: client.id, triggerKey: `birthday:${year}` });
+          await startRun(automation, { clientId: client.id, triggerKey: `birthday:${year}:${client.id}` });
         }
       }
 
@@ -561,5 +561,6 @@ export async function triggerAppointmentAutomations(trigger: "BOOKING_REQUESTED"
 
 /** Nuova cliente in scheda (a mano, dal sito, da una prenotazione). */
 export function triggerClientCreated(tenantId: string, clientId: string) {
-  return triggerAutomations(tenantId, "CLIENT_CREATED", { clientId, triggerKey: "created" });
+  // La chiave è unica per automazione: deve contenere la cliente, o partirebbe solo per la prima.
+  return triggerAutomations(tenantId, "CLIENT_CREATED", { clientId, triggerKey: `created:${clientId}` });
 }

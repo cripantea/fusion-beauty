@@ -6,14 +6,8 @@ import { getTenantContext } from "@/lib/auth-context";
 import { getInactiveClients, getUpcomingBirthdays } from "@/lib/insights";
 import { actionableRequestsWhere } from "@/lib/booking-proposals";
 import { prisma } from "@/lib/prisma";
+import { romeDayRange } from "@/lib/rome-time";
 
-function getTodayRange() {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
-  return { start, end };
-}
 
 export type DashboardData = {
   appointments: AppointmentDTO[];
@@ -35,10 +29,9 @@ export async function getDashboardData(): Promise<DashboardData> {
   const { tenantId, user } = await getTenantContext();
   const isAdmin = user.role === "ADMIN";
   const privateFilter = isAdmin ? {} : { isPrivate: false };
-  const { start, end } = getTodayRange();
-  const tomorrowStart = new Date(end.getTime() + 1);
-  const tomorrowEnd = new Date(tomorrowStart);
-  tomorrowEnd.setHours(23, 59, 59, 999);
+  // "Oggi" e "domani" del centro, in ora italiana.
+  const { start, end } = romeDayRange();
+  const { start: tomorrowStart, end: tomorrowEnd } = romeDayRange(new Date(), 1);
 
   const [
     appointments,

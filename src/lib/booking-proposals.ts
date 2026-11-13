@@ -18,7 +18,19 @@ import { appointmentVars, hasActiveWhatsapp, sendWhatsappTemplate, sendWhatsappT
  */
 
 export const PROPOSAL_TEMPLATE = "proposta_orario";
-const ACCEPT = /^(s[iì]|ok|va bene|confermo|conferma)/i;
+// "Sì" solo se tutto il messaggio è un sì breve ("Sì, confermo", "ok grazie", "va bene!"):
+// "Si può fare giovedì?" o "Sinceramente…" li legge il centro in Messaggi.
+const ACCEPT_WORDS = new Set(["si", "sì", "ok", "okay", "va", "bene", "confermo", "conferma", "perfetto", "certo", "grazie", "mille", "benissimo"]);
+function isAccept(reply: string): boolean {
+  const words = reply
+    .toLowerCase()
+    .replace(/[^\p{L}\s]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length === 0 || words.length > 5) return false;
+  if (!["si", "sì", "ok", "okay", "va", "confermo", "conferma", "perfetto", "certo", "benissimo"].includes(words[0])) return false;
+  return words.every((word) => ACCEPT_WORDS.has(word));
+}
 
 export async function proposeNewTime(
   tenantId: string,
@@ -75,9 +87,9 @@ export async function handleProposalReply(tenantId: string, quotedWamid: string,
   if (!proposal || proposal.status !== "PENDING") return false;
   const { appointment } = proposal;
   // Senza citazione si agisce solo su un "sì" chiaro; il resto lo legge il centro in Messaggi.
-  if (!viaQuote && !ACCEPT.test(reply.trim())) return false;
+  if (!viaQuote && !isAccept(reply)) return false;
 
-  if (ACCEPT.test(reply.trim())) {
+  if (isAccept(reply)) {
     // Nel frattempo l'orario può essersi occupato (o la richiesta annullata):
     // niente spostamento, la richiesta torna all'operatrice per un'altra proposta.
     const operatorId = proposal.operatorId ?? appointment.operatorId;
@@ -113,7 +125,9 @@ export async function handleProposalReply(tenantId: string, quotedWamid: string,
     return true;
   }
 
-  await prisma.bookingProposal.update({ where: { id: proposal.id }, data: { status: "DECLINED", respondedAt: new Date() } });
+  // Solo la prima risposta conta: un doppio arrivo non manda due volte il messaggio.
+  const declined = await prisma.bookingProposal.updateMany({ where: { id: proposal.id, status: "PENDING" }, data: { status: "DECLINED", respondedAt: new Date() } });
+  if (declined.count !== 1) return true;
   // La cliente ha appena scritto: si può rispondere con un testo libero (finestra di 24 ore).
   const base = (process.env.APP_BASE_URL ?? "https://beauty.fusionsoft.it").replace(/\/$/, "");
   await sendWhatsappText(tenantId, {

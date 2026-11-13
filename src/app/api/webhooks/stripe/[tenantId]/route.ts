@@ -63,24 +63,40 @@ async function markPaid(tenantId: string, session: Stripe.Checkout.Session) {
     console.warn(`[stripe] link annullato ${link.id} pagato comunque (sessione ${session.id}): registrato come pagato.`);
   }
 
-  const updated = await prisma.paymentLink.updateMany({
-    where: { id: link.id, tenantId, status: { not: "PAID" } },
-    data: { status: "PAID", paidAt: new Date(), stripeSessionId: session.id, stripePaymentId: paymentIntentId, paidWith },
-  });
-  if (updated.count === 0) return;
-
   const notes = `Pagato online con Stripe${paidWith ? ` (${paidWith})` : ""}`;
+  const markPaid = {
+    where: { id: link.id, tenantId, status: { not: "PAID" as const } },
+    data: { status: "PAID" as const, paidAt: new Date(), stripeSessionId: session.id, stripePaymentId: paymentIntentId, paidWith },
+  };
 
-  // Rata di un percorso: incasso collegato al percorso e somma al pagato.
+  // Rata di un percorso: link pagato, incasso e somma al percorso insieme (o niente:
+  // se qualcosa non va Stripe ritenta). Il percorso non supera mai il suo totale.
   if (link.planId) {
-    await prisma.$transaction([
-      prisma.payment.create({
-        data: { tenantId, clientId: link.clientId, planId: link.planId, amount: link.amountCents / 100, method: "CARD", notes },
-      }),
-      prisma.clientPlan.update({ where: { id: link.planId }, data: { paidAmount: { increment: link.amountCents / 100 } } }),
-    ]);
+    const planId = link.planId;
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.paymentLink.updateMany(markPaid);
+      if (updated.count === 0) return;
+      const plan = await tx.clientPlan.findUnique({ where: { id: planId }, select: { totalPrice: true, paidAmount: true } });
+      const paid = link.amountCents / 100;
+      const remaining = plan ? Math.max(0, Math.round((plan.totalPrice.toNumber() - plan.paidAmount.toNumber()) * 100) / 100) : 0;
+      const credit = Math.min(paid, remaining);
+      await tx.payment.create({
+        data: {
+          tenantId,
+          clientId: link.clientId,
+          planId,
+          amount: paid,
+          method: "CARD",
+          notes: credit < paid ? `${notes} · ${(paid - credit).toFixed(2).replace(".", ",")} € oltre il totale del percorso` : notes,
+        },
+      });
+      if (credit > 0) await tx.clientPlan.update({ where: { id: planId }, data: { paidAmount: { increment: credit } } });
+    });
     return;
   }
+
+  const updated = await prisma.paymentLink.updateMany(markPaid);
+  if (updated.count === 0) return;
 
   if (!link.appointmentId) return;
 

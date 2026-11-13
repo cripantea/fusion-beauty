@@ -119,6 +119,11 @@ async function resolveOperatorId(
   return { ok: true, operatorId: operator.id };
 }
 
+/** Alla cliente è già arrivata la conferma: appuntamento confermato o preso dall'agenda (la conferma parte alla creazione). */
+function confirmationSentFor(appointment: { status: string; source: string }) {
+  return appointment.status === "CONFIRMED" || (appointment.status === "BOOKED" && appointment.source === "INTERNAL");
+}
+
 export async function createAppointment(
   values: AppointmentInput
 ): Promise<AppointmentActionResult> {
@@ -271,7 +276,8 @@ export async function updateAppointment(
   // se era confermato la cliente riceve la conferma col nuovo orario.
   if (moved) {
     await stopPendingForAppointment(id);
-    if (appointment.status === "CONFIRMED" && appointment.startTime > new Date()) {
+    // La conferma l'ha già avuta (confermato, o preso dall'agenda): riceve quella col nuovo orario.
+    if (confirmationSentFor(appointment) && appointment.startTime > new Date()) {
       after(() => triggerAppointmentAutomations("APPOINTMENT_CONFIRMED", appointment.id));
     }
   }
@@ -337,6 +343,11 @@ export async function updateAppointmentStatus(
 
   if ((status === "CANCELLED" || status === "NO_SHOW") && previous.status !== status) {
     await stopPendingForAppointment(id);
+  }
+
+  // Confermato all'orario attuale: una proposta di altro orario ancora aperta non vale più.
+  if (status === "CONFIRMED" && previous.status !== "CONFIRMED") {
+    await cancelPendingProposals(id);
   }
 
   // Conferma di una richiesta online: la cliente riceve la conferma su WhatsApp.
