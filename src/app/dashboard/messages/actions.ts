@@ -5,7 +5,7 @@ import { normalizePhoneForWhatsapp } from "@/lib/format";
 import { isFusionWaConfigured, listTemplates } from "@/lib/fusion-wa";
 import { parseStoredSteps, walkSteps } from "@/lib/automations";
 import { prisma } from "@/lib/prisma";
-import { sendWhatsappTemplate, sendWhatsappText } from "@/lib/whatsapp";
+import { appointmentVars, sendWhatsappTemplate, sendWhatsappText } from "@/lib/whatsapp";
 import { renderVariables, TEMPLATE_VARIABLES } from "@/lib/whatsapp-shared";
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -115,6 +115,29 @@ export async function sendReply(phone: string, body: string): Promise<{ success:
   return result.ok ? { success: true } : { success: false, error: result.error };
 }
 
+/** Messaggi del gestionale non usati dalle automazioni: cosa va in ogni parte. */
+const BUILT_IN_PARAMS: Record<string, string[]> = {
+  proposta_orario: ["{{nome}}", "{{trattamento}}", "", ""],
+  conferma_appuntamento: ["{{nome}}", "{{trattamento}}", "{{data}}", "{{ora}}"],
+  richiesta_ricevuta: ["{{nome}}", "{{trattamento}}", "{{data}}", "{{ora}}"],
+  promemoria_appuntamento: ["{{nome}}", "{{data}}", "{{ora}}", "{{trattamento}}"],
+};
+
+const BUILT_IN_HINTS: Record<string, string[]> = {
+  proposta_orario: ["", "", "Giorno che proponi (es. giovedì 20 novembre)", "Ora che proponi (es. 15:30)"],
+};
+
+/** Senza indicazioni: si capisce dalla parola prima (…alle {{n}} → un'ora). */
+function guessHint(body: string, n: number): string {
+  const before = (body.split(`{{${n}}}`)[0] ?? "").trim().toLowerCase();
+  const word = before.split(/\s+/).pop() ?? "";
+  if (word === "alle" || word === "ore") return "Ora (es. 15:30)";
+  if (["il", "di", "giorno", "per il", "dal", "al", "entro"].includes(word)) return "Giorno (es. giovedì 20 novembre)";
+  if (word === "per") return "Trattamento (es. Pulizia viso)";
+  if (word.startsWith("http") || word === "qui:" || word === "link:") return "Link";
+  return "Cosa scrivere qui";
+}
+
 export type InboxTemplate = {
   name: string;
   language: string;
@@ -135,10 +158,18 @@ export async function getApprovedTemplates(clientId?: string): Promise<{ success
   const result = await listTemplates(tenantId);
   if (!result.ok) return { success: false, error: result.error };
 
-  const [automations, tenant, client] = await Promise.all([
+  const [automations, tenant, client, nextAppointment] = await Promise.all([
     prisma.automation.findMany({ where: { tenantId }, select: { steps: true } }),
     prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true, slug: true } }),
     clientId ? prisma.client.findFirst({ where: { id: clientId, tenantId }, select: { firstName: true, lastName: true } }) : null,
+    // Il prossimo appuntamento della cliente: trattamento, giorno e ora si compilano da soli.
+    clientId
+      ? prisma.appointment.findFirst({
+          where: { tenantId, clientId, status: { in: ["BOOKED", "CONFIRMED"] }, startTime: { gte: new Date() } },
+          orderBy: { startTime: "asc" },
+          select: { startTime: true, service: { select: { name: true } }, operator: { select: { firstName: true } } },
+        })
+      : null,
   ]);
   // Variabili già scelte nelle automazioni per lo stesso template.
   const mappings: { templateName: string; language: string; params: string[] }[] = [];
@@ -148,14 +179,21 @@ export async function getApprovedTemplates(clientId?: string): Promise<{ success
     });
   }
   const base = (process.env.APP_BASE_URL ?? "https://beauty.fusionsoft.it").replace(/\/$/, "");
-  const known = { nome: client?.firstName ?? "", cognome: client?.lastName ?? "", centro: tenant.name, prenota: `${base}/embed/${tenant.slug}` };
+  const known = {
+    nome: client?.firstName ?? "",
+    cognome: client?.lastName ?? "",
+    centro: tenant.name,
+    prenota: `${base}/embed/${tenant.slug}`,
+    ...(nextAppointment ? appointmentVars(nextAppointment) : {}),
+  };
 
   return {
     success: true,
     templates: result.templates
       .filter((t) => t.status === "APPROVED")
       .map((t) => {
-        const mapping = mappings.find((a) => a.templateName === t.name && a.language === t.language)?.params ?? [];
+        const mapping =
+          mappings.find((a) => a.templateName === t.name && a.language === t.language)?.params ?? BUILT_IN_PARAMS[t.name] ?? [];
         const defaults = Array.from({ length: t.variableCount }, (_, i) => {
           const param = mapping[i] ?? (i === 0 ? "{{nome}}" : "");
           const filled = renderVariables(param, known);
@@ -163,8 +201,10 @@ export async function getApprovedTemplates(clientId?: string): Promise<{ success
           return /\{\{/.test(filled) ? "" : filled;
         });
         const hints = Array.from({ length: t.variableCount }, (_, i) => {
+          const custom = BUILT_IN_HINTS[t.name]?.[i];
+          if (custom) return custom;
           const key = /^\{\{([a-z]+)\}\}$/.exec(mapping[i] ?? "")?.[1];
-          return TEMPLATE_VARIABLES.find((v) => v.key === key)?.label ?? "";
+          return TEMPLATE_VARIABLES.find((v) => v.key === key)?.label ?? guessHint(t.body, i + 1);
         });
         return { name: t.name, language: t.language, body: t.body, variableCount: t.variableCount, defaults, hints };
       }),
