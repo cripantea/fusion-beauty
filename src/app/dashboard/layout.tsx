@@ -28,7 +28,6 @@ export default async function DashboardLayout({ children }: LayoutProps<"/dashbo
       <DashboardSidebar
         hasTenant={Boolean(user.tenantId)}
         isAdmin={isAdmin}
-        tenantName={tenant?.name ?? null}
         pendingRequests={pendingRequests}
         unreadMessages={unreadMessages}
         paymentsEnabled={tenant?.paymentsEnabled ?? false}

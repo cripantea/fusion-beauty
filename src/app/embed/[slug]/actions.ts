@@ -68,6 +68,10 @@ async function loadDayPlan(db: Db, tenantId: string, day: string, serviceId: str
     },
   });
 
+  // Orari di default solo per un centro che non ne ha impostati: altrimenti chi non ha
+  // orari (es. in standby) online non c'è, salvo i giorni aperti con un imprevisto.
+  const hoursConfigured = (await db.workingHours.count({ where: { tenantId, isActive: true } })) > 0;
+
   const shifts = new Map<string, Interval[]>();
   const addShift = (userId: string, from: string, to: string) => {
     const shift = { start: romeTime(day, from).getTime(), end: romeTime(day, to).getTime() };
@@ -78,7 +82,7 @@ async function loadDayPlan(db: Db, tenantId: string, day: string, serviceId: str
       for (const e of op.staffExceptions) if (e.startTime && e.endTime) addShift(op.id, e.startTime, e.endTime);
     } else if (op.workingHours.length > 0) {
       for (const h of op.workingHours) if (h.dayOfWeek === dow) addShift(op.id, h.startTime, h.endTime);
-    } else if (DEFAULT_HOURS.days.includes(dow)) {
+    } else if (!hoursConfigured && DEFAULT_HOURS.days.includes(dow)) {
       addShift(op.id, DEFAULT_HOURS.start, DEFAULT_HOURS.end);
     }
   }

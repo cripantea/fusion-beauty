@@ -1,6 +1,7 @@
 // Orari e trattamenti delle operatrici de La Boutique del Benessere (comunicati da Giulia il 05/10/2026).
-// Idempotente: tocca solo working_hours ed esclusioni trattamenti, nessun dato demo.
-// Dalila è in standby: orari variabili, da configurare più avanti.
+// Solo per chi non è ancora configurata: tocca solo working_hours ed esclusioni trattamenti.
+// Dalila è in standby: niente orari fissi (online non è prenotabile); i giorni in cui c'è
+// si aprono da Staff e orari → Imprevisti, o le si assegnano appuntamenti dall'agenda.
 import "dotenv/config";
 
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -13,7 +14,13 @@ const prisma = new PrismaClient({ adapter });
 // dayOfWeek: 1 = lunedì … 7 = domenica. Mercoledì e domenica chiuso.
 type Hours = [dayOfWeek: number, startTime: string, endTime: string][];
 
-const staff: { email: string; hours: Hours; excludedServices: string[] }[] = [
+type Member = { email: string; hours: Hours } & (
+  | { excludedServices: string[] }
+  // Solo questi trattamenti: tutto il resto del listino è escluso.
+  | { onlyServices: (name: string) => boolean }
+);
+
+const staff: Member[] = [
   {
     // Fa tutto tranne manicure e sopracciglia/ciglia.
     email: "roberta@boutique.it",
@@ -44,20 +51,46 @@ const staff: { email: string; hours: Hours; excludedServices: string[] }[] = [
     ],
     excludedServices: [],
   },
+  {
+    // Solo manicure, ceretta e pedicure (no curativo, no sopracciglia, no laser).
+    email: "dalila@boutique.it",
+    hours: [],
+    onlyServices: (name) =>
+      /^(manicure|pedicure|pedispa|ricostruzione|riparazione unghia|epilazione)/i.test(name),
+  },
 ];
 
 async function main() {
-  const tenant = await prisma.tenant.findUniqueOrThrow({ where: { slug: "boutique-del-benessere" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "boutique-del-benessere" } });
+  if (!tenant) return;
 
   for (const member of staff) {
-    const user = await prisma.user.findFirstOrThrow({ where: { tenantId: tenant.id, email: member.email } });
-
-    const services = await prisma.service.findMany({
-      where: { tenantId: tenant.id, name: { in: member.excludedServices } },
-      select: { id: true, name: true },
+    const user = await prisma.user.findFirst({
+      where: { tenantId: tenant.id, email: member.email },
+      select: { id: true, _count: { select: { workingHours: true, excludedServices: true } } },
     });
-    const missing = member.excludedServices.filter((name) => !services.some((service) => service.name === name));
-    if (missing.length > 0) throw new Error(`Trattamenti non trovati per ${member.email}: ${missing.join(", ")}`);
+    if (!user) {
+      console.log(`↷ ${member.email}: non trovata, saltata`);
+      continue;
+    }
+    // Gira a ogni deploy: se il centro ha già impostato orari o trattamenti, non si tocca nulla.
+    if (user._count.workingHours > 0 || user._count.excludedServices > 0) {
+      console.log(`↷ ${member.email}: già configurata, invariata`);
+      continue;
+    }
+
+    let services: { id: string; name: string }[];
+    if ("onlyServices" in member) {
+      const all = await prisma.service.findMany({ where: { tenantId: tenant.id }, select: { id: true, name: true } });
+      services = all.filter((service) => !member.onlyServices(service.name));
+    } else {
+      services = await prisma.service.findMany({
+        where: { tenantId: tenant.id, name: { in: member.excludedServices } },
+        select: { id: true, name: true },
+      });
+      const missing = member.excludedServices.filter((name) => !services.some((service) => service.name === name));
+      if (missing.length > 0) console.warn(`⚠ ${member.email}: trattamenti non trovati: ${missing.join(", ")}`);
+    }
 
     await prisma.$transaction([
       prisma.workingHours.deleteMany({ where: { tenantId: tenant.id, userId: user.id } }),

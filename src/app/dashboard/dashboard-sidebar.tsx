@@ -80,7 +80,6 @@ const ADMIN_SETTINGS_ITEMS: NavItem[] = [
 type DashboardSidebarProps = {
   hasTenant: boolean;
   isAdmin: boolean;
-  tenantName: string | null;
   pendingRequests: number;
   unreadMessages: number;
   /** Incassi in cassa (Pagamenti) attivi per il centro. */
@@ -92,7 +91,6 @@ type DashboardSidebarProps = {
 export function DashboardSidebar({
   hasTenant,
   isAdmin,
-  tenantName,
   pendingRequests,
   unreadMessages,
   paymentsEnabled,
@@ -193,9 +191,6 @@ export function DashboardSidebar({
       </div>
 
       <nav className="flex flex-1 flex-col gap-5 overflow-y-auto px-3 py-5">
-        <div className="truncate px-2.5 font-mono text-xs text-muted-foreground">
-          {tenantName ?? "Gestionale centri estetici"}
-        </div>
         <div className="flex flex-col gap-0.5">{mainItems.map(renderNavItem)}</div>
 
         {moreItems.length > 0 ? (

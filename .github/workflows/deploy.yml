@@ -110,6 +110,7 @@ jobs:
 
             echo "==> Migrazione da GHL de La Boutique del Benessere (solo ciò che manca)"
             docker compose -f docker-compose.prod.yml run --rm worker npx tsx prisma/setup.boutique-migration.ts
+            docker compose -f docker-compose.prod.yml run --rm worker npx tsx prisma/setup.boutique-staff.ts
             docker compose -f docker-compose.prod.yml run --rm worker npx tsx prisma/setup.assign-operators.ts
 
             echo "==> Riavvio servizi in background"
