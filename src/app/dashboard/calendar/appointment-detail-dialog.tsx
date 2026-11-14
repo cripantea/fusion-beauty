@@ -193,7 +193,7 @@ export function AppointmentDetailDialog({
               <span className="text-muted-foreground">Ordine</span>
               <ol className="space-y-0.5 text-right font-medium">
                 {blocks.map((block) => (
-                  <li key={block.startTime.getTime()}>
+                  <li key={`${block.operatorId}-${block.startTime.getTime()}`}>
                     {timeFormatter.format(block.startTime)} · {block.names.join(" + ")}
                     {block.operatorId ? ` · ${operatorFirstName(block.operatorId)}` : ""}
                   </li>

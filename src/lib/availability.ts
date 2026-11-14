@@ -73,7 +73,7 @@ export async function findClash(
       endTime: true,
       operatorId: true,
       service: { select: { durationMinutes: true } },
-      extraServices: { orderBy: { position: "asc" }, select: { durationMinutes: true, operatorId: true } },
+      extraServices: { orderBy: { position: "asc" }, select: { durationMinutes: true, operatorId: true, startTime: true } },
     },
   });
   const appointment = candidates.find((candidate) =>

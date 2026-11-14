@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertTriangle, ArrowDown, ArrowUp, Plus } from "lucide-react";
+import { AlertTriangle, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
@@ -173,40 +173,39 @@ export function AppointmentFormDialog({
   }
 
   const dateValue = useWatch({ control: form.control, name: "date" });
-  const timeValue = useWatch({ control: form.control, name: "time" });
   const itemsValue = useWatch({ control: form.control, name: "items" });
   const serviceById = useMemo(() => new Map(services.map((service) => [service.id, service])), [services]);
   const operatorsFor = (serviceId: string) => operators.filter((operator) => !operator.excludedServiceIds.includes(serviceId));
 
-  /** Trattamenti nell'ordine scelto, con l'ora in cui inizia ognuno (uno dopo l'altro). */
-  const rows = useMemo(() => {
-    const [hours, minutes] = /^\d{2}:\d{2}$/.test(timeValue) ? timeValue.split(":").map(Number) : [null, null];
-    let offset = 0;
-    return itemsValue.map((item) => {
-      const service = serviceById.get(item.serviceId);
-      const at = hours === null || minutes === null ? null : hours * 60 + minutes + offset;
-      offset += service?.durationMinutes ?? 0;
-      return {
-        ...item,
-        name: service?.name ?? "Trattamento",
-        startsAt:
-          at === null ? null : `${String(Math.floor(at / 60) % 24).padStart(2, "0")}:${String(at % 60).padStart(2, "0")}`,
-      };
-    });
-  }, [itemsValue, serviceById, timeValue]);
+  const rows = useMemo(
+    () => itemsValue.map((item) => ({ ...item, name: serviceById.get(item.serviceId)?.name ?? "Trattamento" })),
+    [itemsValue, serviceById]
+  );
+  // Più trattamenti: ognuno ha il suo orario, scelto a mano (lo vede solo il centro, in agenda).
+  const multi = rows.length > 1;
 
   function setItems(next: AppointmentFormInput["items"]) {
     form.setValue("items", next, { shouldValidate: form.formState.isSubmitted, shouldDirty: true });
     form.clearErrors("items");
+    // L'orario dell'appuntamento (quello che legge la cliente) è il primo degli orari dei trattamenti.
+    if (next.length > 1) {
+      const times = next.map((item) => item.time).filter(Boolean).sort();
+      form.setValue("time", times[0] ?? "");
+    }
   }
 
-  /** Aggiunge o toglie un trattamento: quello nuovo va in fondo, con l'operatrice già scelta se lo esegue. */
+  /**
+   * Aggiunge o toglie un trattamento: quello nuovo prende l'operatrice già scelta, se lo
+   * esegue. Il suo orario non si mette da solo (né prima né dopo gli altri): lo sceglie il centro.
+   */
   function toggleService(serviceId: string) {
     const current = form.getValues("items");
     const active = current.some((item) => item.serviceId === serviceId);
     let next: AppointmentFormInput["items"];
     if (active) {
       next = current.filter((item) => item.serviceId !== serviceId);
+      // Ne resta uno solo: il suo orario è quello dell'appuntamento.
+      if (next.length === 1 && current.length > 1 && next[0].time) form.setValue("time", next[0].time);
     } else {
       const able = operatorsFor(serviceId);
       const operatorId = able.some((operator) => operator.id === preferredOperatorId)
@@ -214,7 +213,9 @@ export function AppointmentFormDialog({
         : able.length === 1
           ? able[0].id
           : NO_OPERATOR_VALUE;
-      next = [...current, { serviceId, operatorId }];
+      // Il primo tiene l'orario già scelto per l'appuntamento.
+      const first = current.length === 1 ? [{ ...current[0], time: form.getValues("time") }] : current;
+      next = [...first, { serviceId, operatorId, time: "" }];
     }
     setItems(next);
     // Durata: la somma dei trattamenti scelti (si può sempre cambiare a mano).
@@ -222,13 +223,9 @@ export function AppointmentFormDialog({
     if (total > 0) form.setValue("durationMinutes", total);
   }
 
-  /** Sposta un trattamento prima o dopo: è l'ordine in cui si fanno. */
-  function moveItem(index: number, delta: -1 | 1) {
-    const next = [...form.getValues("items")];
-    const target = index + delta;
-    if (target < 0 || target >= next.length) return;
-    [next[index], next[target]] = [next[target], next[index]];
-    setItems(next);
+  /** Orario di un trattamento, scelto a mano. */
+  function chooseTime(index: number, time: string) {
+    setItems(form.getValues("items").map((item, position) => (position === index ? { ...item, time } : item)));
   }
 
   /** Operatrice di un trattamento: la prendono anche quelli ancora senza, se li esegue. */
@@ -265,6 +262,7 @@ export function AppointmentFormDialog({
         items: appointment.services.map((service) => ({
           serviceId: service.id,
           operatorId: service.operator?.id ?? NO_OPERATOR_VALUE,
+          time: toTimeInputValue(service.startTime),
         })),
         date: toDateInputValue(appointment.startTime),
         time: toTimeInputValue(appointment.startTime),
@@ -302,20 +300,11 @@ export function AppointmentFormDialog({
 
   function save(values: AppointmentFormValues, force: boolean) {
     startTransition(async () => {
+      const several = values.items.length > 1;
       const startTime = new Date(`${values.date}T${values.time}:00`);
 
       if (Number.isNaN(startTime.getTime())) {
         toast.error("Data o ora non valide.");
-        return;
-      }
-      const missing = operators.length > 0 ? values.items.find((item) => item.operatorId === NO_OPERATOR_VALUE) : undefined;
-      if (missing) {
-        form.setError("items", {
-          message:
-            values.items.length > 1
-              ? `Scegli l'operatrice per ${serviceById.get(missing.serviceId)?.name ?? "ogni trattamento"}.`
-              : "Scegli l'operatrice.",
-        });
         return;
       }
 
@@ -324,6 +313,7 @@ export function AppointmentFormDialog({
         services: values.items.map((item) => ({
           serviceId: item.serviceId,
           operatorId: item.operatorId === NO_OPERATOR_VALUE ? null : item.operatorId,
+          startTime: several ? new Date(`${values.date}T${item.time}:00`) : null,
         })),
         startTime,
         durationMinutes: values.durationMinutes,
@@ -380,13 +370,18 @@ export function AppointmentFormDialog({
       name: serviceName(item.serviceId),
       operatorName: operatorName(item.operatorId),
     }));
-    const key = (list: { serviceId: string }[]) => list.map((item) => item.serviceId).join();
     const sorted = <T extends { serviceId: string }>(list: T[]) => [...list].sort((a, b) => a.serviceId.localeCompare(b.serviceId));
+    const key = (list: { serviceId: string }[]) => sorted(list).map((item) => item.serviceId).join();
     if (key(before) !== key(after)) {
-      // Stessi trattamenti in un altro ordine, oppure trattamenti diversi.
-      const reordered = key(sorted(before)) === key(sorted(after));
-      const names = (list: { name: string }[]) => list.map((item) => item.name).join(reordered ? ", poi " : " + ");
-      lines.push(`${reordered ? "Ordine" : "Trattamenti"}: ${names(before)} → ${names(after)}`);
+      const names = (list: { name: string }[]) => list.map((item) => item.name).join(" + ");
+      lines.push(`Trattamenti: ${names(before)} → ${names(after)}`);
+    }
+    // Orari dei singoli trattamenti (interni): "Manicure 10:00, Pedicure 11:30".
+    const hours = (list: { name: string; time: string }[]) =>
+      [...list].sort((a, b) => a.time.localeCompare(b.time)).map((item) => `${item.name} ${item.time}`).join(", ");
+    const beforeHours = appointment.services.map((service) => ({ name: service.name, time: toTimeInputValue(service.startTime) }));
+    if (after.length > 1 && beforeHours.length > 1 && key(before) === key(after) && hours(beforeHours) !== hours(after)) {
+      lines.push(`Orari dei trattamenti: ${hours(beforeHours)} → ${hours(after)}`);
     }
     // "Roberta" se fa tutto lei, altrimenti chi fa cosa.
     const who = (list: { serviceId: string; name: string; operatorId: string; operatorName: string }[]) =>
@@ -413,6 +408,25 @@ export function AppointmentFormDialog({
   }
 
   function onSubmit(values: AppointmentFormValues) {
+    // Orari e operatrici si controllano qui: con più trattamenti ognuno ha i suoi.
+    const several = values.items.length > 1;
+    const noTime = several ? values.items.find((item) => !item.time) : undefined;
+    const noOperator = operators.length > 0 ? values.items.find((item) => item.operatorId === NO_OPERATOR_VALUE) : undefined;
+    const name = (serviceId: string) => serviceById.get(serviceId)?.name ?? "ogni trattamento";
+    if (noOperator || noTime) {
+      form.setError("items", {
+        message: noOperator
+          ? several
+            ? `Scegli l'operatrice per ${name(noOperator.serviceId)}.`
+            : "Scegli l'operatrice."
+          : `Scegli l'orario di ${name(noTime!.serviceId)}.`,
+      });
+      return;
+    }
+    if (!values.time) {
+      form.setError("time", { message: "Seleziona un orario." });
+      return;
+    }
     const change = describeChanges(values);
     if (change.lines.length > 0) {
       setPendingChange({ values, ...change });
@@ -498,8 +512,7 @@ export function AppointmentFormDialog({
                   <p className="-mt-1 text-xs text-muted-foreground">Tocca per aggiungere o togliere: puoi sceglierne più di uno.</p>
                   <div className="grid max-h-48 gap-2 overflow-y-auto sm:grid-cols-2">
                     {services.map((service) => {
-                      const position = field.value.findIndex((item) => item.serviceId === service.id);
-                      const active = position >= 0;
+                      const active = field.value.some((item) => item.serviceId === service.id);
                       return (
                         <button
                           key={service.id}
@@ -513,11 +526,6 @@ export function AppointmentFormDialog({
                               : "border-mint-border bg-card hover:bg-mint-soft"
                           )}
                         >
-                          {active && field.value.length > 1 ? (
-                            <span className="absolute right-2 top-2 flex size-5 items-center justify-center rounded-full bg-forest-foreground text-xs font-bold text-forest">
-                              {position + 1}
-                            </span>
-                          ) : null}
                           <div className="pr-6 text-sm font-semibold leading-tight">{service.name}</div>
                           <div
                             className={cn(
@@ -539,47 +547,28 @@ export function AppointmentFormDialog({
                     </p>
                   ) : null}
 
-                  {rows.length > 1 ? (
+                  {multi ? (
                     <div className="space-y-2 pt-1">
-                      <FormLabel>{operators.length > 0 ? "Ordine e operatrice" : "Ordine"}</FormLabel>
+                      <FormLabel>{operators.length > 0 ? "Orario e operatrice di ogni trattamento" : "Orario di ogni trattamento"}</FormLabel>
                       <p className="-mt-1 text-xs text-muted-foreground">
-                        Si fanno uno dopo l&apos;altro, dall&apos;alto in basso: usa le frecce per cambiare l&apos;ordine
-                        {operators.length > 0 ? " e scegli chi fa ogni trattamento" : ""}.
+                        Scegli tu a che ora si fa ogni trattamento: lo vedete solo voi in agenda. Alla cliente arriva un
+                        solo messaggio, con l&apos;orario del primo.
                       </p>
-                      <ol className="space-y-2">
+                      <ul className="space-y-2">
                         {rows.map((row, index) => (
                           <li key={row.serviceId} className="rounded-xl border border-mint-border bg-card p-2.5">
                             <div className="flex items-center gap-2">
-                              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-forest text-xs font-bold text-forest-foreground">
-                                {index + 1}
-                              </span>
                               <span className="min-w-0 flex-1 truncate text-sm font-semibold">{row.name}</span>
-                              {row.startsAt ? (
-                                <span className="text-xs tabular-nums text-muted-foreground">dalle {row.startsAt}</span>
-                              ) : null}
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon-sm"
-                                disabled={index === 0}
-                                onClick={() => moveItem(index, -1)}
-                                aria-label={`Fai prima ${row.name}`}
-                              >
-                                <ArrowUp />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon-sm"
-                                disabled={index === rows.length - 1}
-                                onClick={() => moveItem(index, 1)}
-                                aria-label={`Fai dopo ${row.name}`}
-                              >
-                                <ArrowDown />
-                              </Button>
+                              <span className="text-xs text-muted-foreground">alle</span>
+                              <TimeField
+                                className="h-9 w-28 shrink-0"
+                                value={row.time}
+                                onChange={(time) => chooseTime(index, time)}
+                                aria-label={`Orario di ${row.name}`}
+                              />
                             </div>
                             {operators.length > 0 ? (
-                              <div className="mt-2 flex flex-wrap gap-1.5 pl-8">
+                              <div className="mt-2 flex flex-wrap gap-1.5">
                                 {operatorsFor(row.serviceId).map((operator) => (
                                   <Chip
                                     key={operator.id}
@@ -594,7 +583,7 @@ export function AppointmentFormDialog({
                             ) : null}
                           </li>
                         ))}
-                      </ol>
+                      </ul>
                     </div>
                   ) : operators.length > 0 ? (
                     <div className="space-y-2 pt-1">
@@ -633,7 +622,7 @@ export function AppointmentFormDialog({
                   Domani
                 </Chip>
               </div>
-              <div className="grid grid-cols-[1fr_8rem] gap-3">
+              <div className={cn("grid gap-3", multi ? "grid-cols-1" : "grid-cols-[1fr_8rem]")}>
                 <FormField
                   control={form.control}
                   name="date"
@@ -646,23 +635,26 @@ export function AppointmentFormDialog({
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
-                  name="time"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <TimeField className="h-10" value={field.value} onChange={field.onChange} aria-label="Orario" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {multi ? null : (
+                  <FormField
+                    control={form.control}
+                    name="time"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <TimeField className="h-10" value={field.value} onChange={field.onChange} aria-label="Orario" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </div>
             </div>
 
             <div className="flex flex-wrap items-end gap-4">
-              <FormField
+              {/* Con più trattamenti ognuno dura il suo tempo, dal suo orario. */}
+              {multi ? null : <FormField
                 control={form.control}
                 name="durationMinutes"
                 render={({ field }) => (
@@ -681,7 +673,7 @@ export function AppointmentFormDialog({
                     <FormMessage />
                   </FormItem>
                 )}
-              />
+              />}
               {showNotes ? null : (
                 <button
                   type="button"

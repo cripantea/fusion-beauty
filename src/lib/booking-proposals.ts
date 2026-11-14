@@ -18,6 +18,15 @@ import { appointmentVars, hasActiveWhatsapp, sendWhatsappTemplate, sendWhatsappT
  * Importato anche dal webhook/worker: niente "server-only".
  */
 
+/** I trattamenti dell'appuntamento spostato a `newStart`: gli orari scelti a mano si spostano di altrettanto. */
+function movedParts(appointment: Parameters<typeof appointmentParts>[0] & { startTime: Date }, newStart: Date) {
+  const delta = newStart.getTime() - appointment.startTime.getTime();
+  return appointmentParts(appointment).map((part) => ({
+    ...part,
+    startTime: part.startTime ? new Date(part.startTime.getTime() + delta) : part.startTime,
+  }));
+}
+
 export const PROPOSAL_TEMPLATE = "proposta_orario";
 // "Sì" solo se tutto il messaggio è un sì breve ("Sì, confermo", "ok grazie", "va bene!"):
 // "Si può fare giovedì?" o "Sinceramente…" li legge il centro in Messaggi.
@@ -43,16 +52,15 @@ export async function proposeNewTime(
   });
   if (!appointment) return { ok: false, error: "Richiesta non trovata." };
   if (input.start.getTime() < Date.now()) return { ok: false, error: "L'orario proposto è già passato." };
-  // Tutti i trattamenti dell'appuntamento, uno dopo l'altro.
-  const minutes = appointment.service.durationMinutes + appointment.extraServices.reduce((sum, extra) => sum + extra.durationMinutes, 0);
-  const end = new Date(input.start.getTime() + minutes * 60_000);
+  // L'appuntamento si sposta tutto insieme: stessa durata, e ogni trattamento tiene la sua distanza dall'inizio.
+  const end = new Date(input.start.getTime() + (appointment.endTime.getTime() - appointment.startTime.getTime()));
 
   // Né altri appuntamenti né impegni in quell'orario (controllo unico dell'agenda).
   // L'operatrice proposta fa il primo trattamento (e quelli senza un'altra operatrice).
   const clash = await findClashForParts(tenantId, {
     start: input.start,
     end,
-    parts: appointmentParts({ ...appointment, operatorId: input.operatorId }),
+    parts: movedParts({ ...appointment, operatorId: input.operatorId }, input.start),
     excludeAppointmentId: appointment.id,
   });
   if (clash) return { ok: false, error: clash };
@@ -112,7 +120,7 @@ export async function handleProposalReply(tenantId: string, quotedWamid: string,
       ? await findClashForParts(tenantId, {
           start: proposal.proposedStart,
           end: proposal.proposedEnd,
-          parts: appointmentParts({ ...appointment, operatorId }),
+          parts: movedParts({ ...appointment, operatorId }, proposal.proposedStart),
           excludeAppointmentId: appointment.id,
         })
       : null;
@@ -129,15 +137,27 @@ export async function handleProposalReply(tenantId: string, quotedWamid: string,
 
     const claimed = await prisma.bookingProposal.updateMany({ where: { id: proposal.id, status: "PENDING" }, data: { status: "ACCEPTED", respondedAt: new Date() } });
     if (claimed.count !== 1) return true;
-    await prisma.appointment.update({
-      where: { id: appointment.id },
-      data: {
-        startTime: proposal.proposedStart,
-        endTime: proposal.proposedEnd,
-        operatorId,
-        status: "CONFIRMED",
-      },
-    });
+    const delta = proposal.proposedStart.getTime() - appointment.startTime.getTime();
+    await prisma.$transaction([
+      prisma.appointment.update({
+        where: { id: appointment.id },
+        data: {
+          startTime: proposal.proposedStart,
+          endTime: proposal.proposedEnd,
+          operatorId,
+          status: "CONFIRMED",
+        },
+      }),
+      // Gli orari scelti a mano per gli altri trattamenti si spostano insieme all'appuntamento.
+      ...appointment.extraServices
+        .filter((extra) => extra.startTime)
+        .map((extra) =>
+          prisma.appointmentExtraService.updateMany({
+            where: { appointmentId: appointment.id, serviceId: extra.serviceId },
+            data: { startTime: new Date(extra.startTime!.getTime() + delta) },
+          })
+        ),
+    ]);
     // Conferma alla cliente tramite l'automazione "appuntamento confermato"
     await triggerAppointmentAutomations("APPOINTMENT_CONFIRMED", appointment.id);
     return true;

@@ -15,12 +15,13 @@ export const NO_OPERATOR_VALUE = "none";
 /** react-hook-form schema for the raw dialog fields (date/time kept separate). */
 export const appointmentFormSchema = z.object({
   clientId: z.string().min(1, "Seleziona un cliente."),
-  /** Uno o più trattamenti, nell'ordine in cui si fanno, ognuno con la sua operatrice. */
+  /** Uno o più trattamenti, ognuno con la sua operatrice e (se sono più di uno) il suo orario "HH:mm". */
   items: z
-    .array(z.object({ serviceId: z.string(), operatorId: z.string() }))
+    .array(z.object({ serviceId: z.string(), operatorId: z.string(), time: z.string() }))
     .min(1, "Scegli almeno un trattamento."),
   date: z.string().min(1, "Seleziona una data."),
-  time: z.string().min(1, "Seleziona un orario."),
+  /** Orario dell'appuntamento; con più trattamenti è il primo dei loro orari. */
+  time: z.string(),
   durationMinutes: z.coerce
     .number({ error: "Inserisci una durata valida." })
     .int("La durata deve essere un numero intero di minuti.")
@@ -47,9 +48,9 @@ export const appointmentFormDefaultValues: AppointmentFormInput = {
  */
 export const appointmentInputSchema = z.object({
   clientId: z.string().min(1),
-  /** Nell'ordine in cui si fanno, uno dopo l'altro: ognuno con chi lo fa. */
+  /** Ognuno con chi lo fa e, se sono più di uno, il suo orario scelto a mano (solo per l'agenda interna). */
   services: z
-    .array(z.object({ serviceId: z.string().min(1), operatorId: z.string().min(1).nullable() }))
+    .array(z.object({ serviceId: z.string().min(1), operatorId: z.string().min(1).nullable(), startTime: z.date().nullish() }))
     .min(1)
     .max(10),
   startTime: z.date(),

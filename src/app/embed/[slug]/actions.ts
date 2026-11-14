@@ -114,7 +114,7 @@ async function loadDayPlan(db: Db, tenantId: string, day: string, serviceId: str
         startTime: true,
         endTime: true,
         service: { select: { durationMinutes: true } },
-        extraServices: { orderBy: { position: "asc" }, select: { durationMinutes: true, operatorId: true } },
+        extraServices: { orderBy: { position: "asc" }, select: { durationMinutes: true, operatorId: true, startTime: true } },
       },
     }),
     db.staffBlock.findMany({ where: { tenantId, userId: { in: userIds }, ...window }, select: { userId: true, startTime: true, endTime: true } }),

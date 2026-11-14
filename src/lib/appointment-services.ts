@@ -1,8 +1,10 @@
 /**
  * Un appuntamento può avere più trattamenti (es. Manicure + Pedicure): il primo è
  * `Appointment.serviceId`, gli altri stanno in `AppointmentExtraService` in ordine.
- * Si fanno uno dopo l'altro e ognuno può avere la sua operatrice: quella del primo è
- * `Appointment.operatorId`, per gli altri `AppointmentExtraService.operatorId` (vuoto = la stessa).
+ * Ognuno può avere la sua operatrice e il suo orario (scelto a mano, solo per l'agenda interna):
+ * il primo è quello che inizia prima, con `Appointment.operatorId` e `Appointment.startTime`;
+ * per gli altri `AppointmentExtraService.operatorId` (vuoto = la stessa) e `.startTime`
+ * (vuoto = subito dopo il precedente, come negli appuntamenti vecchi).
  * Questi aiuti valgono sia per le righe Prisma sia per l'AppointmentDTO dell'agenda.
  */
 
@@ -16,6 +18,7 @@ export const extraServicesSelect = {
     price: true,
     durationMinutes: true,
     operatorId: true,
+    startTime: true,
     service: { select: { id: true, name: true } },
     operator: { select: { id: true, firstName: true, lastName: true } },
   },
@@ -81,17 +84,17 @@ export function appointmentOperatorNames(
   return [...new Set(names)].join(" e ");
 }
 
-/** Un trattamento dell'appuntamento con chi lo fa. */
-export type TreatmentPart = { name: string; durationMinutes: number; operatorId: string | null };
+/** Un trattamento dell'appuntamento con chi lo fa e, se scelto a mano, quando. */
+export type TreatmentPart = { name: string; durationMinutes: number; operatorId: string | null; startTime?: Date | null };
 
 /** Tratto di appuntamento che occupa l'agenda di un'operatrice. */
 export type OperatorBlock = { operatorId: string | null; startTime: Date; endTime: Date; names: string[] };
 
-/** Riga Prisma → trattamenti in ordine, ognuno con la sua operatrice. */
+/** Riga Prisma → trattamenti in ordine, ognuno con la sua operatrice e il suo orario. */
 export function appointmentParts(appointment: {
   operatorId: string | null;
   service: { name?: string; durationMinutes: number };
-  extraServices?: { durationMinutes: number; operatorId: string | null; service?: { name: string } }[];
+  extraServices?: { durationMinutes: number; operatorId: string | null; startTime?: Date | null; service?: { name: string } }[];
 }): TreatmentPart[] {
   return [
     { name: appointment.service.name ?? "", durationMinutes: appointment.service.durationMinutes, operatorId: appointment.operatorId },
@@ -99,30 +102,59 @@ export function appointmentParts(appointment: {
       name: extra.service?.name ?? "",
       durationMinutes: extra.durationMinutes,
       operatorId: extra.operatorId ?? appointment.operatorId,
+      startTime: extra.startTime ?? null,
     })),
   ];
 }
 
 /**
- * Chi è occupata e quando: i trattamenti si fanno di seguito dall'inizio dell'appuntamento,
- * quelli vicini della stessa operatrice fanno un tratto solo. L'ultimo arriva alla fine
- * dell'appuntamento (la durata totale si può cambiare a mano).
+ * Quando si fa ogni trattamento (stesso ordine di `parts`). Con gli orari scelti a mano
+ * ognuno dura il suo tempo dal suo orario; senza (appuntamenti vecchi, o uno solo) si fanno
+ * di seguito dall'inizio e l'ultimo arriva alla fine dell'appuntamento.
  */
-export function operatorBlocks(startTime: Date, endTime: Date, parts: TreatmentPart[]): OperatorBlock[] {
-  const blocks: OperatorBlock[] = [];
+export function treatmentTimes(startTime: Date, endTime: Date, parts: TreatmentPart[]): { from: number; to: number }[] {
+  const manual = parts.some((part, index) => index > 0 && part.startTime);
   const end = endTime.getTime();
   let cursor = startTime.getTime();
-  parts.forEach((part, index) => {
-    const from = Math.min(cursor, end);
-    const to = index === parts.length - 1 ? end : Math.min(from + part.durationMinutes * 60000, end);
-    cursor = to;
-    const last = blocks[blocks.length - 1];
-    if (last && last.operatorId === part.operatorId) {
-      last.endTime = new Date(to);
-      last.names.push(part.name);
-    } else if (to > from || blocks.length === 0) {
-      blocks.push({ operatorId: part.operatorId, startTime: new Date(from), endTime: new Date(to), names: [part.name] });
+  return parts.map((part, index) => {
+    let from: number;
+    let to: number;
+    if (manual) {
+      from = index === 0 ? startTime.getTime() : (part.startTime?.getTime() ?? cursor);
+      to = from + part.durationMinutes * 60000;
+    } else {
+      from = Math.min(cursor, end);
+      to = index === parts.length - 1 ? end : Math.min(from + part.durationMinutes * 60000, end);
     }
+    cursor = to;
+    return { from, to };
   });
+}
+
+/**
+ * Chi è occupata e quando: un tratto per trattamento, quelli della stessa operatrice
+ * che si toccano fanno un tratto solo.
+ */
+export function blocksOf(pieces: { operatorId: string | null; name: string; from: number; to: number }[]): OperatorBlock[] {
+  const sorted = pieces
+    .map((piece, index) => ({ ...piece, index }))
+    .filter((piece) => piece.to > piece.from || piece.index === 0)
+    .sort((a, b) => a.from - b.from || a.index - b.index);
+
+  const blocks: OperatorBlock[] = [];
+  for (const piece of sorted) {
+    const last = blocks[blocks.length - 1];
+    if (last && last.operatorId === piece.operatorId && piece.from <= last.endTime.getTime()) {
+      last.endTime = new Date(Math.max(last.endTime.getTime(), piece.to));
+      last.names.push(piece.name);
+    } else {
+      blocks.push({ operatorId: piece.operatorId, startTime: new Date(piece.from), endTime: new Date(piece.to), names: [piece.name] });
+    }
+  }
   return blocks;
+}
+
+export function operatorBlocks(startTime: Date, endTime: Date, parts: TreatmentPart[]): OperatorBlock[] {
+  const times = treatmentTimes(startTime, endTime, parts);
+  return blocksOf(parts.map((part, index) => ({ operatorId: part.operatorId, name: part.name, ...times[index] })));
 }

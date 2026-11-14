@@ -94,8 +94,8 @@ async function stopPendingForAppointment(appointmentId: string) {
 }
 
 type ServiceRow = { id: string; name: string; price: Prisma.Decimal; durationMinutes: number };
-/** Un trattamento dell'appuntamento con chi lo fa (nell'ordine in cui si fanno). */
-type Treatment = { service: ServiceRow; operatorId: string | null };
+/** Un trattamento dell'appuntamento con chi lo fa e, se sono più di uno, il suo orario. */
+type Treatment = { service: ServiceRow; operatorId: string | null; startTime: Date | null };
 
 /**
  * I trattamenti scelti, nell'ordine scelto, ognuno con la sua operatrice: tutti del
@@ -123,7 +123,7 @@ async function loadTreatments(
       if (operators.length > 0) {
         return { ok: false, error: chosen.length > 1 ? `Scegli l'operatrice per ${service.name}.` : "Scegli l'operatrice." };
       }
-      treatments.push({ service, operatorId: null });
+      treatments.push({ service, operatorId: null, startTime: item.startTime ?? null });
       continue;
     }
     // Chi non è più attiva resta solo se era già l'operatrice di un vecchio appuntamento.
@@ -137,7 +137,13 @@ async function loadTreatments(
     if (operator.excludedServices.some((excluded) => excluded.id === service.id)) {
       return { ok: false, error: `${operator.firstName} non esegue ${service.name}.` };
     }
-    treatments.push({ service, operatorId: operator.id });
+    treatments.push({ service, operatorId: operator.id, startTime: item.startTime ?? null });
+  }
+  // Più trattamenti: ognuno ha il suo orario, scelto a mano; il primo è quello che inizia prima.
+  if (treatments.length > 1) {
+    const missing = treatments.find((treatment) => !treatment.startTime);
+    if (missing) return { ok: false, error: `Scegli l'orario di ${missing.service.name}.` };
+    treatments.sort((a, b) => a.startTime!.getTime() - b.startTime!.getTime());
   }
   return { ok: true, treatments };
 }
@@ -151,7 +157,7 @@ function extraServicesData(
   treatments: Treatment[],
   previous: { serviceId: string; price: Prisma.Decimal; durationMinutes: number }[] = []
 ) {
-  return treatments.slice(1).map(({ service, operatorId }, index) => {
+  return treatments.slice(1).map(({ service, operatorId, startTime }, index) => {
     const kept = previous.find((extra) => extra.serviceId === service.id);
     return {
       serviceId: service.id,
@@ -159,17 +165,32 @@ function extraServicesData(
       price: kept?.price ?? service.price,
       durationMinutes: kept?.durationMinutes ?? service.durationMinutes,
       operatorId: operatorId === treatments[0].operatorId ? null : operatorId,
+      startTime,
     };
   });
 }
 
 /** Chi fa cosa, per il controllo degli accavallamenti (durate come verranno salvate). */
 function treatmentParts(treatments: Treatment[], extras: { durationMinutes: number }[]): TreatmentPart[] {
-  return treatments.map(({ service, operatorId }, index) => ({
+  return treatments.map(({ service, operatorId, startTime }, index) => ({
     name: service.name,
     durationMinutes: index === 0 ? service.durationMinutes : extras[index - 1].durationMinutes,
     operatorId,
+    startTime: index === 0 ? null : startTime,
   }));
+}
+
+/**
+ * Inizio e fine dell'appuntamento. Un trattamento: l'orario e la durata scelti. Più
+ * trattamenti: dal primo orario alla fine dell'ultimo (è l'inizio che legge la cliente).
+ */
+function appointmentSlot(input: { startTime: Date; durationMinutes: number }, treatments: Treatment[], parts: TreatmentPart[]) {
+  if (treatments.length === 1) {
+    return { startTime: input.startTime, endTime: new Date(input.startTime.getTime() + input.durationMinutes * 60000) };
+  }
+  const startTime = treatments[0].startTime!;
+  const ends = parts.map((part, index) => (index === 0 ? startTime : part.startTime!).getTime() + part.durationMinutes * 60000);
+  return { startTime, endTime: new Date(Math.max(...ends)) };
 }
 
 /** Chi è occupata e quando: se non cambia, non serve ricontrollare l'agenda. */
@@ -209,16 +230,14 @@ export async function createAppointment(
   const service = treatments[0].service;
   const serviceIds = treatments.map((item) => item.service.id);
   const extras = extraServicesData(treatments);
-
-  const endTime = new Date(
-    parsed.data.startTime.getTime() + parsed.data.durationMinutes * 60000
-  );
+  const parts = treatmentParts(treatments, extras);
+  const { startTime, endTime } = appointmentSlot(parsed.data, treatments, parts);
 
   if (!parsed.data.force) {
     const clash = await findClashForParts(tenantId, {
-      start: parsed.data.startTime,
+      start: startTime,
       end: endTime,
-      parts: treatmentParts(treatments, extras),
+      parts,
     });
     if (clash) return { success: false, error: clash, clash: true };
   }
@@ -229,7 +248,7 @@ export async function createAppointment(
       clientId: client.id,
       serviceId: service.id,
       operatorId: treatments[0].operatorId,
-      startTime: parsed.data.startTime,
+      startTime,
       endTime,
       notes: parsed.data.notes?.trim() ? parsed.data.notes.trim() : null,
       extraServices: { create: extras },
@@ -272,10 +291,6 @@ export async function updateAppointment(
   const service = treatments[0].service;
   const serviceIds = treatments.map((item) => item.service.id);
 
-  const endTime = new Date(
-    parsed.data.startTime.getTime() + parsed.data.durationMinutes * 60000
-  );
-
   const previous = await prisma.appointment.findFirst({
     where: { id, tenantId },
     select: {
@@ -286,7 +301,7 @@ export async function updateAppointment(
       service: { select: { name: true, durationMinutes: true } },
       extraServices: {
         orderBy: { position: "asc" },
-        select: { serviceId: true, price: true, durationMinutes: true, operatorId: true },
+        select: { serviceId: true, price: true, durationMinutes: true, operatorId: true, startTime: true },
       },
     },
   });
@@ -295,18 +310,20 @@ export async function updateAppointment(
   }
   const extras = extraServicesData(treatments, previous.extraServices);
   const parts = treatmentParts(treatments, extras);
+  const { startTime, endTime } = appointmentSlot(parsed.data, treatments, parts);
 
   // Per la cliente conta solo l'orario: cambiare operatrice non le manda niente
   // e non tocca promemoria e conferme già programmati.
-  const moved = previous.startTime.getTime() !== parsed.data.startTime.getTime();
+  // Con più trattamenti conta l'inizio del primo: spostare solo gli altri non le manda niente.
+  const moved = previous.startTime.getTime() !== startTime.getTime();
   const slotChanged =
-    blocksKey(previous.startTime, previous.endTime, appointmentParts(previous)) !== blocksKey(parsed.data.startTime, endTime, parts);
+    blocksKey(previous.startTime, previous.endTime, appointmentParts(previous)) !== blocksKey(startTime, endTime, parts);
   const active = previous.status === "BOOKED" || previous.status === "CONFIRMED";
 
   // Si controlla solo se cambia l'orario: salvare una nota non deve bloccare.
   if (active && slotChanged && !parsed.data.force) {
     const clash = await findClashForParts(tenantId, {
-      start: parsed.data.startTime,
+      start: startTime,
       end: endTime,
       parts,
       excludeAppointmentId: id,
@@ -322,7 +339,7 @@ export async function updateAppointment(
         clientId: client.id,
         serviceId: service.id,
         operatorId: treatments[0].operatorId,
-        startTime: parsed.data.startTime,
+        startTime,
         endTime,
         notes: parsed.data.notes?.trim() ? parsed.data.notes.trim() : null,
       },
@@ -376,7 +393,7 @@ export async function updateAppointmentStatus(
       endTime: true,
       operatorId: true,
       service: { select: { durationMinutes: true } },
-      extraServices: { orderBy: { position: "asc" }, select: { durationMinutes: true, operatorId: true } },
+      extraServices: { orderBy: { position: "asc" }, select: { durationMinutes: true, operatorId: true, startTime: true } },
       payment: { select: { id: true } },
     },
   });

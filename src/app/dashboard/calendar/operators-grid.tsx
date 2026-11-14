@@ -394,7 +394,7 @@ export function OperatorsGrid({
                     appointment.status === "CANCELLED" || appointment.status === "NO_SHOW";
                   return (
                     <button
-                      key={`${appointment.id}-${item.startTime.getTime()}`}
+                      key={`${appointment.id}-${item.startTime.getTime()}-${item.names.join()}`}
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
