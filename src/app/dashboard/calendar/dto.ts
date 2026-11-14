@@ -1,9 +1,11 @@
 import type { Prisma } from "@/generated/prisma/client";
-import { extraServicesSelect } from "@/lib/appointment-services";
+import { extraServicesSelect, operatorBlocks } from "@/lib/appointment-services";
 
 import type { AppointmentStatusValue } from "./schema";
 
 export type PaymentMethodValue = "CASH" | "CARD" | "TRANSFER" | "OTHER";
+
+type OperatorRef = { id: string; firstName: string; lastName: string };
 
 export type AppointmentDTO = {
   id: string;
@@ -16,8 +18,9 @@ export type AppointmentDTO = {
   /** Trattamento principale (il primo). */
   service: { id: string; name: string; durationMinutes: number; price: number };
   /** Tutti i trattamenti dell'appuntamento, il principale per primo (es. Manicure + Pedicure). */
-  services: { id: string; name: string; durationMinutes: number; price: number }[];
-  operator: { id: string; firstName: string; lastName: string } | null;
+  services: { id: string; name: string; durationMinutes: number; price: number; operator: OperatorRef | null }[];
+  /** Operatrice del primo trattamento (gli altri possono averne un'altra: vedi `services`). */
+  operator: OperatorRef | null;
   payment: { amount: number; method: PaymentMethodValue; notes: string | null } | null;
   /** Ultimo link di pagamento online (Stripe) non annullato. */
   paymentLink: { status: "PENDING" | "PAID" | "CANCELLED"; amountCents: number; token: string; paidWith: string | null } | null;
@@ -53,12 +56,13 @@ export function toAppointmentDTO(appointment: AppointmentRow): AppointmentDTO {
     client: appointment.client,
     service,
     services: [
-      service,
+      { ...service, operator: appointment.operator },
       ...appointment.extraServices.map((extra) => ({
         id: extra.service.id,
         name: extra.service.name,
         durationMinutes: extra.durationMinutes,
         price: extra.price.toNumber(),
+        operator: extra.operator ?? appointment.operator,
       })),
     ],
     operator: appointment.operator,
@@ -67,4 +71,17 @@ export function toAppointmentDTO(appointment: AppointmentRow): AppointmentDTO {
       : null,
     paymentLink: appointment.paymentLinks[0] ?? null,
   };
+}
+
+/** Tratti dell'appuntamento per operatrice (colonne dell'agenda). */
+export function appointmentBlocks(appointment: AppointmentDTO) {
+  return operatorBlocks(
+    appointment.startTime,
+    appointment.endTime,
+    appointment.services.map((service) => ({
+      name: service.name,
+      durationMinutes: service.durationMinutes,
+      operatorId: service.operator?.id ?? null,
+    }))
+  );
 }

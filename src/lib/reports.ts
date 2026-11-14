@@ -52,27 +52,34 @@ export async function getMonthlyReport(tenantId: string, monthParam?: string): P
 
     // Ogni trattamento dell'appuntamento conta; l'incasso si divide in proporzione al listino.
     const treatments = [
-      { id: appointment.service.id, name: appointment.service.name, price: appointment.service.price.toNumber() },
-      ...appointment.extraServices.map((extra) => ({ id: extra.service.id, name: extra.service.name, price: extra.price.toNumber() })),
+      { id: appointment.service.id, name: appointment.service.name, price: appointment.service.price.toNumber(), operator: appointment.operator },
+      ...appointment.extraServices.map((extra) => ({
+        id: extra.service.id,
+        name: extra.service.name,
+        price: extra.price.toNumber(),
+        operator: extra.operator ?? appointment.operator,
+      })),
     ];
+    // Ogni operatrice conta l'appuntamento una volta e incassa la parte dei suoi trattamenti.
+    const counted = new Set<string>();
     for (const treatment of treatments) {
+      const share = listPrice > 0 ? (revenue * treatment.price) / listPrice : revenue / treatments.length;
       const service = services.get(treatment.id) ?? { name: treatment.name, count: 0, revenue: 0 };
       service.count += 1;
-      service.revenue += listPrice > 0 ? (revenue * treatment.price) / listPrice : revenue / treatments.length;
+      service.revenue += share;
       services.set(treatment.id, service);
-    }
 
-    const operatorKey = appointment.operator?.id ?? "none";
-    const operator = operators.get(operatorKey) ?? {
-      name: appointment.operator
-        ? `${appointment.operator.firstName} ${appointment.operator.lastName}`
-        : "Senza operatrice",
-      appointments: 0,
-      revenue: 0,
-    };
-    operator.appointments += 1;
-    operator.revenue += revenue;
-    operators.set(operatorKey, operator);
+      const operatorKey = treatment.operator?.id ?? "none";
+      const operator = operators.get(operatorKey) ?? {
+        name: treatment.operator ? `${treatment.operator.firstName} ${treatment.operator.lastName}` : "Senza operatrice",
+        appointments: 0,
+        revenue: 0,
+      };
+      if (!counted.has(operatorKey)) operator.appointments += 1;
+      counted.add(operatorKey);
+      operator.revenue += share;
+      operators.set(operatorKey, operator);
+    }
   }
 
   const topService = [...services.values()].sort((a, b) => b.count - a.count || b.revenue - a.revenue)[0] ?? null;

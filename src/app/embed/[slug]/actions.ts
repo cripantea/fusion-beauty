@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { triggerAppointmentAutomations, triggerClientCreated } from "@/lib/automation-engine";
+import { appointmentParts, operatorBlocks } from "@/lib/appointment-services";
 import { closeSupersededRequests } from "@/lib/booking-proposals";
 import { findClientIdByPhone } from "@/lib/client-phone";
 import { prepareConsentLinks } from "@/lib/consents";
@@ -108,7 +109,13 @@ async function loadDayPlan(db: Db, tenantId: string, day: string, serviceId: str
   const [appointments, blocks, external] = await Promise.all([
     db.appointment.findMany({
       where: { tenantId, status: { in: ["BOOKED", "CONFIRMED"] }, ...window },
-      select: { operatorId: true, startTime: true, endTime: true },
+      select: {
+        operatorId: true,
+        startTime: true,
+        endTime: true,
+        service: { select: { durationMinutes: true } },
+        extraServices: { orderBy: { position: "asc" }, select: { durationMinutes: true, operatorId: true } },
+      },
     }),
     db.staffBlock.findMany({ where: { tenantId, userId: { in: userIds }, ...window }, select: { userId: true, startTime: true, endTime: true } }),
     db.externalCalendarEvent.findMany({ where: { tenantId, ...window }, select: { startTime: true, endTime: true } }),
@@ -116,7 +123,10 @@ async function loadDayPlan(db: Db, tenantId: string, day: string, serviceId: str
 
   return {
     operators: userIds.map((id) => {
-      const own = appointments.filter((a) => a.operatorId === id);
+      // Con più trattamenti e operatrici diverse, ognuna è occupata solo nel suo tratto.
+      const own = appointments.flatMap((a) =>
+        operatorBlocks(a.startTime, a.endTime, appointmentParts(a)).filter((block) => block.operatorId === id)
+      );
       return {
         id,
         shifts: shifts.get(id) ?? [],

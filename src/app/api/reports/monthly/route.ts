@@ -1,4 +1,4 @@
-import { appointmentServiceNames, appointmentTotalPrice, extraServicesSelect } from "@/lib/appointment-services";
+import { appointmentOperatorNames, appointmentServiceNames, appointmentTotalPrice, extraServicesSelect } from "@/lib/appointment-services";
 import { getTenantContext } from "@/lib/auth-context";
 import { isPaymentsEnabled } from "@/lib/payments-mode";
 import { parseMonth } from "@/lib/reports";
@@ -53,9 +53,7 @@ export async function GET(request: Request) {
       dateTimeFormatter.format(payment.paidAt),
       `${payment.client.firstName} ${payment.client.lastName}`,
       payment.appointment ? appointmentServiceNames(payment.appointment) : "",
-      payment.appointment?.operator
-        ? `${payment.appointment.operator.firstName} ${payment.appointment.operator.lastName}`
-        : "",
+      payment.appointment ? appointmentOperatorNames(payment.appointment, { full: true }) : "",
       methodLabels[payment.method],
       csvAmount(amount),
     ]);
@@ -94,7 +92,7 @@ async function estimateCsv(tenantId: string, month: ReturnType<typeof parseMonth
       dateTimeFormatter.format(appointment.startTime),
       `${appointment.client.firstName} ${appointment.client.lastName}`,
       appointmentServiceNames(appointment),
-      appointment.operator ? `${appointment.operator.firstName} ${appointment.operator.lastName}` : "",
+      appointmentOperatorNames(appointment, { full: true }),
       csvAmount(price),
     ]);
   }

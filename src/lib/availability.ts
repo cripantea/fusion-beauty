@@ -1,3 +1,4 @@
+import { appointmentParts, operatorBlocks, type TreatmentPart } from "@/lib/appointment-services";
 import { prisma } from "@/lib/prisma";
 import { romeParts } from "@/lib/rome-time";
 
@@ -57,32 +58,68 @@ export async function findClash(
   const { operatorId, start, end, excludeAppointmentId } = input;
   const overlap = { startTime: { lt: end }, endTime: { gt: start } };
 
-  const appointment = await prisma.appointment.findFirst({
+  // Appuntamenti in cui l'operatrice fa almeno un trattamento: conta solo il suo tratto.
+  const candidates = await prisma.appointment.findMany({
     where: {
       tenantId,
-      operatorId,
+      ...(operatorId ? { OR: [{ operatorId }, { extraServices: { some: { operatorId } } }] } : { operatorId: null }),
       status: { in: ["BOOKED", "CONFIRMED"] },
       ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
       ...overlap,
     },
-    select: { client: { select: { firstName: true, lastName: true } }, startTime: true },
+    select: {
+      client: { select: { firstName: true, lastName: true } },
+      startTime: true,
+      endTime: true,
+      operatorId: true,
+      service: { select: { durationMinutes: true } },
+      extraServices: { orderBy: { position: "asc" }, select: { durationMinutes: true, operatorId: true } },
+    },
   });
+  const appointment = candidates.find((candidate) =>
+    operatorBlocks(candidate.startTime, candidate.endTime, appointmentParts(candidate)).some(
+      (block) => block.operatorId === operatorId && block.startTime < end && block.endTime > start
+    )
+  );
   if (appointment) {
     const who = `${appointment.client.firstName} ${appointment.client.lastName}`.trim();
-    return operatorId
-      ? `L'operatrice ha già un appuntamento in quell'orario (${who}).`
-      : `In quell'orario c'è già un appuntamento senza operatrice (${who}).`;
+    if (!operatorId) return `In quell'orario c'è già un appuntamento senza operatrice (${who}).`;
+    const operator = await prisma.user.findFirst({ where: { id: operatorId, tenantId }, select: { firstName: true } });
+    return `${operator?.firstName ?? "L'operatrice"} ha già un appuntamento in quell'orario (${who}).`;
   }
 
   if (operatorId) {
     const outside = await outsideWorkingHours(tenantId, operatorId, start, end);
     if (outside) return outside;
     const block = await prisma.staffBlock.findFirst({ where: { tenantId, userId: operatorId, ...overlap }, select: { title: true } });
-    if (block) return `L'operatrice ha un impegno in quell'orario (${block.title}).`;
+    if (block) {
+      const operator = await prisma.user.findFirst({ where: { id: operatorId, tenantId }, select: { firstName: true } });
+      return `${operator?.firstName ?? "L'operatrice"} ha un impegno in quell'orario (${block.title}).`;
+    }
   } else {
     const external = await prisma.externalCalendarEvent.findFirst({ where: { tenantId, ...overlap }, select: { id: true } });
     if (external) return "In quell'orario c'è un evento nel calendario collegato.";
   }
 
+  return null;
+}
+
+/**
+ * Come findClash, per un appuntamento con più trattamenti: ogni operatrice
+ * deve essere libera nel suo tratto (i trattamenti si fanno uno dopo l'altro).
+ */
+export async function findClashForParts(
+  tenantId: string,
+  input: { start: Date; end: Date; parts: TreatmentPart[]; excludeAppointmentId?: string }
+): Promise<string | null> {
+  for (const block of operatorBlocks(input.start, input.end, input.parts)) {
+    const clash = await findClash(tenantId, {
+      operatorId: block.operatorId,
+      start: block.startTime,
+      end: block.endTime,
+      excludeAppointmentId: input.excludeAppointmentId,
+    });
+    if (clash) return clash;
+  }
   return null;
 }

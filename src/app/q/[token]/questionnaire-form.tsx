@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -122,12 +123,13 @@ export function QuestionnaireForm({
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Data di nascita" hint="Per un pensiero nel tuo giorno speciale 🎂">
-          <Input
-            type="date"
+          <DateField
+            birthday
             className="h-11"
             max={new Date().toISOString().slice(0, 10)}
-            value={values.dateOfBirth}
-            onChange={(event) => patch({ dateOfBirth: event.target.value })}
+            value={values.dateOfBirth ?? ""}
+            onChange={(dateOfBirth) => patch({ dateOfBirth })}
+            placeholder="Scegli la data"
           />
         </Field>
         <Field label="Città">

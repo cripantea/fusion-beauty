@@ -14,12 +14,11 @@ import {
 } from "@/components/ui/dialog";
 
 import { formatEuro } from "@/lib/format";
-import { appointmentServiceNames } from "@/lib/appointment-services";
 import { cn } from "@/lib/utils";
 
 import type { OperatorDTO } from "./actions";
 import type { StaffAbsenceDTO, StaffBlockDTO } from "./block-actions";
-import type { AppointmentDTO } from "./dto";
+import { appointmentBlocks, type AppointmentDTO } from "./dto";
 
 /** Orario minimo mostrato; si allarga se gli orari di lavoro o gli appuntamenti escono da qui. */
 const DEFAULT_START_HOUR = 8;
@@ -164,10 +163,22 @@ type OperatorsGridProps = {
   paymentsEnabled: boolean;
 };
 
+/** Tratto di un appuntamento nella colonna di chi lo fa (tutto l'appuntamento, se lo fa una sola). */
+type ColumnItem = {
+  appointment: AppointmentDTO;
+  startTime: Date;
+  endTime: Date;
+  names: string[];
+  /** Primo tratto dell'appuntamento: qui si vede l'incasso. */
+  first: boolean;
+  /** Chi fa gli altri trattamenti, se non è lei. */
+  others: string;
+};
+
 type Column = {
   id: string | null;
   label: string;
-  items: AppointmentDTO[];
+  items: ColumnItem[];
   blocks: StaffBlockDTO[];
   operator?: OperatorDTO;
   absence?: StaffAbsenceDTO;
@@ -196,10 +207,30 @@ export function OperatorsGrid({
   const dayKey = format(date, "yyyy-MM-dd");
   const dayAbsences = absences.filter((a) => a.date === dayKey);
 
+  // Trattamenti con operatrici diverse: ognuna vede nella sua colonna solo il suo tratto.
+  const dayItems = dayAppointments.flatMap((appointment) => {
+    const parts = appointmentBlocks(appointment);
+    return parts.map((part, index) => ({
+      appointment,
+      operatorId: part.operatorId,
+      startTime: part.startTime,
+      endTime: part.endTime,
+      names: part.names,
+      first: index === 0,
+      others: [
+        ...new Set(
+          appointment.services
+            .filter((service) => service.operator && service.operator.id !== part.operatorId)
+            .map((service) => service.operator!.firstName)
+        ),
+      ].join(" e "),
+    }));
+  });
+
   const columns: Column[] = operators.map((operator) => ({
     id: operator.id,
     label: operator.firstName,
-    items: dayAppointments.filter((a) => a.operator?.id === operator.id),
+    items: dayItems.filter((item) => item.operatorId === operator.id),
     blocks: dayBlocks.filter((block) => block.userId === operator.id),
     operator,
     absence: dayAbsences.find((a) => a.userId === operator.id),
@@ -356,13 +387,14 @@ export function OperatorsGrid({
                   );
                 })}
 
-                {column.items.map((appointment) => {
-                  const { top, height } = getPosition(appointment, date, grid);
+                {column.items.map((item) => {
+                  const { appointment } = item;
+                  const { top, height } = getPosition(item, date, grid);
                   const cancelled =
                     appointment.status === "CANCELLED" || appointment.status === "NO_SHOW";
                   return (
                     <button
-                      key={appointment.id}
+                      key={`${appointment.id}-${item.startTime.getTime()}`}
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
@@ -380,9 +412,12 @@ export function OperatorsGrid({
                         <span className={cn("font-bold", cancelled && "line-through")}>
                           {appointment.client.firstName} {appointment.client.lastName}
                         </span>{" "}
-                        <span className="opacity-75">{timeFormatter.format(appointment.startTime)}</span>
+                        <span className="opacity-75">{timeFormatter.format(item.startTime)}</span>
                       </div>
-                      <div className="truncate opacity-75 leading-tight">{appointmentServiceNames(appointment)}</div>
+                      <div className="truncate opacity-75 leading-tight">
+                        {item.names.join(" + ")}
+                        {item.others ? ` · il resto con ${item.others}` : ""}
+                      </div>
                       {appointment.notes ? (
                         <div className="truncate italic leading-tight opacity-75" title={appointment.notes}>
                           📝 {appointment.notes}
@@ -393,7 +428,7 @@ export function OperatorsGrid({
                           Consenso
                         </span>
                       ) : null}
-                      {paymentsEnabled && appointment.payment ? (
+                      {!item.first ? null : paymentsEnabled && appointment.payment ? (
                         <div className="mt-0.5 truncate font-semibold">
                           ✓ {formatEuro(appointment.payment.amount)}
                         </div>

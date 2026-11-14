@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -358,7 +359,7 @@ export function WorkingHoursDialog({ staffId, staffName, onClose }: WorkingHours
               <div className="space-y-3 rounded-xl border border-mint-border bg-mint-soft/40 p-4">
                 <div className="space-y-1">
                   <Label htmlFor="ex-date">Che giorno?</Label>
-                  <Input id="ex-date" type="date" min={today} value={exDate} onChange={(e) => setExDate(e.target.value)} className="h-10" />
+                  <DateField id="ex-date" min={today} value={exDate} onChange={setExDate} className="h-10" />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   {[

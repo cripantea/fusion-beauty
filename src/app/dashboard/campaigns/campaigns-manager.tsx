@@ -10,6 +10,7 @@ import { fetchTemplates } from "@/app/dashboard/whatsapp/actions";
 import { EmptyState, PageHeader, Panel, Pill } from "@/components/boutique";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DateField, TimeField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -383,7 +384,21 @@ function NewCampaignDialog({ services, interests, onClose }: { services: { id: s
                   Programma
                 </label>
                 {when === "later" ? (
-                  <Input type="datetime-local" className="w-56" value={scheduledLocal} onChange={(e) => setScheduledLocal(e.target.value)} />
+                  <span className="flex flex-wrap items-center gap-2">
+                    <DateField
+                      className="w-56"
+                      min={new Date().toLocaleDateString("en-CA")}
+                      value={scheduledLocal.slice(0, 10)}
+                      onChange={(day) => setScheduledLocal(`${day}T${scheduledLocal.slice(11) || "10:00"}`)}
+                      aria-label="Giorno di invio"
+                    />
+                    <TimeField
+                      className="w-32"
+                      value={scheduledLocal.slice(11)}
+                      onChange={(time) => setScheduledLocal(`${scheduledLocal.slice(0, 10) || new Date().toLocaleDateString("en-CA")}T${time}`)}
+                      aria-label="Ora di invio"
+                    />
+                  </span>
                 ) : null}
               </div>
               <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">

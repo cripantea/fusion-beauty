@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertTriangle, Plus } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
@@ -35,9 +35,9 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { DateField, TimeField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { appointmentServiceNames } from "@/lib/appointment-services";
 import { formatEuro } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -150,6 +150,8 @@ export function AppointmentFormDialog({
   const [clash, setClash] = useState<string | null>(null);
   // Modifica di cliente, trattamento, operatrice o orario: prima si mostra cosa cambia e si conferma.
   const [pendingChange, setPendingChange] = useState<{ values: AppointmentFormValues; lines: string[]; notifies: boolean } | null>(null);
+  // Operatrice scelta per ultima (o colonna toccata in agenda): la prendono i trattamenti aggiunti dopo.
+  const [preferredOperatorId, setPreferredOperatorId] = useState(NO_OPERATOR_VALUE);
   const whenRef = useRef<HTMLDivElement>(null);
   const confirmRef = useRef<HTMLDivElement>(null);
 
@@ -171,16 +173,77 @@ export function AppointmentFormDialog({
   }
 
   const dateValue = useWatch({ control: form.control, name: "date" });
-  const serviceIdsValue = useWatch({ control: form.control, name: "serviceIds" });
-  // Solo chi esegue tutti i trattamenti scelti.
-  const availableOperators = useMemo(
-    () => operators.filter((operator) => !serviceIdsValue.some((id) => operator.excludedServiceIds.includes(id))),
-    [operators, serviceIdsValue]
-  );
-  const selectedServices = useMemo(
-    () => serviceIdsValue.map((id) => services.find((service) => service.id === id)).filter((service) => service !== undefined),
-    [services, serviceIdsValue]
-  );
+  const timeValue = useWatch({ control: form.control, name: "time" });
+  const itemsValue = useWatch({ control: form.control, name: "items" });
+  const serviceById = useMemo(() => new Map(services.map((service) => [service.id, service])), [services]);
+  const operatorsFor = (serviceId: string) => operators.filter((operator) => !operator.excludedServiceIds.includes(serviceId));
+
+  /** Trattamenti nell'ordine scelto, con l'ora in cui inizia ognuno (uno dopo l'altro). */
+  const rows = useMemo(() => {
+    const [hours, minutes] = /^\d{2}:\d{2}$/.test(timeValue) ? timeValue.split(":").map(Number) : [null, null];
+    let offset = 0;
+    return itemsValue.map((item) => {
+      const service = serviceById.get(item.serviceId);
+      const at = hours === null || minutes === null ? null : hours * 60 + minutes + offset;
+      offset += service?.durationMinutes ?? 0;
+      return {
+        ...item,
+        name: service?.name ?? "Trattamento",
+        startsAt:
+          at === null ? null : `${String(Math.floor(at / 60) % 24).padStart(2, "0")}:${String(at % 60).padStart(2, "0")}`,
+      };
+    });
+  }, [itemsValue, serviceById, timeValue]);
+
+  function setItems(next: AppointmentFormInput["items"]) {
+    form.setValue("items", next, { shouldValidate: form.formState.isSubmitted, shouldDirty: true });
+    form.clearErrors("items");
+  }
+
+  /** Aggiunge o toglie un trattamento: quello nuovo va in fondo, con l'operatrice già scelta se lo esegue. */
+  function toggleService(serviceId: string) {
+    const current = form.getValues("items");
+    const active = current.some((item) => item.serviceId === serviceId);
+    let next: AppointmentFormInput["items"];
+    if (active) {
+      next = current.filter((item) => item.serviceId !== serviceId);
+    } else {
+      const able = operatorsFor(serviceId);
+      const operatorId = able.some((operator) => operator.id === preferredOperatorId)
+        ? preferredOperatorId
+        : able.length === 1
+          ? able[0].id
+          : NO_OPERATOR_VALUE;
+      next = [...current, { serviceId, operatorId }];
+    }
+    setItems(next);
+    // Durata: la somma dei trattamenti scelti (si può sempre cambiare a mano).
+    const total = next.reduce((sum, item) => sum + (serviceById.get(item.serviceId)?.durationMinutes ?? 0), 0);
+    if (total > 0) form.setValue("durationMinutes", total);
+  }
+
+  /** Sposta un trattamento prima o dopo: è l'ordine in cui si fanno. */
+  function moveItem(index: number, delta: -1 | 1) {
+    const next = [...form.getValues("items")];
+    const target = index + delta;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    setItems(next);
+  }
+
+  /** Operatrice di un trattamento: la prendono anche quelli ancora senza, se li esegue. */
+  function chooseOperator(index: number, operatorId: string) {
+    setPreferredOperatorId(operatorId);
+    const excluded = operators.find((operator) => operator.id === operatorId)?.excludedServiceIds ?? [];
+    setItems(
+      form.getValues("items").map((item, position) =>
+        position === index || (item.operatorId === NO_OPERATOR_VALUE && !excluded.includes(item.serviceId))
+          ? { ...item, operatorId }
+          : item
+      )
+    );
+  }
+
   const notesValue = useWatch({ control: form.control, name: "notes" });
   const showNotes = notesOpen || Boolean(notesValue);
 
@@ -199,8 +262,10 @@ export function AppointmentFormDialog({
     if (appointment) {
       form.reset({
         clientId: appointment.client.id,
-        serviceIds: appointment.services.map((service) => service.id),
-        operatorId: appointment.operator?.id ?? NO_OPERATOR_VALUE,
+        items: appointment.services.map((service) => ({
+          serviceId: service.id,
+          operatorId: service.operator?.id ?? NO_OPERATOR_VALUE,
+        })),
         date: toDateInputValue(appointment.startTime),
         time: toTimeInputValue(appointment.startTime),
         durationMinutes: Math.round(
@@ -214,9 +279,10 @@ export function AppointmentFormDialog({
         ...appointmentFormDefaultValues,
         date: toDateInputValue(base),
         time: defaultTime ?? "",
-        operatorId: defaultOperatorId ?? NO_OPERATOR_VALUE,
       });
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- si riparte dall'operatrice dell'appuntamento o della colonna toccata
+    setPreferredOperatorId(appointment?.operator?.id ?? defaultOperatorId ?? NO_OPERATOR_VALUE);
   }, [open, appointment, defaultDate, defaultOperatorId, defaultTime, form]);
 
   // La richiesta di conferma compare in fondo: si porta in vista da sola.
@@ -229,7 +295,7 @@ export function AppointmentFormDialog({
     if (!open || !focusWhen) return;
     const timer = setTimeout(() => {
       whenRef.current?.scrollIntoView({ block: "center" });
-      whenRef.current?.querySelector<HTMLInputElement>('input[type="date"]')?.focus();
+      whenRef.current?.querySelector<HTMLButtonElement>('[data-slot="date-field"]')?.focus();
     }, 150);
     return () => clearTimeout(timer);
   }, [open, focusWhen]);
@@ -242,15 +308,23 @@ export function AppointmentFormDialog({
         toast.error("Data o ora non valide.");
         return;
       }
-      if (operators.length > 0 && values.operatorId === NO_OPERATOR_VALUE) {
-        form.setError("operatorId", { message: "Scegli l'operatrice." });
+      const missing = operators.length > 0 ? values.items.find((item) => item.operatorId === NO_OPERATOR_VALUE) : undefined;
+      if (missing) {
+        form.setError("items", {
+          message:
+            values.items.length > 1
+              ? `Scegli l'operatrice per ${serviceById.get(missing.serviceId)?.name ?? "ogni trattamento"}.`
+              : "Scegli l'operatrice.",
+        });
         return;
       }
 
       const payload = {
         clientId: values.clientId,
-        serviceIds: values.serviceIds,
-        operatorId: values.operatorId === NO_OPERATOR_VALUE ? null : values.operatorId,
+        services: values.items.map((item) => ({
+          serviceId: item.serviceId,
+          operatorId: item.operatorId === NO_OPERATOR_VALUE ? null : item.operatorId,
+        })),
         startTime,
         durationMinutes: values.durationMinutes,
         notes: values.notes,
@@ -291,15 +365,37 @@ export function AppointmentFormDialog({
       const c = allClients.find((client) => client.id === id);
       return c ? `${c.firstName} ${c.lastName}`.trim() : "altra cliente";
     };
-    const operatorName = (id: string | null) =>
-      id === null || id === NO_OPERATOR_VALUE ? "nessuna" : (operators.find((o) => o.id === id)?.firstName ?? "altra operatrice");
+    const operatorName = (id: string) =>
+      id === NO_OPERATOR_VALUE ? "nessuna" : (operators.find((o) => o.id === id)?.firstName ?? "altra operatrice");
+    const serviceName = (id: string) => serviceById.get(id)?.name ?? "altro";
     if (values.clientId !== appointment.client.id) lines.push(`Cliente: ${clientName(appointment.client.id)} → ${clientName(values.clientId)}`);
-    if (values.serviceIds.join() !== appointment.services.map((s) => s.id).join()) {
-      const newNames = values.serviceIds.map((id) => services.find((s) => s.id === id)?.name ?? "altro").join(" + ");
-      lines.push(`Trattamenti: ${appointmentServiceNames(appointment)} → ${newNames}`);
+    const before = appointment.services.map((service) => ({
+      serviceId: service.id,
+      name: service.name,
+      operatorId: service.operator?.id ?? NO_OPERATOR_VALUE,
+      operatorName: service.operator?.firstName ?? "nessuna",
+    }));
+    const after = values.items.map((item) => ({
+      ...item,
+      name: serviceName(item.serviceId),
+      operatorName: operatorName(item.operatorId),
+    }));
+    const key = (list: { serviceId: string }[]) => list.map((item) => item.serviceId).join();
+    const sorted = <T extends { serviceId: string }>(list: T[]) => [...list].sort((a, b) => a.serviceId.localeCompare(b.serviceId));
+    if (key(before) !== key(after)) {
+      // Stessi trattamenti in un altro ordine, oppure trattamenti diversi.
+      const reordered = key(sorted(before)) === key(sorted(after));
+      const names = (list: { name: string }[]) => list.map((item) => item.name).join(reordered ? ", poi " : " + ");
+      lines.push(`${reordered ? "Ordine" : "Trattamenti"}: ${names(before)} → ${names(after)}`);
     }
-    const oldOperator = appointment.operator?.id ?? NO_OPERATOR_VALUE;
-    if (values.operatorId !== oldOperator) lines.push(`Operatrice: ${operatorName(oldOperator)} → ${operatorName(values.operatorId)}`);
+    // "Roberta" se fa tutto lei, altrimenti chi fa cosa.
+    const who = (list: { serviceId: string; name: string; operatorId: string; operatorName: string }[]) =>
+      new Set(list.map((item) => item.operatorId)).size <= 1
+        ? (list[0]?.operatorName ?? "nessuna")
+        : sorted(list).map((item) => `${item.name} con ${item.operatorName}`).join(", ");
+    if (who(before) !== who(after)) {
+      lines.push(`${after.length > 1 ? "Operatrici" : "Operatrice"}: ${who(before)} → ${who(after)}`);
+    }
     const oldWhen = `${toDateInputValue(appointment.startTime)} ${toTimeInputValue(appointment.startTime)}`;
     const newWhen = `${values.date} ${values.time}`;
     const timeChanged = oldWhen !== newWhen;
@@ -337,7 +433,7 @@ export function AppointmentFormDialog({
               ? focusWhen
                 ? "Scegli il nuovo giorno e il nuovo orario."
                 : "Aggiorna i dati dell'appuntamento."
-              : "Scegli la cliente, i trattamenti e l'orario: il resto è automatico."}
+              : "Scegli la cliente, i trattamenti, chi li fa e l'orario: il resto è automatico."}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -395,37 +491,21 @@ export function AppointmentFormDialog({
 
             <FormField
               control={form.control}
-              name="serviceIds"
+              name="items"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Trattamenti</FormLabel>
                   <p className="-mt-1 text-xs text-muted-foreground">Tocca per aggiungere o togliere: puoi sceglierne più di uno.</p>
                   <div className="grid max-h-48 gap-2 overflow-y-auto sm:grid-cols-2">
                     {services.map((service) => {
-                      const position = field.value.indexOf(service.id);
+                      const position = field.value.findIndex((item) => item.serviceId === service.id);
                       const active = position >= 0;
                       return (
                         <button
                           key={service.id}
                           type="button"
                           aria-pressed={active}
-                          onClick={() => {
-                            const next = active
-                              ? field.value.filter((id) => id !== service.id)
-                              : [...field.value, service.id];
-                            field.onChange(next);
-                            // Durata: la somma dei trattamenti scelti (si può sempre cambiare a mano).
-                            const total = next.reduce(
-                              (sum, id) => sum + (services.find((item) => item.id === id)?.durationMinutes ?? 0),
-                              0
-                            );
-                            if (total > 0) form.setValue("durationMinutes", total);
-                            const operatorId = form.getValues("operatorId");
-                            const excluded = operators
-                              .find((operator) => operator.id === operatorId)
-                              ?.excludedServiceIds.some((id) => next.includes(id));
-                            if (excluded) form.setValue("operatorId", NO_OPERATOR_VALUE);
-                          }}
+                          onClick={() => toggleService(service.id)}
                           className={cn(
                             "relative rounded-xl border p-3 text-left transition-colors",
                             active
@@ -451,12 +531,86 @@ export function AppointmentFormDialog({
                       );
                     })}
                   </div>
-                  {selectedServices.length > 1 ? (
+                  {rows.length > 1 ? (
                     <p className="text-sm font-medium">
-                      {selectedServices.map((service) => service.name).join(" + ")} ·{" "}
-                      {selectedServices.reduce((sum, service) => sum + service.durationMinutes, 0)} min ·{" "}
-                      {formatEuro(selectedServices.reduce((sum, service) => sum + Number(service.price), 0))}
+                      {rows.length} trattamenti ·{" "}
+                      {rows.reduce((sum, row) => sum + (serviceById.get(row.serviceId)?.durationMinutes ?? 0), 0)} min ·{" "}
+                      {formatEuro(rows.reduce((sum, row) => sum + Number(serviceById.get(row.serviceId)?.price ?? 0), 0))}
                     </p>
+                  ) : null}
+
+                  {rows.length > 1 ? (
+                    <div className="space-y-2 pt-1">
+                      <FormLabel>{operators.length > 0 ? "Ordine e operatrice" : "Ordine"}</FormLabel>
+                      <p className="-mt-1 text-xs text-muted-foreground">
+                        Si fanno uno dopo l&apos;altro, dall&apos;alto in basso: usa le frecce per cambiare l&apos;ordine
+                        {operators.length > 0 ? " e scegli chi fa ogni trattamento" : ""}.
+                      </p>
+                      <ol className="space-y-2">
+                        {rows.map((row, index) => (
+                          <li key={row.serviceId} className="rounded-xl border border-mint-border bg-card p-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-forest text-xs font-bold text-forest-foreground">
+                                {index + 1}
+                              </span>
+                              <span className="min-w-0 flex-1 truncate text-sm font-semibold">{row.name}</span>
+                              {row.startsAt ? (
+                                <span className="text-xs tabular-nums text-muted-foreground">dalle {row.startsAt}</span>
+                              ) : null}
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon-sm"
+                                disabled={index === 0}
+                                onClick={() => moveItem(index, -1)}
+                                aria-label={`Fai prima ${row.name}`}
+                              >
+                                <ArrowUp />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon-sm"
+                                disabled={index === rows.length - 1}
+                                onClick={() => moveItem(index, 1)}
+                                aria-label={`Fai dopo ${row.name}`}
+                              >
+                                <ArrowDown />
+                              </Button>
+                            </div>
+                            {operators.length > 0 ? (
+                              <div className="mt-2 flex flex-wrap gap-1.5 pl-8">
+                                {operatorsFor(row.serviceId).map((operator) => (
+                                  <Chip
+                                    key={operator.id}
+                                    active={row.operatorId === operator.id}
+                                    onClick={() => chooseOperator(index, operator.id)}
+                                    className="px-2.5 py-1 text-xs"
+                                  >
+                                    {operator.firstName}
+                                  </Chip>
+                                ))}
+                              </div>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  ) : operators.length > 0 ? (
+                    <div className="space-y-2 pt-1">
+                      <FormLabel>Operatrice</FormLabel>
+                      <div className="flex flex-wrap gap-2">
+                        {(rows.length === 1 ? operatorsFor(rows[0].serviceId) : operators).map((operator) => (
+                          <Chip
+                            key={operator.id}
+                            active={(rows[0]?.operatorId ?? preferredOperatorId) === operator.id}
+                            onClick={() => (rows.length === 1 ? chooseOperator(0, operator.id) : setPreferredOperatorId(operator.id))}
+                          >
+                            {operator.firstName}
+                          </Chip>
+                        ))}
+                      </div>
+                    </div>
                   ) : null}
                   <FormMessage />
                 </FormItem>
@@ -486,7 +640,7 @@ export function AppointmentFormDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormControl>
-                        <Input type="date" className="h-10" {...field} />
+                        <DateField className="h-10" value={field.value} onChange={field.onChange} aria-label="Giorno" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -498,7 +652,7 @@ export function AppointmentFormDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormControl>
-                        <Input type="time" className="h-10" {...field} />
+                        <TimeField className="h-10" value={field.value} onChange={field.onChange} aria-label="Orario" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -506,30 +660,6 @@ export function AppointmentFormDialog({
                 />
               </div>
             </div>
-
-            {operators.length > 0 ? (
-              <FormField
-                control={form.control}
-                name="operatorId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Operatrice</FormLabel>
-                    <div className="flex flex-wrap gap-2">
-                      {availableOperators.map((operator) => (
-                        <Chip
-                          key={operator.id}
-                          active={field.value === operator.id}
-                          onClick={() => field.onChange(operator.id)}
-                        >
-                          {operator.firstName}
-                        </Chip>
-                      ))}
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            ) : null}
 
             <div className="flex flex-wrap items-end gap-4">
               <FormField

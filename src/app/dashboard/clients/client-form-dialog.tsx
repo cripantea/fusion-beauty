@@ -22,6 +22,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { DateField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -171,10 +172,12 @@ export function ClientFormDialog({
                   <FormItem>
                     <FormLabel>Data di nascita</FormLabel>
                     <FormControl>
-                      <Input
-                        type="date"
+                      <DateField
+                        birthday
                         max={new Date().toISOString().slice(0, 10)}
-                        {...field}
+                        value={field.value ?? ""}
+                        onChange={field.onChange}
+                        placeholder="Scegli la data"
                       />
                     </FormControl>
                     <FormMessage />

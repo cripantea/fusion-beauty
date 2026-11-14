@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DateField, TimeField } from "@/components/ui/date-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -258,15 +259,8 @@ function StaffBlockForm({
         <div className="space-y-2">
           <Label>Quando</Label>
           <div className="grid grid-cols-[1fr_8rem] gap-3">
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-10" />
-            <Input
-              type="time"
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-              className="h-10"
-              disabled={duration === "day"}
-              aria-label="Dalle"
-            />
+            <DateField value={date} onChange={setDate} className="h-10" aria-label="Giorno" />
+            <TimeField value={time} onChange={setTime} className="h-10" disabled={duration === "day"} aria-label="Dalle" />
           </div>
           <div className="flex flex-wrap gap-2">
             {DURATIONS.map((option) => (
@@ -278,18 +272,19 @@ function StaffBlockForm({
           {duration === "custom" ? (
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">Fino alle</span>
-              <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="h-10 w-32" />
+              <TimeField value={endTime} onChange={setEndTime} className="h-10 w-32" aria-label="Fino alle" />
             </div>
           ) : null}
           {duration === "day" ? (
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">Fino al (facoltativo)</span>
-              <Input
-                type="date"
+              <DateField
                 value={untilDate}
                 min={date}
-                onChange={(e) => setUntilDate(e.target.value)}
-                className="h-10 w-44"
+                onChange={setUntilDate}
+                className="h-10 w-56"
+                placeholder="Solo quel giorno"
+                aria-label="Fino al"
               />
             </div>
           ) : null}

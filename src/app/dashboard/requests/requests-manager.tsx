@@ -14,7 +14,7 @@ import type { ServiceDTO } from "@/app/dashboard/services/actions";
 import { EmptyState, PageHeader, Panel, Pill } from "@/components/boutique";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { DateField, TimeField } from "@/components/ui/date-field";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { appointmentServiceNames } from "@/lib/appointment-services";
@@ -278,7 +278,7 @@ function ProposeBody({ request, tenantSlug, operators, onSent }: { request: Requ
       <div className="space-y-3">
         <div className="space-y-1.5">
           <Label className="text-xs font-semibold text-muted-foreground">Giorno</Label>
-          <Input type="date" value={date} min={new Date().toISOString().slice(0, 10)} onChange={(e) => loadSlots(e.target.value)} />
+          <DateField value={date} min={new Date().toISOString().slice(0, 10)} onChange={loadSlots} aria-label="Giorno" />
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs font-semibold text-muted-foreground">Orari liberi</Label>
@@ -309,13 +309,13 @@ function ProposeBody({ request, tenantSlug, operators, onSent }: { request: Requ
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-muted-foreground">Oppure un orario a scelta</Label>
-            <Input
-              type="time"
+            <TimeField
               value={manualTime}
-              onChange={(e) => {
-                setManualTime(e.target.value);
+              onChange={(value) => {
+                setManualTime(value);
                 setSlot(null);
               }}
+              aria-label="Orario a scelta"
             />
           </div>
           <div className="space-y-1.5">

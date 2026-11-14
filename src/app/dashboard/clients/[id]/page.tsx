@@ -2,7 +2,7 @@ import { AlertCircle, Clock, Sparkles } from "lucide-react";
 import { notFound } from "next/navigation";
 
 import { EmptyState, Panel, Pill } from "@/components/boutique";
-import { appointmentServiceNames, appointmentTotalPrice, extraServicesSelect } from "@/lib/appointment-services";
+import { appointmentOperatorNames, appointmentServiceNames, appointmentTotalPrice, extraServicesSelect } from "@/lib/appointment-services";
 import { getTenantContext } from "@/lib/auth-context";
 import { formatEuro } from "@/lib/format";
 import { getClientStatsMap } from "@/lib/insights";
@@ -257,7 +257,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
                     <div className="font-semibold">{appointmentServiceNames(appointment)}</div>
                     <div className="text-xs text-muted-foreground">
                       {dateTimeFormatter.format(appointment.startTime)}
-                      {appointment.operator ? ` — ${appointment.operator.firstName}` : ""}
+                      {appointment.operator ? ` — ${appointmentOperatorNames(appointment)}` : ""}
                     </div>
                   </div>
                   <div className="flex items-center gap-3">

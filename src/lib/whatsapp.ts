@@ -1,5 +1,5 @@
 import { findClientIdByPhone } from "@/lib/client-phone";
-import { appointmentServiceNames } from "@/lib/appointment-services";
+import { appointmentOperatorNames, appointmentServiceNames } from "@/lib/appointment-services";
 import { normalizePhoneForWhatsapp } from "@/lib/format";
 import { isFusionWaConfigured, sendTemplate, sendText } from "@/lib/fusion-wa";
 import { prisma } from "@/lib/prisma";
@@ -19,14 +19,15 @@ export function appointmentVars(appointment: {
   startTime: Date;
   service: { name: string };
   /** Altri trattamenti nello stesso appuntamento: {{trattamento}} diventa "Manicure + Pedicure". */
-  extraServices?: { service: { name: string } }[];
+  extraServices?: { service: { name: string }; operator?: { firstName: string } | null }[];
   operator?: { firstName: string } | null;
 }): TemplateVars {
   return {
     trattamento: appointmentServiceNames(appointment),
     data: new Intl.DateTimeFormat("it-IT", { timeZone: TIME_ZONE, weekday: "long", day: "numeric", month: "long" }).format(appointment.startTime),
     ora: new Intl.DateTimeFormat("it-IT", { timeZone: TIME_ZONE, hour: "2-digit", minute: "2-digit" }).format(appointment.startTime),
-    operatrice: appointment.operator?.firstName ?? "",
+    // Operatrici diverse per i trattamenti: "Roberta e Giulia".
+    operatrice: appointmentOperatorNames(appointment),
   };
 }
 

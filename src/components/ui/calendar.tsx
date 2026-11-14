@@ -9,6 +9,8 @@ import {
   type Locale,
 } from "react-day-picker"
 
+import { it } from "date-fns/locale"
+
 import { Button, buttonVariants } from "@/components/ui/button"
 import { ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon } from "lucide-react"
 
@@ -18,7 +20,8 @@ function Calendar({
   showOutsideDays = true,
   captionLayout = "label",
   buttonVariant = "ghost",
-  locale,
+  // Mesi e giorni sempre in italiano (settimana da lunedì), qualunque sia la lingua del dispositivo.
+  locale = it,
   formatters,
   components,
   ...props

@@ -8,7 +8,7 @@ import { AppointmentDetailDialog } from "@/app/dashboard/calendar/appointment-de
 import { AppointmentFormDialog } from "@/app/dashboard/calendar/appointment-form-dialog";
 import type { OperatorDTO } from "@/app/dashboard/calendar/actions";
 import type { AppointmentDTO } from "@/app/dashboard/calendar/dto";
-import { appointmentServiceNames, appointmentTotalPrice } from "@/lib/appointment-services";
+import { appointmentOperatorNames, appointmentServiceNames, appointmentTotalPrice } from "@/lib/appointment-services";
 import type { ClientListItemDTO } from "@/app/dashboard/clients/actions";
 import { toNewClientListItem } from "@/app/dashboard/clients/list-item";
 import { QuickClientDialog } from "@/app/dashboard/clients/quick-client-dialog";
@@ -172,7 +172,7 @@ export function DashboardManager({
               <div className="text-[11px] uppercase tracking-wide text-forest-foreground/60">
                 Operatrice
               </div>
-              <div className="font-semibold">{next.operator?.firstName ?? "Da assegnare"}</div>
+              <div className="font-semibold">{appointmentOperatorNames(next) || "Da assegnare"}</div>
             </div>
             <Button
               className="h-10 rounded-xl bg-mint px-5 font-semibold text-forest hover:bg-mint/85"
@@ -230,7 +230,7 @@ export function DashboardManager({
                       </span>
                       <span className="block truncate text-xs text-muted-foreground">
                         {appointmentServiceNames(appointment)}
-                        {appointment.operator ? ` · ${appointment.operator.firstName}` : ""}
+                        {appointment.operator ? ` · ${appointmentOperatorNames(appointment)}` : ""}
                       </span>
                     </span>
                   </button>

@@ -6,7 +6,8 @@ import type { Prisma } from "@/generated/prisma/client";
 import { getTenantContext } from "@/lib/auth-context";
 import { prisma } from "@/lib/prisma";
 import { stopAppointmentRuns, triggerAppointmentAutomations } from "@/lib/automation-engine";
-import { findClash } from "@/lib/availability";
+import { appointmentParts, operatorBlocks, type TreatmentPart } from "@/lib/appointment-services";
+import { findClashForParts } from "@/lib/availability";
 import { cancelPendingProposals } from "@/lib/booking-proposals";
 import { findAppointmentsMissingConsent, prepareConsentLinks } from "@/lib/consents";
 
@@ -92,61 +93,90 @@ async function stopPendingForAppointment(appointmentId: string) {
   await stopAppointmentRuns(appointmentId);
 }
 
-/** I trattamenti scelti, nell'ordine scelto (il primo è il principale), tutti del centro. */
-async function loadServices(tenantId: string, serviceIds: string[]) {
-  const ids = [...new Set(serviceIds)];
-  const found = await prisma.service.findMany({ where: { tenantId, id: { in: ids } } });
-  const services = ids.map((id) => found.find((service) => service.id === id));
-  return services.every((service) => service !== undefined) ? services : null;
+type ServiceRow = { id: string; name: string; price: Prisma.Decimal; durationMinutes: number };
+/** Un trattamento dell'appuntamento con chi lo fa (nell'ordine in cui si fanno). */
+type Treatment = { service: ServiceRow; operatorId: string | null };
+
+/**
+ * I trattamenti scelti, nell'ordine scelto, ognuno con la sua operatrice: tutti del
+ * centro, e ogni operatrice deve eseguire il suo trattamento.
+ */
+async function loadTreatments(
+  tenantId: string,
+  input: AppointmentInput["services"]
+): Promise<{ ok: true; treatments: Treatment[] } | { ok: false; error: string }> {
+  const chosen = input.filter((item, index) => input.findIndex((other) => other.serviceId === item.serviceId) === index);
+  const [services, operators] = await Promise.all([
+    prisma.service.findMany({ where: { tenantId, id: { in: chosen.map((item) => item.serviceId) } } }),
+    prisma.user.findMany({
+      where: { tenantId, isActive: true, role: { in: ["ADMIN", "OPERATOR"] } },
+      select: { id: true, firstName: true, excludedServices: { select: { id: true } } },
+    }),
+  ]);
+
+  const treatments: Treatment[] = [];
+  for (const item of chosen) {
+    const service = services.find((candidate) => candidate.id === item.serviceId);
+    if (!service) return { ok: false, error: "Trattamento non trovato." };
+    // Ogni trattamento va nell'agenda di un'operatrice (se il centro ne ha).
+    if (!item.operatorId) {
+      if (operators.length > 0) {
+        return { ok: false, error: chosen.length > 1 ? `Scegli l'operatrice per ${service.name}.` : "Scegli l'operatrice." };
+      }
+      treatments.push({ service, operatorId: null });
+      continue;
+    }
+    // Chi non è più attiva resta solo se era già l'operatrice di un vecchio appuntamento.
+    const operator =
+      operators.find((candidate) => candidate.id === item.operatorId) ??
+      (await prisma.user.findFirst({
+        where: { id: item.operatorId, tenantId, role: { in: ["ADMIN", "OPERATOR"] } },
+        select: { id: true, firstName: true, excludedServices: { select: { id: true } } },
+      }));
+    if (!operator) return { ok: false, error: "Operatore non valido." };
+    if (operator.excludedServices.some((excluded) => excluded.id === service.id)) {
+      return { ok: false, error: `${operator.firstName} non esegue ${service.name}.` };
+    }
+    treatments.push({ service, operatorId: operator.id });
+  }
+  return { ok: true, treatments };
 }
 
 /**
  * Trattamenti dopo il primo: si salvano con prezzo e durata di adesso; in una modifica
- * quelli che c'erano già tengono prezzo e durata della prenotazione.
+ * quelli che c'erano già tengono prezzo e durata della prenotazione. L'operatrice si
+ * salva solo se è diversa da quella dell'appuntamento (quella del primo trattamento).
  */
 function extraServicesData(
-  services: { id: string; price: Prisma.Decimal; durationMinutes: number }[],
+  treatments: Treatment[],
   previous: { serviceId: string; price: Prisma.Decimal; durationMinutes: number }[] = []
 ) {
-  return services.slice(1).map((service, index) => {
+  return treatments.slice(1).map(({ service, operatorId }, index) => {
     const kept = previous.find((extra) => extra.serviceId === service.id);
     return {
       serviceId: service.id,
       position: index + 1,
       price: kept?.price ?? service.price,
       durationMinutes: kept?.durationMinutes ?? service.durationMinutes,
+      operatorId: operatorId === treatments[0].operatorId ? null : operatorId,
     };
   });
 }
 
-async function resolveOperatorId(
-  tenantId: string,
-  operatorId: string | null,
-  serviceIds: string[]
-): Promise<
-  { ok: true; operatorId: string | null } | { ok: false; error: string }
-> {
-  // Ogni appuntamento va nell'agenda di un'operatrice (se il centro ne ha).
-  if (!operatorId) {
-    const hasOperators = await prisma.user.count({ where: { tenantId, isActive: true, role: { in: ["ADMIN", "OPERATOR"] } } });
-    return hasOperators > 0 ? { ok: false, error: "Scegli l'operatrice." } : { ok: true, operatorId: null };
-  }
+/** Chi fa cosa, per il controllo degli accavallamenti (durate come verranno salvate). */
+function treatmentParts(treatments: Treatment[], extras: { durationMinutes: number }[]): TreatmentPart[] {
+  return treatments.map(({ service, operatorId }, index) => ({
+    name: service.name,
+    durationMinutes: index === 0 ? service.durationMinutes : extras[index - 1].durationMinutes,
+    operatorId,
+  }));
+}
 
-  const operator = await prisma.user.findFirst({
-    where: { id: operatorId, tenantId, role: { in: ["ADMIN", "OPERATOR"] } },
-    include: { excludedServices: { where: { id: { in: serviceIds } }, select: { id: true, name: true } } },
-  });
-
-  if (!operator) {
-    return { ok: false, error: "Operatore non valido." };
-  }
-  // Deve saper fare tutti i trattamenti dell'appuntamento.
-  if (operator.excludedServices.length > 0) {
-    const names = operator.excludedServices.map((service) => service.name).join(" e ");
-    return { ok: false, error: `${operator.firstName} non esegue ${names}.` };
-  }
-
-  return { ok: true, operatorId: operator.id };
+/** Chi è occupata e quando: se non cambia, non serve ricontrollare l'agenda. */
+function blocksKey(start: Date, end: Date, parts: TreatmentPart[]) {
+  return operatorBlocks(start, end, parts)
+    .map((block) => `${block.operatorId}|${block.startTime.getTime()}|${block.endTime.getTime()}`)
+    .join(",");
 }
 
 /** Alla cliente è già arrivata la conferma: appuntamento confermato o preso dall'agenda (la conferma parte alla creazione). */
@@ -171,27 +201,24 @@ export async function createAppointment(
     return { success: false, error: "Cliente non trovato." };
   }
 
-  const services = await loadServices(tenantId, parsed.data.serviceIds);
-  if (!services) {
-    return { success: false, error: "Trattamento non trovato." };
+  const loaded = await loadTreatments(tenantId, parsed.data.services);
+  if (!loaded.ok) {
+    return { success: false, error: loaded.error };
   }
-  const service = services[0];
-  const serviceIds = services.map((item) => item.id);
-
-  const operatorResult = await resolveOperatorId(tenantId, parsed.data.operatorId, serviceIds);
-  if (!operatorResult.ok) {
-    return { success: false, error: operatorResult.error };
-  }
+  const { treatments } = loaded;
+  const service = treatments[0].service;
+  const serviceIds = treatments.map((item) => item.service.id);
+  const extras = extraServicesData(treatments);
 
   const endTime = new Date(
     parsed.data.startTime.getTime() + parsed.data.durationMinutes * 60000
   );
 
   if (!parsed.data.force) {
-    const clash = await findClash(tenantId, {
-      operatorId: operatorResult.operatorId,
+    const clash = await findClashForParts(tenantId, {
       start: parsed.data.startTime,
       end: endTime,
+      parts: treatmentParts(treatments, extras),
     });
     if (clash) return { success: false, error: clash, clash: true };
   }
@@ -201,11 +228,11 @@ export async function createAppointment(
       tenantId,
       clientId: client.id,
       serviceId: service.id,
-      operatorId: operatorResult.operatorId,
+      operatorId: treatments[0].operatorId,
       startTime: parsed.data.startTime,
       endTime,
       notes: parsed.data.notes?.trim() ? parsed.data.notes.trim() : null,
-      extraServices: { create: extraServicesData(services) },
+      extraServices: { create: extras },
     },
     include: appointmentInclude,
   });
@@ -237,17 +264,13 @@ export async function updateAppointment(
     return { success: false, error: "Cliente non trovato." };
   }
 
-  const services = await loadServices(tenantId, parsed.data.serviceIds);
-  if (!services) {
-    return { success: false, error: "Trattamento non trovato." };
+  const loaded = await loadTreatments(tenantId, parsed.data.services);
+  if (!loaded.ok) {
+    return { success: false, error: loaded.error };
   }
-  const service = services[0];
-  const serviceIds = services.map((item) => item.id);
-
-  const operatorResult = await resolveOperatorId(tenantId, parsed.data.operatorId, serviceIds);
-  if (!operatorResult.ok) {
-    return { success: false, error: operatorResult.error };
-  }
+  const { treatments } = loaded;
+  const service = treatments[0].service;
+  const serviceIds = treatments.map((item) => item.service.id);
 
   const endTime = new Date(
     parsed.data.startTime.getTime() + parsed.data.durationMinutes * 60000
@@ -260,26 +283,32 @@ export async function updateAppointment(
       endTime: true,
       operatorId: true,
       status: true,
-      extraServices: { select: { serviceId: true, price: true, durationMinutes: true } },
+      service: { select: { name: true, durationMinutes: true } },
+      extraServices: {
+        orderBy: { position: "asc" },
+        select: { serviceId: true, price: true, durationMinutes: true, operatorId: true },
+      },
     },
   });
   if (!previous) {
     return { success: false, error: "Appuntamento non trovato." };
   }
+  const extras = extraServicesData(treatments, previous.extraServices);
+  const parts = treatmentParts(treatments, extras);
 
   // Per la cliente conta solo l'orario: cambiare operatrice non le manda niente
   // e non tocca promemoria e conferme già programmati.
   const moved = previous.startTime.getTime() !== parsed.data.startTime.getTime();
   const slotChanged =
-    moved || previous.operatorId !== operatorResult.operatorId || previous.endTime.getTime() !== endTime.getTime();
+    blocksKey(previous.startTime, previous.endTime, appointmentParts(previous)) !== blocksKey(parsed.data.startTime, endTime, parts);
   const active = previous.status === "BOOKED" || previous.status === "CONFIRMED";
 
   // Si controlla solo se cambia l'orario: salvare una nota non deve bloccare.
   if (active && slotChanged && !parsed.data.force) {
-    const clash = await findClash(tenantId, {
-      operatorId: operatorResult.operatorId,
+    const clash = await findClashForParts(tenantId, {
       start: parsed.data.startTime,
       end: endTime,
+      parts,
       excludeAppointmentId: id,
     });
     if (clash) return { success: false, error: clash, clash: true };
@@ -292,7 +321,7 @@ export async function updateAppointment(
       data: {
         clientId: client.id,
         serviceId: service.id,
-        operatorId: operatorResult.operatorId,
+        operatorId: treatments[0].operatorId,
         startTime: parsed.data.startTime,
         endTime,
         notes: parsed.data.notes?.trim() ? parsed.data.notes.trim() : null,
@@ -300,7 +329,7 @@ export async function updateAppointment(
     }),
     prisma.appointmentExtraService.deleteMany({ where: { appointmentId: id, appointment: { tenantId } } }),
     prisma.appointmentExtraService.createMany({
-      data: extraServicesData(services, previous.extraServices).map((extra) => ({ ...extra, appointmentId: id })),
+      data: extras.map((extra) => ({ ...extra, appointmentId: id })),
     }),
   ]);
 
@@ -346,6 +375,8 @@ export async function updateAppointmentStatus(
       startTime: true,
       endTime: true,
       operatorId: true,
+      service: { select: { durationMinutes: true } },
+      extraServices: { orderBy: { position: "asc" }, select: { durationMinutes: true, operatorId: true } },
       payment: { select: { id: true } },
     },
   });
@@ -362,10 +393,10 @@ export async function updateAppointmentStatus(
   // Riattivare un appuntamento annullato: l'orario potrebbe essere stato preso nel frattempo.
   const wasInactive = previous.status === "CANCELLED" || previous.status === "NO_SHOW";
   if (wasInactive && (status === "CONFIRMED" || status === "BOOKED")) {
-    const clash = await findClash(tenantId, {
-      operatorId: previous.operatorId,
+    const clash = await findClashForParts(tenantId, {
       start: previous.startTime,
       end: previous.endTime,
+      parts: appointmentParts(previous),
       excludeAppointmentId: id,
     });
     if (clash) return { success: false, error: `${clash} Sposta l'appuntamento su un altro orario.` };

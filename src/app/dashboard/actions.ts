@@ -76,7 +76,9 @@ export async function getDashboardData(): Promise<DashboardData> {
     ["BOOKED", "CONFIRMED", "COMPLETED"].includes(appointment.status)
   );
   const operatorIds = new Set(
-    billable.map((appointment) => appointment.operator?.id).filter((id): id is string => Boolean(id))
+    billable
+      .flatMap((appointment) => appointment.services.map((service) => service.operator?.id))
+      .filter((id): id is string => Boolean(id))
   );
 
   return {

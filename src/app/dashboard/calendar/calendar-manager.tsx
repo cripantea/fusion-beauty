@@ -12,8 +12,7 @@ import {
   subWeeks,
 } from "date-fns";
 import { it } from "date-fns/locale";
-import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, Clock, Coffee } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, Coffee } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import type { ClientListItemDTO } from "@/app/dashboard/clients/actions";
@@ -41,7 +40,6 @@ import { AppointmentDetailDialog } from "./appointment-detail-dialog";
 import { AppointmentFormDialog } from "./appointment-form-dialog";
 import { CalendarGrid } from "./calendar-grid";
 import { StaffBlockDialog } from "./staff-block-dialog";
-import { WorkingHoursDialog } from "@/app/dashboard/staff/working-hours-dialog";
 
 type ViewMode = "operators" | "day" | "week";
 
@@ -77,9 +75,6 @@ export function CalendarManager({
 }: CalendarManagerProps) {
   const [linkTarget, setLinkTarget] = useState<PaymentLinkTarget | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("operators");
-  // "I miei orari": ognuna cambia da sola i propri orari e imprevisti.
-  const [hoursOpen, setHoursOpen] = useState(false);
-  const router = useRouter();
   const [currentDate, setCurrentDate] = useState(() => new Date(`${initialDate}T00:00:00`));
   const [appointments, setAppointments] = useState(initialAppointments);
   const [blocks, setBlocks] = useState(initialBlocks);
@@ -167,8 +162,6 @@ export function CalendarManager({
     refresh(range.start, range.end);
   }
 
-  const myName = operators.find((operator) => operator.id === currentUserId)?.firstName ?? "";
-
   // Gli annullati spariscono dall'agenda (restano nello storico della cliente).
   const visibleAppointments = appointments.filter((appointment) => appointment.status !== "CANCELLED");
 
@@ -180,10 +173,6 @@ export function CalendarManager({
         description="Ogni operatrice vede i propri appuntamenti. Tu vedi tutto il centro in un'unica schermata."
         actions={
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" className="h-10 rounded-xl px-4" onClick={() => setHoursOpen(true)}>
-              <Clock className="size-4" />
-              I miei orari
-            </Button>
             <Button variant="outline" className="h-10 rounded-xl px-4" onClick={() => openNewBlock(isAdmin ? undefined : currentUserId)}>
               <Coffee className="size-4" />
               Impegno
@@ -367,15 +356,6 @@ export function CalendarManager({
         appointment={payingAppointment}
         onPaid={handleAppointmentSaved}
         isAdmin={isAdmin}
-      />
-      <WorkingHoursDialog
-        staffId={hoursOpen ? currentUserId : null}
-        staffName={myName}
-        onClose={() => {
-          setHoursOpen(false);
-          // Colonne grigie e orari dell'agenda aggiornati subito.
-          router.refresh();
-        }}
       />
     </div>
   );

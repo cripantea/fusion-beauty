@@ -23,7 +23,7 @@ import { ConsentNotice } from "@/app/dashboard/consents/consent-notice";
 import { sendPaymentLink } from "@/app/dashboard/payment-links/actions";
 
 import { updateAppointmentStatus } from "./actions";
-import type { AppointmentDTO } from "./dto";
+import { appointmentBlocks, type AppointmentDTO } from "./dto";
 import type { AppointmentStatusValue } from "./schema";
 
 const dateTimeFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome",
@@ -101,6 +101,11 @@ export function AppointmentDetailDialog({
   if (!appointment) {
     return null;
   }
+
+  // Trattamenti con operatrici diverse: chi fa cosa e da che ora.
+  const blocks = appointmentBlocks(appointment);
+  const operatorFirstName = (id: string) =>
+    appointment.services.find((service) => service.operator?.id === id)?.operator?.firstName ?? "";
 
   const reminderText =
     `Ciao ${appointment.client.firstName} 😊 ti ricordiamo il tuo appuntamento ` +
@@ -183,14 +188,28 @@ export function AppointmentDetailDialog({
               {dateTimeFormatter.format(appointment.startTime)} – {timeFormatter.format(appointment.endTime)}
             </span>
           </div>
-          <div className="flex justify-between gap-3">
-            <span className="text-muted-foreground">Operatrice</span>
-            <span className="font-medium">
-              {appointment.operator
-                ? `${appointment.operator.firstName} ${appointment.operator.lastName}`
-                : "—"}
-            </span>
-          </div>
+          {blocks.length > 1 ? (
+            <div className="flex justify-between gap-3">
+              <span className="text-muted-foreground">Ordine</span>
+              <ol className="space-y-0.5 text-right font-medium">
+                {blocks.map((block) => (
+                  <li key={block.startTime.getTime()}>
+                    {timeFormatter.format(block.startTime)} · {block.names.join(" + ")}
+                    {block.operatorId ? ` · ${operatorFirstName(block.operatorId)}` : ""}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ) : (
+            <div className="flex justify-between gap-3">
+              <span className="text-muted-foreground">Operatrice</span>
+              <span className="font-medium">
+                {appointment.operator
+                  ? `${appointment.operator.firstName} ${appointment.operator.lastName}`
+                  : "—"}
+              </span>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-3">
             <span className="text-muted-foreground">Stato</span>
             <span className="flex items-center gap-2">

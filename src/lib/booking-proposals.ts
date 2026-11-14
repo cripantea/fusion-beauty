@@ -1,6 +1,6 @@
 import { stopAppointmentRuns, triggerAppointmentAutomations } from "@/lib/automation-engine";
-import { findClash } from "@/lib/availability";
-import { extraServicesSelect } from "@/lib/appointment-services";
+import { findClashForParts } from "@/lib/availability";
+import { appointmentParts, extraServicesSelect } from "@/lib/appointment-services";
 import { listTemplates } from "@/lib/fusion-wa";
 import { prisma } from "@/lib/prisma";
 import { appointmentVars, hasActiveWhatsapp, sendWhatsappTemplate, sendWhatsappText } from "@/lib/whatsapp";
@@ -48,7 +48,13 @@ export async function proposeNewTime(
   const end = new Date(input.start.getTime() + minutes * 60_000);
 
   // Né altri appuntamenti né impegni in quell'orario (controllo unico dell'agenda).
-  const clash = await findClash(tenantId, { operatorId: input.operatorId, start: input.start, end, excludeAppointmentId: appointment.id });
+  // L'operatrice proposta fa il primo trattamento (e quelli senza un'altra operatrice).
+  const clash = await findClashForParts(tenantId, {
+    start: input.start,
+    end,
+    parts: appointmentParts({ ...appointment, operatorId: input.operatorId }),
+    excludeAppointmentId: appointment.id,
+  });
   if (clash) return { ok: false, error: clash };
 
   if (!(await hasActiveWhatsapp(tenantId))) return { ok: false, error: "WhatsApp non collegato: chiama la cliente per proporre l'orario." };
@@ -85,7 +91,11 @@ export async function handleProposalReply(tenantId: string, quotedWamid: string,
   if (!quoted || quoted.tenantId !== tenantId) return false;
   const proposal = await prisma.bookingProposal.findUnique({
     where: { messageId: quoted.id },
-    include: { appointment: { include: { client: true, tenant: { select: { slug: true } } } } },
+    include: {
+      appointment: {
+        include: { client: true, service: true, extraServices: extraServicesSelect, tenant: { select: { slug: true } } },
+      },
+    },
   });
   if (!proposal || proposal.status !== "PENDING") return false;
   const { appointment } = proposal;
@@ -99,7 +109,12 @@ export async function handleProposalReply(tenantId: string, quotedWamid: string,
     const current = await prisma.appointment.findUnique({ where: { id: appointment.id }, select: { status: true } });
     const stillOpen = current?.status === "BOOKED" || current?.status === "CONFIRMED";
     const clash = stillOpen
-      ? await findClash(tenantId, { operatorId, start: proposal.proposedStart, end: proposal.proposedEnd, excludeAppointmentId: appointment.id })
+      ? await findClashForParts(tenantId, {
+          start: proposal.proposedStart,
+          end: proposal.proposedEnd,
+          parts: appointmentParts({ ...appointment, operatorId }),
+          excludeAppointmentId: appointment.id,
+        })
       : null;
     if (!stillOpen || clash) {
       const declined = await prisma.bookingProposal.updateMany({ where: { id: proposal.id, status: "PENDING" }, data: { status: "DECLINED", respondedAt: new Date() } });
