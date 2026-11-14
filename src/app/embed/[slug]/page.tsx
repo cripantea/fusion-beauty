@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import Script from "next/script";
 
 import { cn } from "@/lib/utils";
 
@@ -124,9 +125,9 @@ export default async function EmbedPage({ params, searchParams }: EmbedPageProps
         )}
         <div>
           <h1 className="font-heading text-2xl font-bold text-foreground">{tenant.name}</h1>
-          {tenant.onlineBookingEnabled ? (
-            <p className="mt-0.5 text-sm text-muted-foreground">Prenota il tuo trattamento online</p>
-          ) : null}
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {tenant.onlineBookingEnabled ? "Prenota il tuo trattamento online" : "Richiedi il tuo appuntamento"}
+          </p>
         </div>
       </div>
       ) : null}
@@ -138,11 +139,17 @@ export default async function EmbedPage({ params, searchParams }: EmbedPageProps
           initialServiceId={services.length === 1 ? services[0].id : undefined}
           prefill={prefill}
         />
+      ) : tenant.bookingFormId ? (
+        // Prenotazione online spenta: la cliente lascia la richiesta e il centro le conferma l'orario.
+        <>
+          <div id={`fusion-beauty-form-${tenant.bookingFormId}`} />
+          <Script src={`/api/embed/form/${tenant.bookingFormId}`} strategy="afterInteractive" />
+        </>
       ) : (
         <div className="rounded-2xl border bg-card p-6 text-center">
-          <p className="text-base font-semibold text-foreground">Per ora le prenotazioni online sono sospese.</p>
+          <p className="text-base font-semibold text-foreground">Prenota con noi</p>
           <p className="mt-2 text-sm text-muted-foreground">
-            Per prenotare chiamaci o scrivici su WhatsApp: ti troviamo subito l&apos;orario giusto.
+            Chiamaci o scrivici su WhatsApp: ti troviamo subito l&apos;orario giusto.
           </p>
           {tenant.phone ? (
             <a

@@ -17,6 +17,8 @@ export type PublicTenantWidgetData = {
     phone: string | null;
     /** Spento: niente prenotazione, solo l'avviso "per ora chiamaci". */
     onlineBookingEnabled: boolean;
+    /** Con la prenotazione spenta: form di richiesta appuntamento al posto dell'agenda. */
+    bookingFormId: string | null;
   };
   services: PublicServiceDTO[];
 };
@@ -34,6 +36,12 @@ export async function getPublicTenantWidgetData(
     return null;
   }
 
+  // Il form vale solo se è del centro ed è attivo.
+  const bookingForm =
+    !tenant.onlineBookingEnabled && tenant.bookingFormId
+      ? await prisma.form.findFirst({ where: { id: tenant.bookingFormId, tenantId: tenant.id, enabled: true }, select: { id: true } })
+      : null;
+
   const services = await prisma.service.findMany({
     where: { tenantId: tenant.id, isActive: true, isOnlineBookingEnabled: true },
     orderBy: { name: "asc" },
@@ -47,6 +55,7 @@ export async function getPublicTenantWidgetData(
       logoUrl: tenant.logoUrl,
       phone: tenant.phone,
       onlineBookingEnabled: tenant.onlineBookingEnabled,
+      bookingFormId: bookingForm?.id ?? null,
     },
     services: services.map((service) => ({
       id: service.id,

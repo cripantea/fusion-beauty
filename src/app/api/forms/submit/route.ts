@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
               .slice(0, 900) || "-",
         },
       },
-      filter: { formId: form.id },
+      filter: { formId: settings.automationsOfFormId || form.id },
     });
   });
 

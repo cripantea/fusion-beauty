@@ -152,6 +152,8 @@ export const formSettingsSchema = z.object({
     .optional()
     .refine((v) => !v || FONT_NAME.test(v), "Il carattere deve essere il nome di un Google Font (es. Montserrat)"),
   customCss: z.string().max(20000).optional(),
+  /** Gli invii fanno partire le automazioni di quest'altro form (es. stessa risposta e stesso avviso allo staff). */
+  automationsOfFormId: z.string().trim().max(50).optional(),
 });
 export type FormSettings = z.infer<typeof formSettingsSchema>;
 

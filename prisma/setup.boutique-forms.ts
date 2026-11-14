@@ -92,6 +92,40 @@ const QUOTE_FORM: FormInput = {
   },
 };
 
+// Al posto dell'agenda online quando è spenta (Tenant.bookingFormId): stessa grafica del
+// preventivo, e gli invii fanno partire le stesse automazioni (risposta alla cliente e avviso allo staff).
+export const BOUTIQUE_BOOKING_FORM_ID = "boutique-prenota";
+
+const BOOKING_FORM: FormInput = {
+  ...QUOTE_FORM,
+  name: "Sito – Richiedi il tuo appuntamento",
+  fields: [
+    QUOTE_FORM.fields[0],
+    { ...QUOTE_FORM.fields[1], content: "RICHIEDI IL TUO APPUNTAMENTO" },
+    { key: "firstName", label: "Nome", type: "text", required: true, clientField: "firstName", placeholder: "Nome" },
+    { key: "phone", label: "Telefono", type: "tel", required: true, clientField: "phone", placeholder: "Telefono" },
+    {
+      key: "richiesta",
+      label: "Che trattamento vuoi fare e quando preferisci?",
+      type: "text",
+      required: true,
+      clientField: "notes",
+      placeholder: "Es. manicure, giovedì pomeriggio",
+    },
+  ],
+  settings: {
+    ...QUOTE_FORM.settings,
+    successMessage: "Grazie! Abbiamo ricevuto la tua richiesta: ti scriviamo su WhatsApp per confermarti giorno e orario.",
+    submitButtonText: "Richiedi appuntamento",
+    automationsOfFormId: BOUTIQUE_QUOTE_FORM_ID,
+  },
+};
+
+const FORMS = [
+  { id: BOUTIQUE_QUOTE_FORM_ID, input: QUOTE_FORM },
+  { id: BOUTIQUE_BOOKING_FORM_ID, input: BOOKING_FORM },
+];
+
 async function main() {
   const tenant = await prisma.tenant.findUnique({ where: { slug: "boutique-del-benessere" }, select: { id: true } });
   // Su un database senza la Boutique (es. un altro server) non è un errore: non fa nulla.
@@ -100,35 +134,33 @@ async function main() {
     return;
   }
 
-  const existing = await prisma.form.findUnique({ where: { id: BOUTIQUE_QUOTE_FORM_ID }, select: { id: true } });
-  if (existing && !process.argv.includes("--force")) {
-    console.log(`Form "${BOUTIQUE_QUOTE_FORM_ID}" già presente: non lo tocco (usa --force per riscriverlo).`);
-    return;
+  for (const { id, input } of FORMS) {
+    const existing = await prisma.form.findUnique({ where: { id }, select: { id: true } });
+    if (existing && !process.argv.includes("--force")) {
+      console.log(`Form "${id}" già presente: non lo tocco (usa --force per riscriverlo).`);
+      continue;
+    }
+
+    const form = formInputSchema.parse(input);
+    const problem = formProblem(form);
+    if (problem) throw new Error(problem);
+
+    const data = {
+      name: form.name,
+      title: form.title,
+      fields: form.fields as Prisma.InputJsonValue,
+      settings: form.settings as Prisma.InputJsonValue,
+      displayMode: form.displayMode,
+      color: form.color,
+      welcomeMessage: form.welcomeMessage,
+      enabled: form.enabled,
+    };
+    await prisma.form.upsert({ where: { id }, update: data, create: { id, tenantId: tenant.id, ...data } });
+
+    console.log(`✅ Form "${form.name}" pronto. Codice per il sito:`);
+    console.log(`<div id="fusion-beauty-form-${id}"></div>`);
+    console.log(`<script src="${BASE_URL}/api/embed/form/${id}" async></script>`);
   }
-
-  const form = formInputSchema.parse(QUOTE_FORM);
-  const problem = formProblem(form);
-  if (problem) throw new Error(problem);
-
-  const data = {
-    name: form.name,
-    title: form.title,
-    fields: form.fields as Prisma.InputJsonValue,
-    settings: form.settings as Prisma.InputJsonValue,
-    displayMode: form.displayMode,
-    color: form.color,
-    welcomeMessage: form.welcomeMessage,
-    enabled: form.enabled,
-  };
-  await prisma.form.upsert({
-    where: { id: BOUTIQUE_QUOTE_FORM_ID },
-    update: data,
-    create: { id: BOUTIQUE_QUOTE_FORM_ID, tenantId: tenant.id, ...data },
-  });
-
-  console.log(`✅ Form "${form.name}" pronto. Codice per il sito:`);
-  console.log(`<div id="fusion-beauty-form-${BOUTIQUE_QUOTE_FORM_ID}"></div>`);
-  console.log(`<script src="${BASE_URL}/api/embed/form/${BOUTIQUE_QUOTE_FORM_ID}" async></script>`);
 }
 
 main()
