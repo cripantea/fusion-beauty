@@ -149,6 +149,9 @@ model Tenant {
   /// Prenotazioni online confermate subito (come Treatwell/Fresha): l'agenda
   /// mostra solo orari liberi negli orari di lavoro. Spento: le conferma il centro.
   autoConfirmOnline Boolean  @default(true)
+  /// Prenotazione online (agenda sul sito e link "prenota"). Spento: la pagina dice
+  /// che per ora si prenota per telefono o WhatsApp e non si può prenotare da soli.
+  onlineBookingEnabled Boolean @default(true)
   /// Consensi informati (modelli, firme, avviso "Consenso" in agenda). Spento: tutto nascosto.
   consentsEnabled   Boolean  @default(true)
   icsFeedToken      String?  @unique

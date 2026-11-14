@@ -171,7 +171,8 @@ function slotsOf(plan: DayPlan, durationMinutes: number): Date[] {
 
 async function findActiveTenantBySlug(slug: string) {
   const tenant = await prisma.tenant.findUnique({ where: { slug } });
-  return tenant && tenant.isActive ? tenant : null;
+  // Prenotazione online sospesa dal centro: niente orari e niente prenotazioni.
+  return tenant && tenant.isActive && tenant.onlineBookingEnabled ? tenant : null;
 }
 
 async function findBookableService(tenantId: string, serviceId: string) {

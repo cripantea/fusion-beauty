@@ -14,6 +14,9 @@ export type PublicTenantWidgetData = {
     name: string;
     slug: string;
     logoUrl: string | null;
+    phone: string | null;
+    /** Spento: niente prenotazione, solo l'avviso "per ora chiamaci". */
+    onlineBookingEnabled: boolean;
   };
   services: PublicServiceDTO[];
 };
@@ -42,6 +45,8 @@ export async function getPublicTenantWidgetData(
       name: tenant.name,
       slug: tenant.slug,
       logoUrl: tenant.logoUrl,
+      phone: tenant.phone,
+      onlineBookingEnabled: tenant.onlineBookingEnabled,
     },
     services: services.map((service) => ({
       id: service.id,

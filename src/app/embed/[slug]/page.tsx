@@ -124,17 +124,36 @@ export default async function EmbedPage({ params, searchParams }: EmbedPageProps
         )}
         <div>
           <h1 className="font-heading text-2xl font-bold text-foreground">{tenant.name}</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">Prenota il tuo trattamento online</p>
+          {tenant.onlineBookingEnabled ? (
+            <p className="mt-0.5 text-sm text-muted-foreground">Prenota il tuo trattamento online</p>
+          ) : null}
         </div>
       </div>
       ) : null}
 
-      <WidgetBookingFlow
-        slug={tenant.slug}
-        services={services}
-        initialServiceId={services.length === 1 ? services[0].id : undefined}
-        prefill={prefill}
-      />
+      {tenant.onlineBookingEnabled ? (
+        <WidgetBookingFlow
+          slug={tenant.slug}
+          services={services}
+          initialServiceId={services.length === 1 ? services[0].id : undefined}
+          prefill={prefill}
+        />
+      ) : (
+        <div className="rounded-2xl border bg-card p-6 text-center">
+          <p className="text-base font-semibold text-foreground">Per ora le prenotazioni online sono sospese.</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Per prenotare chiamaci o scrivici su WhatsApp: ti troviamo subito l&apos;orario giusto.
+          </p>
+          {tenant.phone ? (
+            <a
+              href={`tel:${tenant.phone.replace(/\s/g, "")}`}
+              className="mt-4 inline-flex h-11 items-center justify-center rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground"
+            >
+              Chiama {tenant.phone}
+            </a>
+          ) : null}
+        </div>
+      )}
     </EmbedAutoHeight>
   );
 }

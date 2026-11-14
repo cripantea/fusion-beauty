@@ -93,7 +93,7 @@ export async function handleProposalReply(tenantId: string, quotedWamid: string,
     where: { messageId: quoted.id },
     include: {
       appointment: {
-        include: { client: true, service: true, extraServices: extraServicesSelect, tenant: { select: { slug: true } } },
+        include: { client: true, service: true, extraServices: extraServicesSelect, tenant: { select: { slug: true, onlineBookingEnabled: true } } },
       },
     },
   });
@@ -151,7 +151,10 @@ export async function handleProposalReply(tenantId: string, quotedWamid: string,
   await sendWhatsappText(tenantId, {
     phone: appointment.client.phone,
     clientId: appointment.client.id,
-    body: `Nessun problema! Ti scriviamo a breve con un altro orario. Se preferisci, puoi anche sceglierlo tu qui: ${base}/embed/${appointment.tenant.slug} oppure dirci qui quando ti è più comodo.`,
+    // Il link per scegliere da sola solo se la prenotazione online è accesa.
+    body: appointment.tenant.onlineBookingEnabled
+      ? `Nessun problema! Ti scriviamo a breve con un altro orario. Se preferisci, puoi anche sceglierlo tu qui: ${base}/embed/${appointment.tenant.slug} oppure dirci qui quando ti è più comodo.`
+      : "Nessun problema! Ti scriviamo a breve con un altro orario. Se preferisci, dicci qui quando ti è più comodo.",
   });
   return true;
 }
