@@ -623,6 +623,9 @@ model WhatsappMessage {
   status       WhatsappMessageStatus
   body         String                @db.Text
   templateName String?
+  /// Foto, vocale, video o documento: id del file su Meta (si scarica tramite Fusion WA) e tipo.
+  mediaId      String?
+  mediaType    String?
   wamid        String?               @unique
   error        String?
   /// Evita doppi invii automatici (es. "reminder:<appointmentId>").

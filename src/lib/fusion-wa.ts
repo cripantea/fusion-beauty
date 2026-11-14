@@ -141,6 +141,22 @@ export async function createTemplate(input: {
   return { ok: true };
 }
 
+/**
+ * Scarica un file ricevuto su WhatsApp (foto, vocale…) tramite Fusion WA, che ha il token Meta.
+ * Restituisce la risposta così com'è, da girare al browser.
+ */
+export async function fetchMedia(tenantId: string, mediaId: string): Promise<Response | null> {
+  try {
+    return await fetch(`${FUSION_WA_BASE_URL}/api/v1/media/${encodeURIComponent(mediaId)}?${new URLSearchParams({ externalCustomerId: tenantId })}`, {
+      headers: authHeaders(),
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch {
+    return null;
+  }
+}
+
 export async function deleteTemplate(tenantId: string, name: string, externalId: string | null): Promise<{ ok: true } | { ok: false; error: string }> {
   const query = new URLSearchParams({ externalCustomerId: tenantId, name, ...(externalId ? { externalId } : {}) });
   const res = await request(`/api/v1/templates?${query}`, { method: "DELETE" });

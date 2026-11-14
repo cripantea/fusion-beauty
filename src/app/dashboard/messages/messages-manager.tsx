@@ -341,6 +341,33 @@ export function MessagesManager({
   );
 }
 
+/** Vocale da ascoltare, foto da vedere, file da aprire (scaricati al momento tramite Fusion WA). */
+function MediaPreview({ media }: { media: NonNullable<MessageDTO["media"]> }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return <p className="text-xs text-zinc-500">File non più disponibile (WhatsApp lo tiene circa 30 giorni).</p>;
+  }
+  if (media.kind === "audio") {
+    return <audio controls preload="none" src={media.url} onError={() => setFailed(true)} className="my-1 h-10 w-64 max-w-full" />;
+  }
+  if (media.kind === "image") {
+    return (
+      <a href={media.url} target="_blank" rel="noopener noreferrer">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={media.url} alt="Foto" loading="lazy" onError={() => setFailed(true)} className="my-1 max-h-64 rounded-lg object-cover" />
+      </a>
+    );
+  }
+  if (media.kind === "video") {
+    return <video controls preload="none" src={media.url} onError={() => setFailed(true)} className="my-1 max-h-64 rounded-lg" />;
+  }
+  return (
+    <a href={media.url} target="_blank" rel="noopener noreferrer" className="my-1 block text-sm font-medium text-sky-700 underline">
+      Apri il file
+    </a>
+  );
+}
+
 function Bubble({ message }: { message: MessageDTO }) {
   const outbound = message.direction === "OUTBOUND";
   const StatusIcon =
@@ -357,7 +384,10 @@ function Bubble({ message }: { message: MessageDTO }) {
         {message.automatic ? (
           <p className="mb-0.5 text-[10px] font-semibold tracking-wide text-zinc-500 uppercase">Messaggio automatico</p>
         ) : null}
-        <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.body}</p>
+        {message.media ? <MediaPreview media={message.media} /> : null}
+        {message.media && /^(🎤 Messaggio vocale|📷 Foto|🎥 Video|Sticker)$/.test(message.body) ? null : (
+          <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.body}</p>
+        )}
         <p className="mt-1 flex items-center justify-end gap-1 text-[10px] text-zinc-400">
           {timeFormatter.format(new Date(message.createdAt))}
           {outbound ? <StatusIcon className={cn("size-3", message.status === "READ" && "text-sky-500", message.status === "FAILED" && "text-red-500")} /> : null}

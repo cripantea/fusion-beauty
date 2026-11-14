@@ -120,6 +120,8 @@ type MetaValue = {
   }[];
   contacts?: { wa_id?: string; profile?: { name?: string } }[];
   messages?: { from?: string; id?: string; timestamp?: string; type?: string; [key: string]: unknown }[];
+  /** Messaggi scritti dal centro nell'app WhatsApp Business sul telefono (Coexistence). */
+  message_echoes?: { from?: string; to?: string; id?: string; timestamp?: string; type?: string; [key: string]: unknown }[];
   statuses?: { id?: string; status?: string; errors?: { title?: string; message?: string }[] }[];
 };
 
@@ -145,6 +147,18 @@ export function inboundMessageText(message: { type?: string; [key: string]: unkn
   };
   const caption = str(obj(message[message.type ?? ""]).caption);
   return [labels[message.type ?? ""] ?? `[Messaggio ${message.type}]`, caption].filter(Boolean).join(" · ");
+}
+
+const MEDIA_TYPES = new Set(["image", "audio", "video", "document", "sticker"]);
+
+/** File allegato (foto, vocale…): id su Meta e tipo, per aprirlo da Messaggi. */
+export function messageMedia(message: { type?: string; [key: string]: unknown }): { mediaId: string | null; mediaType: string | null } {
+  if (!message.type || !MEDIA_TYPES.has(message.type)) return { mediaId: null, mediaType: null };
+  const media = message[message.type] as { id?: unknown; mime_type?: unknown } | undefined;
+  return {
+    mediaId: typeof media?.id === "string" ? media.id : null,
+    mediaType: typeof media?.mime_type === "string" ? media.mime_type : message.type,
+  };
 }
 
 const STATUS_RANK = { SENT: 1, DELIVERED: 2, READ: 3, FAILED: 4, RECEIVED: 0 } as const;
@@ -175,6 +189,7 @@ export async function ingestWebhookPayload(payload: { entry?: { changes?: { valu
             direction: "INBOUND",
             status: "RECEIVED",
             body,
+            ...messageMedia(message),
             wamid: message.id,
             createdAt,
           },
@@ -192,6 +207,29 @@ export async function ingestWebhookPayload(payload: { entry?: { changes?: { valu
           await stopRunsOnReply(tenantId, clientId);
           await triggerAutomations(tenantId, "WHATSAPP_RECEIVED", { clientId, triggerKey: `message:${message.id}`, filter: { message: body } });
         }
+      }
+
+      // Scritti dal telefono (app WhatsApp Business): finiscono nella chat come messaggi del centro.
+      // Niente automazioni: li ha scritti una persona.
+      for (const echo of value.message_echoes ?? []) {
+        if (!echo.to || !echo.id || echo.type === "reaction") continue;
+        const known = await prisma.whatsappMessage.findUnique({ where: { wamid: echo.id }, select: { id: true } });
+        if (known) continue;
+        const phone = normalizePhoneForWhatsapp(echo.to);
+        await prisma.whatsappMessage.create({
+          data: {
+            tenantId,
+            clientId: await findClientIdByPhone(tenantId, phone),
+            phone,
+            direction: "OUTBOUND",
+            status: "SENT",
+            body: inboundMessageText(echo),
+            ...messageMedia(echo),
+            wamid: echo.id,
+            createdAt: echo.timestamp ? new Date(Number(echo.timestamp) * 1000) : new Date(),
+          },
+        });        // Ha risposto dal telefono: la chat è letta anche qui.
+        await prisma.whatsappMessage.updateMany({ where: { tenantId, phone, direction: "INBOUND", readAt: null }, data: { readAt: new Date() } });
       }
 
       if (value.history?.length) {
@@ -304,6 +342,7 @@ async function importHistory(tenantId: string, value: MetaValue) {
             direction: inbound ? "INBOUND" : "OUTBOUND",
             status: inbound ? "RECEIVED" : (statusMap[(message.history_context?.status ?? "").toLowerCase()] ?? "SENT"),
             body: inboundMessageText(message),
+            ...messageMedia(message),
             wamid: message.id,
             readAt: inbound ? new Date() : null,
             createdAt,

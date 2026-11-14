@@ -29,6 +29,8 @@ export type MessageDTO = {
   templateName: string | null;
   /** Partito da solo (conferma, promemoria…), non scritto da qualcuno del centro. */
   automatic: boolean;
+  /** Foto, vocale o file: indirizzo per aprirlo (passa da Fusion WA). */
+  media: { kind: "image" | "audio" | "video" | "file"; url: string } | null;
   error: string | null;
   createdAt: string;
 };
@@ -38,6 +40,13 @@ export type ThreadDTO = {
   /** Testo libero consentito: la cliente ha scritto nelle ultime 24 ore. */
   windowOpen: boolean;
 };
+
+function mediaKind(type: string | null): "image" | "audio" | "video" | "file" {
+  if (type?.startsWith("image") || type === "sticker") return "image";
+  if (type?.startsWith("audio")) return "audio";
+  if (type?.startsWith("video")) return "video";
+  return "file";
+}
 
 export async function getWhatsappStatus(): Promise<{ connected: boolean; phoneNumber: string | null }> {
   const { tenantId } = await getTenantContext();
@@ -100,6 +109,7 @@ export async function getThread(phone: string): Promise<ThreadDTO> {
       body: m.body,
       templateName: m.templateName,
       automatic: m.dedupeKey !== null,
+      media: m.mediaId ? { kind: mediaKind(m.mediaType), url: `/api/whatsapp/media/${m.id}` } : null,
       error: m.error,
       createdAt: m.createdAt.toISOString(),
     })),
