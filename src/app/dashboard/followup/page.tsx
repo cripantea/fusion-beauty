@@ -1,20 +1,49 @@
-import { Cake, CalendarClock, MessageCircle, TriangleAlert } from "lucide-react";
+import {
+  Cake,
+  CalendarClock,
+  MessageCircle,
+  TriangleAlert,
+} from "lucide-react";
 
 import { EmptyState, PageHeader, Panel } from "@/components/boutique";
 import { Button } from "@/components/ui/button";
-import { appointmentServiceNames, extraServicesSelect } from "@/lib/appointment-services";
+import {
+  appointmentServiceNames,
+  extraServicesSelect,
+} from "@/lib/appointment-services";
 import { getTenantContext } from "@/lib/auth-context";
 import { whatsappUrl } from "@/lib/format";
-import { getInactiveClients, getUpcomingBirthdays, INACTIVE_MONTHS } from "@/lib/insights";
+import {
+  activeAutomationTriggers,
+  getInactiveClients,
+  getUpcomingBirthdays,
+  INACTIVE_MONTHS,
+} from "@/lib/insights";
 import { prisma } from "@/lib/prisma";
 
-const timeFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" });
-const dayFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", weekday: "long", day: "numeric", month: "long" });
-const birthdayFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "long" });
+const timeFormatter = new Intl.DateTimeFormat("it-IT", {
+  timeZone: "Europe/Rome",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const dayFormatter = new Intl.DateTimeFormat("it-IT", {
+  timeZone: "Europe/Rome",
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+});
+const birthdayFormatter = new Intl.DateTimeFormat("it-IT", {
+  timeZone: "Europe/Rome",
+  day: "numeric",
+  month: "long",
+});
 
 function monthsAgo(date: Date) {
   const now = new Date();
-  const months = (now.getFullYear() - date.getFullYear()) * 12 + now.getMonth() - date.getMonth();
+  const months =
+    (now.getFullYear() - date.getFullYear()) * 12 +
+    now.getMonth() -
+    date.getMonth();
   return Math.max(months, 1);
 }
 
@@ -41,7 +70,7 @@ export default async function FollowUpPage() {
   const tomorrowEnd = new Date(tomorrowStart);
   tomorrowEnd.setHours(23, 59, 59, 999);
 
-  const [inactive, birthdays, tomorrow, tenant] = await Promise.all([
+  const [inactive, birthdays, tomorrow, tenant, automatic] = await Promise.all([
     getInactiveClients(tenantId),
     getUpcomingBirthdays(tenantId, 7),
     prisma.appointment.findMany({
@@ -57,15 +86,26 @@ export default async function FollowUpPage() {
         extraServices: extraServicesSelect,
       },
     }),
-    prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true } }),
+    prisma.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { name: true },
+    }),
+    activeAutomationTriggers(tenantId),
   ]);
+  // Quello che parte già da solo su WhatsApp non si ripropone da mandare a mano.
+  const autoReminders = automatic.has("BEFORE_APPOINTMENT");
+  const autoBirthdays = automatic.has("BIRTHDAY");
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <PageHeader
         eyebrow="Da ricontattare"
         title="Nessuna cliente dimenticata."
-        description="Promemoria, compleanni e clienti che non tornano: un tocco e il messaggio WhatsApp è pronto."
+        description={
+          autoReminders
+            ? "Clienti che non tornano e compleanni in arrivo. I promemoria degli appuntamenti partono da soli su WhatsApp."
+            : "Promemoria, compleanni e clienti che non tornano: un tocco e il messaggio WhatsApp è pronto."
+        }
       />
 
       <Panel
@@ -78,14 +118,20 @@ export default async function FollowUpPage() {
         ) : (
           <ul className="divide-y divide-wine/10">
             {inactive.map((client) => (
-              <li key={client.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
+              <li
+                key={client.id}
+                className="flex flex-wrap items-center gap-3 px-5 py-3"
+              >
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold">
                     {client.firstName} {client.lastName}
                   </div>
                   <div className="truncate text-xs text-muted-foreground">
                     ultima visita {monthsAgo(client.lastVisit)} mesi fa
-                    {client.lastServiceName ? ` · ${client.lastServiceName}` : ""} · {client.visits}{" "}
+                    {client.lastServiceName
+                      ? ` · ${client.lastServiceName}`
+                      : ""}{" "}
+                    · {client.visits}{" "}
                     {client.visits === 1 ? "visita" : "visite"}
                   </div>
                 </div>
@@ -93,7 +139,7 @@ export default async function FollowUpPage() {
                   label="Ricontatta"
                   href={whatsappUrl(
                     client.phone,
-                    `Ciao ${client.firstName} 😊 è passato un po' dall'ultima volta da ${tenant.name}. Ti va di fissare un nuovo appuntamento? Ti aspettiamo!`
+                    `Ciao ${client.firstName} 😊 è passato un po' dall'ultima volta da ${tenant.name}. Ti va di fissare un nuovo appuntamento? Ti aspettiamo!`,
                   )}
                 />
               </li>
@@ -102,44 +148,56 @@ export default async function FollowUpPage() {
         )}
       </Panel>
 
-      <Panel title="Promemoria per domani" icon={CalendarClock}>
-        {tomorrow.length === 0 ? (
-          <EmptyState>Nessun appuntamento domani.</EmptyState>
-        ) : (
-          <ul className="divide-y divide-mint-border/60">
-            {tomorrow.map((appointment) => (
-              <li key={appointment.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
-                <span className="rounded-lg border border-mint-border bg-card px-2.5 py-1 text-sm font-bold">
-                  {timeFormatter.format(appointment.startTime)}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-semibold">
-                    {appointment.client.firstName} {appointment.client.lastName}
+      {autoReminders ? null : (
+        <Panel title="Promemoria per domani" icon={CalendarClock}>
+          {tomorrow.length === 0 ? (
+            <EmptyState>Nessun appuntamento domani.</EmptyState>
+          ) : (
+            <ul className="divide-y divide-mint-border/60">
+              {tomorrow.map((appointment) => (
+                <li
+                  key={appointment.id}
+                  className="flex flex-wrap items-center gap-3 px-5 py-3"
+                >
+                  <span className="rounded-lg border border-mint-border bg-card px-2.5 py-1 text-sm font-bold">
+                    {timeFormatter.format(appointment.startTime)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold">
+                      {appointment.client.firstName}{" "}
+                      {appointment.client.lastName}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {appointmentServiceNames(appointment)}
+                    </div>
                   </div>
-                  <div className="truncate text-xs text-muted-foreground">{appointmentServiceNames(appointment)}</div>
-                </div>
-                <WhatsappButton
-                  label="Invia promemoria"
-                  href={whatsappUrl(
-                    appointment.client.phone,
-                    `Ciao ${appointment.client.firstName} 😊 ti ricordiamo il tuo appuntamento domani (${dayFormatter.format(appointment.startTime)}) alle ${timeFormatter.format(appointment.startTime)}. A presto!`
-                  )}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
+                  <WhatsappButton
+                    label="Invia promemoria"
+                    href={whatsappUrl(
+                      appointment.client.phone,
+                      `Ciao ${appointment.client.firstName} 😊 ti ricordiamo il tuo appuntamento domani (${dayFormatter.format(appointment.startTime)}) alle ${timeFormatter.format(appointment.startTime)}. A presto!`,
+                    )}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      )}
 
       <Panel title="Compleanni nei prossimi 7 giorni" icon={Cake}>
         {birthdays.length === 0 ? (
           <EmptyState>
-            Nessun compleanno in arrivo. Le date si raccolgono dal questionario o dalla scheda cliente.
+            Nessun compleanno in arrivo. Le date si raccolgono dal questionario
+            o dalla scheda cliente.
           </EmptyState>
         ) : (
           <ul className="divide-y divide-mint-border/60">
             {birthdays.map((client) => (
-              <li key={client.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
+              <li
+                key={client.id}
+                className="flex flex-wrap items-center gap-3 px-5 py-3"
+              >
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold">
                     {client.firstName} {client.lastName}
@@ -150,13 +208,19 @@ export default async function FollowUpPage() {
                       : `${birthdayFormatter.format(new Date(2000, client.month - 1, client.day))} · tra ${client.inDays} ${client.inDays === 1 ? "giorno" : "giorni"}`}
                   </div>
                 </div>
-                <WhatsappButton
-                  label="Auguri"
-                  href={whatsappUrl(
-                    client.phone,
-                    `Tanti auguri ${client.firstName} 🎂🎉 Tutto il team di ${tenant.name} ti augura una splendida giornata!`
-                  )}
-                />
+                {autoBirthdays ? (
+                  <span className="text-xs text-muted-foreground">
+                    Auguri automatici su WhatsApp
+                  </span>
+                ) : (
+                  <WhatsappButton
+                    label="Auguri"
+                    href={whatsappUrl(
+                      client.phone,
+                      `Tanti auguri ${client.firstName} 🎂🎉 Tutto il team di ${tenant.name} ti augura una splendida giornata!`,
+                    )}
+                  />
+                )}
               </li>
             ))}
           </ul>

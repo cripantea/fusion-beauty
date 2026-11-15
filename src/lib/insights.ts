@@ -189,3 +189,13 @@ export async function getUpcomingBirthdays(tenantId: string, withinDays = 7): Pr
   }
   return result.sort((a, b) => a.inDays - b.inDays);
 }
+
+/** I tipi di messaggio che il centro manda già da solo (automazioni attive). */
+export async function activeAutomationTriggers(tenantId: string) {
+  const rows = await prisma.automation.findMany({
+    where: { tenantId, status: "ACTIVE" },
+    select: { trigger: true },
+    distinct: ["trigger"],
+  });
+  return new Set(rows.map((row) => row.trigger));
+}

@@ -4,7 +4,7 @@ import { appointmentInclude, toAppointmentDTO, type AppointmentDTO } from "@/app
 import { appointmentTotalPrice } from "@/lib/appointment-services";
 import { findAppointmentsMissingConsent } from "@/lib/consents";
 import { getTenantContext } from "@/lib/auth-context";
-import { getInactiveClients, getUpcomingBirthdays } from "@/lib/insights";
+import { activeAutomationTriggers, getInactiveClients, getUpcomingBirthdays } from "@/lib/insights";
 import { actionableRequestsWhere } from "@/lib/booking-proposals";
 import { prisma } from "@/lib/prisma";
 import { romeDayRange } from "@/lib/rome-time";
@@ -43,6 +43,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     birthdays,
     tomorrowReminders,
     pendingRequests,
+    automatic,
   ] = await Promise.all([
     prisma.appointment.findMany({
       where: { tenantId, startTime: { gte: start, lte: end } },
@@ -65,6 +66,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       },
     }),
     prisma.appointment.count({ where: actionableRequestsWhere(tenantId) }),
+    activeAutomationTriggers(tenantId),
   ]);
 
   const missingConsent = await findAppointmentsMissingConsent(tenantId, appointments);
@@ -92,7 +94,8 @@ export async function getDashboardData(): Promise<DashboardData> {
     followUp: {
       inactive: inactive.length,
       birthdays: birthdays.length,
-      tomorrowReminders,
+      // Con il promemoria automatico attivo non c'è niente da mandare a mano.
+      tomorrowReminders: automatic.has("BEFORE_APPOINTMENT") ? 0 : tomorrowReminders,
       pendingRequests,
     },
   };
