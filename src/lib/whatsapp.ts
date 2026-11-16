@@ -146,6 +146,9 @@ export function inboundMessageText(message: { type?: string; [key: string]: unkn
     contacts: "👤 Contatto",
     reaction: `Reazione ${str(obj(message.reaction).emoji)}`,
   };
+  // Meta non passa il contenuto di alcuni messaggi (es. gli avvisi con template mandati da un'altra azienda):
+  // sul telefono si leggono, qui arriva solo il segnaposto.
+  if (message.type === "unsupported") return "Messaggio che si legge solo su WhatsApp dal telefono";
   const caption = str(obj(message[message.type ?? ""]).caption);
   return [labels[message.type ?? ""] ?? `[Messaggio ${message.type}]`, caption].filter(Boolean).join(" · ");
 }
