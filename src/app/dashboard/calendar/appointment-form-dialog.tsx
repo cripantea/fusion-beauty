@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertTriangle, Plus } from "lucide-react";
+import { AlertTriangle, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
@@ -59,6 +59,21 @@ function matchesClient(item: ClientOption, query: string) {
   if (item.label.toLowerCase().includes(q)) return true;
   const digits = q.replace(/\D/g, "");
   return digits.length >= 3 && item.label.replace(/\D/g, "").includes(digits);
+}
+
+/** Minuscole e senza accenti, così "puli" trova "Pulizia" e "epilazione" trova "Épilazione". */
+function plain(text: string) {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+/** Tutte le parole scritte devono comparire nel nome del trattamento, in qualsiasi ordine. */
+function matchesService(name: string, query: string) {
+  const words = plain(query).split(/\s+/).filter(Boolean);
+  const target = plain(name);
+  return words.every((word) => target.includes(word));
 }
 
 export function Chip({
@@ -146,6 +161,7 @@ export function AppointmentFormDialog({
   const [quickClientOpen, setQuickClientOpen] = useState(false);
   const [createdClients, setCreatedClients] = useState<ClientListItemDTO[]>([]);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [serviceQuery, setServiceQuery] = useState("");
   // Orario accavallato: si mostra l'avviso con "Salva comunque".
   const [clash, setClash] = useState<string | null>(null);
   // Modifica di cliente, trattamento, operatrice o orario: prima si mostra cosa cambia e si conferma.
@@ -281,6 +297,7 @@ export function AppointmentFormDialog({
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- si riparte dall'operatrice dell'appuntamento o della colonna toccata
     setPreferredOperatorId(appointment?.operator?.id ?? defaultOperatorId ?? NO_OPERATOR_VALUE);
+    setServiceQuery("");
   }, [open, appointment, defaultDate, defaultOperatorId, defaultTime, form]);
 
   // La richiesta di conferma compare in fondo: si porta in vista da sola.
@@ -510,15 +527,39 @@ export function AppointmentFormDialog({
                 <FormItem>
                   <FormLabel>Trattamenti</FormLabel>
                   <p className="-mt-1 text-xs text-muted-foreground">Tocca per aggiungere o togliere: puoi sceglierne più di uno.</p>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      type="search"
+                      value={serviceQuery}
+                      onChange={(event) => setServiceQuery(event.target.value)}
+                      onKeyDown={(event) => {
+                        // Invio non salva l'appuntamento mentre si cerca.
+                        if (event.key === "Enter") event.preventDefault();
+                      }}
+                      placeholder="Cerca un trattamento..."
+                      aria-label="Cerca un trattamento"
+                      className="h-10 pl-9"
+                    />
+                  </div>
+                  {serviceQuery.trim() && !services.some((service) => matchesService(service.name, serviceQuery)) ? (
+                    <p className="text-sm text-muted-foreground">Nessun trattamento con questo nome.</p>
+                  ) : null}
                   <div className="grid max-h-48 gap-2 overflow-y-auto sm:grid-cols-2">
                     {services.map((service) => {
                       const active = field.value.some((item) => item.serviceId === service.id);
+                      // Quelli già scelti restano in vista anche mentre si cerca altro.
+                      if (!active && !matchesService(service.name, serviceQuery)) return null;
                       return (
                         <button
                           key={service.id}
                           type="button"
                           aria-pressed={active}
-                          onClick={() => toggleService(service.id)}
+                          onClick={() => {
+                            toggleService(service.id);
+                            // Scelto: la ricerca si svuota, pronta per il prossimo.
+                            setServiceQuery("");
+                          }}
                           className={cn(
                             "relative rounded-xl border p-3 text-left transition-colors",
                             active
