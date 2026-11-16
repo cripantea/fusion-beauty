@@ -6,13 +6,14 @@ import {
   endOfDay,
   endOfWeek,
   format,
+  isSameDay,
   startOfDay,
   startOfWeek,
   subDays,
   subWeeks,
 } from "date-fns";
 import { it } from "date-fns/locale";
-import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, Coffee } from "lucide-react";
+import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon, Coffee, Plus } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import type { ClientListItemDTO } from "@/app/dashboard/clients/actions";
@@ -20,6 +21,7 @@ import { PaymentDialog } from "@/app/dashboard/payments/payment-dialog";
 import type { ServiceDTO } from "@/app/dashboard/services/actions";
 import { appointmentServiceNames, appointmentTotalPrice } from "@/lib/appointment-services";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import { PageHeader } from "@/components/boutique";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -33,6 +35,7 @@ import {
   type StaffBlockDTO,
 } from "./block-actions";
 import type { AppointmentDTO } from "./dto";
+import { DayList } from "./day-list";
 import { OperatorsGrid } from "./operators-grid";
 import { PaymentLinkDialog, type PaymentLinkTarget } from "@/app/dashboard/payment-links/payment-link-dialog";
 
@@ -41,7 +44,17 @@ import { AppointmentFormDialog } from "./appointment-form-dialog";
 import { CalendarGrid } from "./calendar-grid";
 import { StaffBlockDialog } from "./staff-block-dialog";
 
-type ViewMode = "operators" | "day" | "week";
+type ViewMode = "list" | "operators" | "day" | "week";
+
+/** La vista scelta resta la stessa alla prossima apertura, su quel dispositivo. */
+const VIEW_KEY = "fusion-beauty:agenda-view";
+const VIEW_LABELS: { mode: ViewMode; label: string; className?: string }[] = [
+  { mode: "list", label: "Lista" },
+  { mode: "operators", label: "Operatrici" },
+  // Sul telefono la giornata si legge già in Lista.
+  { mode: "day", label: "Giorno", className: "hidden sm:inline-flex" },
+  { mode: "week", label: "Settimana" },
+];
 
 type CalendarManagerProps = {
   initialAppointments: AppointmentDTO[];
@@ -92,6 +105,30 @@ export function CalendarManager({
   const [editingBlock, setEditingBlock] = useState<StaffBlockDTO | null>(null);
   const [clientOptions, setClientOptions] = useState(clients);
   const isFirstRender = useRef(true);
+
+  // Sul telefono si parte dalla Lista; se ne è stata scelta un'altra, vale quella.
+  useEffect(() => {
+    let saved: string | null = null;
+    try {
+      saved = window.localStorage.getItem(VIEW_KEY);
+    } catch {
+      // Memoria del browser bloccata: si resta sulla vista di partenza.
+    }
+    const known = VIEW_LABELS.some((view) => view.mode === saved);
+    const phone = window.matchMedia("(max-width: 639px)").matches;
+    const wanted = known ? (saved as ViewMode) : phone ? "list" : null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- la larghezza dello schermo si conosce solo nel browser
+    if (wanted && wanted !== "operators") setViewMode(wanted);
+  }, []);
+
+  function chooseView(mode: ViewMode) {
+    setViewMode(mode);
+    try {
+      window.localStorage.setItem(VIEW_KEY, mode);
+    } catch {
+      // Senza memoria del browser la scelta vale solo per questa visita.
+    }
+  }
 
   const range =
     viewMode !== "week"
@@ -166,28 +203,66 @@ export function CalendarManager({
   const visibleAppointments = appointments.filter((appointment) => appointment.status !== "CANCELLED");
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Agenda del centro"
-        title="Un'agenda semplice per tutto il centro."
-        description="Ogni operatrice vede i propri appuntamenti. Tu vedi tutto il centro in un'unica schermata."
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" className="h-10 rounded-xl px-4" onClick={() => openNewBlock(isAdmin ? undefined : currentUserId)}>
-              <Coffee className="size-4" />
-              Impegno
-            </Button>
-            <Button className="h-10 rounded-xl px-4" onClick={() => openNewAppointment()}>
-              Nuovo appuntamento
-            </Button>
-          </div>
-        }
-      />
+    <div className="space-y-3 sm:space-y-6">
+      <div className="hidden sm:block">
+        <PageHeader
+          eyebrow="Agenda del centro"
+          title="Un'agenda semplice per tutto il centro."
+          description="Ogni operatrice vede i propri appuntamenti. Tu vedi tutto il centro in un'unica schermata."
+          actions={
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" className="h-10 rounded-xl px-4" onClick={() => openNewBlock(isAdmin ? undefined : currentUserId)}>
+                <Coffee className="size-4" />
+                Impegno
+              </Button>
+              <Button className="h-10 rounded-xl px-4" onClick={() => openNewAppointment()}>
+                Nuovo appuntamento
+              </Button>
+            </div>
+          }
+        />
+      </div>
+      {/* Telefono: niente titoli, subito i due pulsanti a tutta larghezza. */}
+      <div className="flex gap-2 sm:hidden">
+        <Button className="h-12 flex-1 rounded-xl text-base" onClick={() => openNewAppointment()}>
+          <Plus className="size-5" />
+          Nuovo appuntamento
+        </Button>
+        <Button
+          variant="outline"
+          className="h-12 rounded-xl px-4"
+          onClick={() => openNewBlock(isAdmin ? undefined : currentUserId)}
+        >
+          <Coffee className="size-4" />
+          Impegno
+        </Button>
+      </div>
 
-      <Card>
+      <Card className="[--card-spacing:--spacing(3)] sm:[--card-spacing:--spacing(4)]">
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
+            {/* Telefono: frecce grandi ai lati del giorno, scritto per esteso. */}
+            <div className="flex w-full items-center gap-2 sm:hidden">
+              <Button variant="outline" className="size-11 shrink-0 rounded-xl" onClick={goBack} aria-label="Giorno precedente">
+                <ChevronLeftIcon className="size-5" />
+              </Button>
+              <Popover>
+                <PopoverTrigger render={<Button variant="outline" className="h-11 min-w-0 flex-1 rounded-xl text-base font-semibold capitalize" />}>
+                  <CalendarIcon className="size-4" />
+                  <span className="truncate">
+                    {isSameDay(currentDate, new Date()) ? "Oggi · " : ""}
+                    {format(currentDate, "EEE d MMMM", { locale: it })}
+                  </span>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar mode="single" selected={currentDate} onSelect={(date) => date && setCurrentDate(date)} />
+                </PopoverContent>
+              </Popover>
+              <Button variant="outline" className="size-11 shrink-0 rounded-xl" onClick={goForward} aria-label="Giorno successivo">
+                <ChevronRightIcon className="size-5" />
+              </Button>
+            </div>
+            <div className="hidden items-center gap-2 sm:flex">
               <Button variant="outline" size="sm" onClick={goToday}>
                 Oggi
               </Button>
@@ -210,37 +285,48 @@ export function CalendarManager({
                   />
                 </PopoverContent>
               </Popover>
-              {isPending ? (
-                <span className="text-sm text-muted-foreground">Caricamento...</span>
-              ) : null}
+              {isPending ? <span className="text-sm text-muted-foreground">Caricamento...</span> : null}
             </div>
-            <div className="flex items-center gap-1 rounded-lg border p-1">
-              <Button
-                variant={viewMode === "operators" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("operators")}
-              >
-                Operatrici
-              </Button>
-              <Button
-                variant={viewMode === "day" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("day")}
-              >
-                Giorno
-              </Button>
-              <Button
-                variant={viewMode === "week" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("week")}
-              >
-                Settimana
-              </Button>
+            <div className="flex w-full items-center gap-2 sm:w-auto">
+              <div className="flex flex-1 items-center gap-1 rounded-lg border p-1 sm:flex-none">
+                {VIEW_LABELS.map((view) => (
+                  <Button
+                    key={view.mode}
+                    variant={viewMode === view.mode ? "secondary" : "ghost"}
+                    size="sm"
+                    className={cn("h-9 flex-1 sm:h-7 sm:flex-none", view.className)}
+                    onClick={() => chooseView(view.mode)}
+                  >
+                    {view.label}
+                  </Button>
+                ))}
+              </div>
+              {isSameDay(currentDate, new Date()) ? null : (
+                <Button variant="outline" className="h-11 rounded-xl sm:hidden" onClick={goToday}>
+                  Oggi
+                </Button>
+              )}
+              {isPending ? <span className="text-xs text-muted-foreground sm:hidden">Carico...</span> : null}
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          {viewMode === "operators" ? (
+          {viewMode === "list" ? (
+            <DayList
+              appointments={visibleAppointments}
+              operators={operators}
+              blocks={blocks}
+              absences={absences}
+              date={currentDate}
+              onAppointmentClick={setSelectedAppointment}
+              onBlockClick={(block) => {
+                setEditingBlock(block);
+                setBlockDialogOpen(true);
+              }}
+              onCreate={(operatorId) => openNewAppointment(operatorId ?? undefined)}
+              paymentsEnabled={paymentsEnabled}
+            />
+          ) : viewMode === "operators" ? (
             <OperatorsGrid
               appointments={visibleAppointments}
               operators={operators}

@@ -29,12 +29,12 @@ const SNAP_MINUTES = 15;
 
 const PX_PER_MINUTE = HOUR_HEIGHT / 60;
 
-const palettes = [
-  { head: "bg-emerald-100 text-emerald-900 border-emerald-200", card: "bg-emerald-50 border-emerald-200 text-emerald-950" },
-  { head: "bg-teal-100 text-teal-900 border-teal-200", card: "bg-teal-50 border-teal-200 text-teal-950" },
-  { head: "bg-violet-100 text-violet-900 border-violet-200", card: "bg-violet-50 border-violet-200 text-violet-950" },
-  { head: "bg-amber-100 text-amber-900 border-amber-200", card: "bg-amber-50 border-amber-200 text-amber-950" },
-  { head: "bg-sky-100 text-sky-900 border-sky-200", card: "bg-sky-50 border-sky-200 text-sky-950" },
+export const palettes = [
+  { head: "bg-emerald-100 text-emerald-900 border-emerald-200", card: "bg-emerald-50 border-emerald-200 text-emerald-950", bar: "bg-emerald-500" },
+  { head: "bg-teal-100 text-teal-900 border-teal-200", card: "bg-teal-50 border-teal-200 text-teal-950", bar: "bg-teal-500" },
+  { head: "bg-violet-100 text-violet-900 border-violet-200", card: "bg-violet-50 border-violet-200 text-violet-950", bar: "bg-violet-500" },
+  { head: "bg-amber-100 text-amber-900 border-amber-200", card: "bg-amber-50 border-amber-200 text-amber-950", bar: "bg-amber-500" },
+  { head: "bg-sky-100 text-sky-900 border-sky-200", card: "bg-sky-50 border-sky-200 text-sky-950", bar: "bg-sky-500" },
 ];
 
 const timeFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" });
@@ -175,6 +175,28 @@ type ColumnItem = {
   others: string;
 };
 
+/** Trattamenti con operatrici diverse: ognuna ha solo il suo tratto (in colonna o in lista). */
+export function operatorItems(appointments: AppointmentDTO[]) {
+  return appointments.flatMap((appointment) => {
+    const parts = appointmentBlocks(appointment);
+    return parts.map((part, index) => ({
+      appointment,
+      operatorId: part.operatorId,
+      startTime: part.startTime,
+      endTime: part.endTime,
+      names: part.names,
+      first: index === 0,
+      others: [
+        ...new Set(
+          appointment.services
+            .filter((service) => service.operator && service.operator.id !== part.operatorId)
+            .map((service) => service.operator!.firstName)
+        ),
+      ].join(" e "),
+    }));
+  });
+}
+
 type Column = {
   id: string | null;
   label: string;
@@ -207,25 +229,7 @@ export function OperatorsGrid({
   const dayKey = format(date, "yyyy-MM-dd");
   const dayAbsences = absences.filter((a) => a.date === dayKey);
 
-  // Trattamenti con operatrici diverse: ognuna vede nella sua colonna solo il suo tratto.
-  const dayItems = dayAppointments.flatMap((appointment) => {
-    const parts = appointmentBlocks(appointment);
-    return parts.map((part, index) => ({
-      appointment,
-      operatorId: part.operatorId,
-      startTime: part.startTime,
-      endTime: part.endTime,
-      names: part.names,
-      first: index === 0,
-      others: [
-        ...new Set(
-          appointment.services
-            .filter((service) => service.operator && service.operator.id !== part.operatorId)
-            .map((service) => service.operator!.firstName)
-        ),
-      ].join(" e "),
-    }));
-  });
+  const dayItems = operatorItems(dayAppointments);
 
   const columns: Column[] = operators.map((operator) => ({
     id: operator.id,
@@ -259,15 +263,18 @@ export function OperatorsGrid({
 
   return (
     <div className="rounded-lg border" style={{ overflow: "hidden" }}>
-      <div className="flex" style={{ overflowX: "auto" }}>
-        <div className="w-14 shrink-0 border-r">
+      {/* Un solo riquadro che scorre: i nomi restano fermi in alto e sempre allineati alle colonne. */}
+      <div ref={scrollRef} className="max-h-[calc(100dvh-250px)] overflow-auto sm:max-h-[calc(100vh-300px)]">
+      <div className="w-max min-w-full">
+      <div className="sticky top-0 z-30 flex bg-card">
+        <div className="w-10 shrink-0 border-r sm:w-14">
           <div className="h-10 border-b" />
         </div>
         {columns.map((column, index) => {
           const palette = palettes[index % palettes.length];
           const absentAllDay = column.absence && !column.absence.startTime;
           return (
-            <div key={column.id ?? "none"} className="min-w-[200px] flex-1 border-r last:border-r-0">
+            <div key={column.id ?? "none"} className="min-w-[104px] flex-1 border-r last:border-r-0 sm:min-w-[200px]">
               <div
                 className={cn(
                   "flex h-10 items-center justify-center gap-1.5 border-b text-xs font-bold uppercase tracking-wider",
@@ -283,17 +290,13 @@ export function OperatorsGrid({
         })}
       </div>
 
-      <div
-        ref={scrollRef}
-        className="flex"
-        style={{ overflowY: "auto", overflowX: "auto", maxHeight: "calc(100vh - 300px)" }}
-      >
-        <div className="w-14 shrink-0 border-r">
+      <div className="flex">
+        <div className="w-10 shrink-0 border-r sm:w-14">
           <div className="relative" style={{ height: gridHeight }}>
             {hours.map((hour) => (
               <div
                 key={hour}
-                className="absolute left-0 w-full -translate-y-1/2 pr-2 text-right text-xs text-muted-foreground"
+                className="absolute left-0 w-full -translate-y-1/2 pr-1 text-right text-[10px] text-muted-foreground sm:pr-2 sm:text-xs"
                 style={{ top: (hour - grid.startHour) * HOUR_HEIGHT }}
               >
                 {String(hour).padStart(2, "0")}:00
@@ -316,7 +319,7 @@ export function OperatorsGrid({
                 : [];
 
           return (
-            <div key={column.id ?? "none"} className="min-w-[200px] flex-1 border-r last:border-r-0">
+            <div key={column.id ?? "none"} className="min-w-[104px] flex-1 border-r last:border-r-0 sm:min-w-[200px]">
               <div
                 className="relative cursor-pointer"
                 style={{ height: gridHeight }}
@@ -401,7 +404,7 @@ export function OperatorsGrid({
                         onAppointmentClick(appointment);
                       }}
                       className={cn(
-                        "absolute inset-x-1 z-10 overflow-hidden rounded-lg border px-2 py-1 text-left text-xs shadow-sm transition hover:opacity-80",
+                        "absolute inset-x-0.5 z-10 overflow-hidden rounded-lg border px-1.5 py-1 text-left text-xs shadow-sm transition hover:opacity-80 sm:inset-x-1 sm:px-2",
                         column.id ? palette.card : "border-amber-300 bg-amber-50 text-amber-950",
                         cancelled && "opacity-55"
                       )}
@@ -455,6 +458,8 @@ export function OperatorsGrid({
             </div>
           );
         })}
+      </div>
+      </div>
       </div>
 
       <Dialog open={Boolean(pick)} onOpenChange={(open) => !open && setPick(null)}>
