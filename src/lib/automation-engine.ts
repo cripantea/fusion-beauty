@@ -393,6 +393,10 @@ async function evaluate(condition: Condition, tenantId: string, clientId: string
       return hasMarketingConsent(tenantId, clientId);
     case "REPLIED":
       return repliedSince(tenantId, clientId, since);
+    case "GOOGLE_REVIEW_LEFT": {
+      const client = await prisma.client.findUnique({ where: { id: clientId }, select: { googleReviewAt: true } });
+      return Boolean(client?.googleReviewAt);
+    }
   }
 }
 

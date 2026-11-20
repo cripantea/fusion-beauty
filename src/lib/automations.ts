@@ -50,6 +50,7 @@ export const CONDITION_FIELDS = [
   "HAS_EMAIL",
   "MARKETING_CONSENT",
   "REPLIED",
+  "GOOGLE_REVIEW_LEFT",
 ] as const;
 export type ConditionField = (typeof CONDITION_FIELDS)[number];
 
@@ -61,6 +62,7 @@ export const CONDITION_LABELS: Record<ConditionField, string> = {
   HAS_EMAIL: "Ha un'email in scheda",
   MARKETING_CONSENT: "Ha dato il consenso marketing",
   REPLIED: "Ha risposto su WhatsApp (da quando è entrata)",
+  GOOGLE_REVIEW_LEFT: "Ha già lasciato la recensione su Google",
 };
 
 const conditionSchema = z.object({

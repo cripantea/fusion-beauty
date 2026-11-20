@@ -338,3 +338,15 @@ export async function createQuestionnaireLink(
 
   return { success: true, questionnaire: await buildQuestionnaireLink(tenantId, client) };
 }
+
+/** Segna (o toglie) "ha già lasciato la recensione su Google": niente più richieste di recensione. */
+export async function setGoogleReviewLeft(
+  clientId: string,
+  left: boolean
+): Promise<{ success: true; googleReviewAt: Date | null } | { success: false; error: string }> {
+  const { tenantId } = await getTenantContext();
+  const googleReviewAt = left ? new Date() : null;
+  const updated = await prisma.client.updateMany({ where: { id: clientId, tenantId }, data: { googleReviewAt } });
+  if (updated.count === 0) return { success: false, error: "Cliente non trovata." };
+  return { success: true, googleReviewAt };
+}

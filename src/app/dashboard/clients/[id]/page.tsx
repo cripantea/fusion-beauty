@@ -18,6 +18,7 @@ import { getClientById } from "../actions";
 import { ClientConsentsCard } from "./client-consents-card";
 import { ClientDetailHeader } from "./client-detail-header";
 import { ClientPlansCard } from "./client-plans-card";
+import { GoogleReviewCard } from "./google-review-card";
 import { QuestionnaireCard } from "./questionnaire-card";
 
 const dateFormatter = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome",
@@ -65,6 +66,7 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
   }
 
   const now = new Date();
+  const review = await prisma.client.findFirst({ where: { id: client.id, tenantId }, select: { googleReviewAt: true } });
 
   const [consents, statsMap, appointments, nextAppointment, favorites, questionnaire] =
     await Promise.all([
@@ -202,6 +204,8 @@ export default async function ClientDetailPage({ params }: ClientDetailPageProps
             consents={consents}
           />
         ) : null}
+
+        <GoogleReviewCard clientId={client.id} googleReviewAt={review?.googleReviewAt ?? null} />
 
         <QuestionnaireCard
           clientId={client.id}

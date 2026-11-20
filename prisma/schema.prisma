@@ -277,6 +277,9 @@ model Client {
   healthNotes       String?   @db.Text
   acquisitionSource String?
   interests         String[]  @default([])
+  /// Ha già lasciato la recensione su Google (da quando lo sappiamo): niente
+  /// più richieste di recensione. Si segna dalla scheda cliente.
+  googleReviewAt    DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 

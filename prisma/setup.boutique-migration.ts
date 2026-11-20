@@ -200,11 +200,20 @@ const AUTOMATIONS: {
         type: "CONDITION",
         condition: { field: "FIRST_VISIT" },
         then: [
-          template(
-            "recensione_a",
-            "Ciao {{1}} 😊 Speriamo che la tua esperienza da noi sia stata piacevole. Se ti fa piacere, puoi lasciarci una recensione qui: https://g.page/r/CY_sL-BiyPcdEBM/review Mandaci lo screenshot e avrai 5€ di sconto sul prossimo trattamento. Grazie davvero 🩵",
-            ["{{nome}}"]
-          ),
+          {
+            // Chi ha già lasciato la recensione (spunta nella scheda cliente) non la riceve.
+            id: "se-recensita",
+            type: "CONDITION",
+            condition: { field: "GOOGLE_REVIEW_LEFT" },
+            then: [],
+            else: [
+              template(
+                "recensione_a",
+                "Ciao {{1}} 😊 Speriamo che la tua esperienza da noi sia stata piacevole. Se ti fa piacere, puoi lasciarci una recensione qui: https://g.page/r/CY_sL-BiyPcdEBM/review Mandaci lo screenshot e avrai 5€ di sconto sul prossimo trattamento. Grazie davvero 🩵",
+                ["{{nome}}"]
+              ),
+            ],
+          },
         ],
         else: [],
       },
