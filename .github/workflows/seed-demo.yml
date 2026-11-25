@@ -1,23 +1,24 @@
-name: Seed demo data
+name: Seed demo salone
 
 on:
   workflow_dispatch:
 
 jobs:
   seed:
-    name: Run demo seed on production
+    name: Crea/rinnova il Salone Demo in produzione
     runs-on: ubuntu-latest
     steps:
       - name: Seed via SSH
         uses: appleboy/ssh-action@v1
         env:
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          DEMO_PASSWORD: ${{ secrets.DEMO_PASSWORD }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SERVER_PORT }}
-          envs: DEPLOY_PATH
+          envs: DEPLOY_PATH,DEMO_PASSWORD
           timeout: 60s
           command_timeout: 10m
           script: |
@@ -28,7 +29,8 @@ jobs:
             echo "==> Migrazioni (in caso siano rimaste indietro)"
             docker compose -f docker-compose.prod.yml run --rm worker npx prisma migrate deploy
 
-            echo "==> Seed dati demo"
-            docker compose -f docker-compose.prod.yml run --rm worker npx tsx prisma/seed.ts
+            # Solo il centro "salone-demo": lo cancella e lo ricrea con le date di oggi.
+            echo "==> Salone Demo"
+            docker compose -f docker-compose.prod.yml run --rm -e DEMO_PASSWORD worker npx tsx prisma/seed.demo-salone.ts
 
             echo "==> Seed completato"
